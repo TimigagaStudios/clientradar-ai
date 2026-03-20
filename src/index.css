@@ -1,0 +1,165 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-light: #F4F7FE;
+  --color-primary-dark: #0B1437;
+  --color-secondary-light: #FFFFFF;
+  --color-secondary-dark: #111C44;
+  --color-accent: #FF7A00;
+  --color-accent-hover: #E66E00;
+
+  --shadow-neumorph-light: 20px 20px 60px #d0d5d7, -20px -20px 60px #ffffff;
+  --shadow-neumorph-light-inset: inset 6px 6px 12px #d0d5d7, inset -6px -6px 12px #ffffff;
+  --shadow-neumorph-dark: 20px 20px 60px #09112f, -20px -20px 60px #0d173f;
+  --shadow-neumorph-dark-inset: inset 6px 6px 12px #09112f, inset -6px -6px 12px #0d173f;
+}
+
+:root {
+  --bg-primary: #F4F7FE;
+  --bg-secondary: #FFFFFF;
+  --text-primary: #1B2559;
+  --text-secondary: #A3AED0;
+  --accent: #FF7A00;
+  --shadow-flat: var(--shadow-neumorph-light);
+  --shadow-inset: var(--shadow-neumorph-light-inset);
+  
+  /* Aliases for some page implementations */
+  --bg: var(--bg-primary);
+  --card-bg: var(--bg-secondary);
+}
+
+.dark {
+  --bg-primary: #0B1437;
+  --bg-secondary: #111C44;
+  --text-primary: #FFFFFF;
+  --text-secondary: #A3AED0;
+  --shadow-flat: var(--shadow-neumorph-dark);
+  --shadow-inset: var(--shadow-neumorph-dark-inset);
+  
+  /* Aliases for some page implementations */
+  --bg: var(--bg-primary);
+  --card-bg: var(--bg-secondary);
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  margin: 0;
+}
+
+@utility neumorph-card {
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  box-shadow: var(--shadow-flat);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+@utility neumorph-inset {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: var(--shadow-inset);
+  border: none;
+  outline: none;
+}
+
+/* Alias for pages using neo-* names */
+@utility neo-card {
+  background: var(--bg-secondary);
+  border-radius: 24px;
+  box-shadow: var(--shadow-flat);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@utility neo-in {
+  background: var(--bg-primary);
+  border-radius: 16px;
+  box-shadow: var(--shadow-inset);
+}
+
+@utility neo-button {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  box-shadow: var(--shadow-flat);
+  transition: all 0.2s;
+  &:active {
+    box-shadow: var(--shadow-inset);
+    transform: scale(0.98);
+  }
+}
+
+@utility btn-neumorph {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 1.5rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  transition: all 0.2s;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-flat);
+  color: var(--text-primary);
+  &:active {
+    scale: 0.95;
+    box-shadow: var(--shadow-inset);
+  }
+}
+
+@utility btn-neumorph-primary {
+  @apply btn-neumorph text-white;
+  background: linear-gradient(135deg, var(--accent) 0%, #FF9533 100%);
+  border: none;
+}
+
+@utility glass-card {
+  backdrop-filter: blur(12px);
+  background-color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass-card {
+  background-color: rgba(17, 28, 68, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-secondary);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s ease-out forwards;
+}
