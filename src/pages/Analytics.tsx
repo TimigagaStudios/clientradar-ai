@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useLeads } from '../context/LeadContext';
 import {
   TrendingUp,
@@ -6,6 +7,8 @@ import {
   DollarSign,
   PieChart as PieChartIcon,
   Activity,
+  MonitorOff,
+  Globe,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -22,39 +25,87 @@ import {
   Cell,
 } from 'recharts';
 
-const COLORS = ['#FF7A00', '#FFB067', '#FF9340', '#FFD1A6', '#FDBA74'];
+const COLORS = ['#FF7A00', '#FFB067', '#FF9340', '#FFD1A6', '#FDBA74', '#F59E0B'];
 
 const Analytics = () => {
   const { leads } = useLeads();
 
   const totalLeads = leads.length;
   const totalRevenue = leads.reduce((acc, lead) => acc + (lead.dealValue || 0), 0);
+  const noWebsite = leads.filter((lead) => !lead.website).length;
+  const outdatedWebsite = leads.filter((lead) => lead.outdatedWebsite).length;
+  const emailSent = leads.filter(
+    (lead) => lead.status === 'Email Sent' || lead.status === 'Pending Reply'
+  ).length;
   const interested = leads.filter(
     (lead) => lead.status === 'Interested' || lead.status === 'Negotiating'
   ).length;
   const closedDeals = leads.filter((lead) => lead.status === 'Deal Closed').length;
-  const emailSent = leads.filter(
-    (lead) => lead.status === 'Email Sent' || lead.status === 'Pending Reply'
-  ).length;
 
-  const statusData = [
-    { name: 'New', value: leads.filter((lead) => lead.status === 'New').length },
-    { name: 'Email Sent', value: leads.filter((lead) => lead.status === 'Email Sent').length },
-    { name: 'Pending Reply', value: leads.filter((lead) => lead.status === 'Pending Reply').length },
-    { name: 'Interested', value: leads.filter((lead) => lead.status === 'Interested').length },
-    { name: 'Negotiating', value: leads.filter((lead) => lead.status === 'Negotiating').length },
-    { name: 'Closed', value: leads.filter((lead) => lead.status === 'Deal Closed').length },
-  ].filter((item) => item.value > 0);
+  const metrics = [
+    {
+      label: 'Total Leads',
+      value: totalLeads,
+      icon: Users,
+      helper: 'All saved prospects',
+    },
+    {
+      label: 'No Website',
+      value: noWebsite,
+      icon: MonitorOff,
+      helper: 'High opportunity leads',
+    },
+    {
+      label: 'Outdated Website',
+      value: outdatedWebsite,
+      icon: Globe,
+      helper: 'Redesign opportunities',
+    },
+    {
+      label: 'Closed Revenue',
+      value: `$${totalRevenue.toLocaleString()}`,
+      icon: DollarSign,
+      helper: 'Tracked deal value',
+    },
+  ];
 
-  const nicheMap: Record<string, number> = {};
-  leads.forEach((lead) => {
-    nicheMap[lead.niche] = (nicheMap[lead.niche] || 0) + 1;
-  });
+  const statusData = useMemo(() => {
+    const raw = [
+      { name: 'New', value: leads.filter((lead) => lead.status === 'New').length },
+      { name: 'Demo Created', value: leads.filter((lead) => lead.status === 'Demo Created').length },
+      { name: 'Email Sent', value: leads.filter((lead) => lead.status === 'Email Sent').length },
+      { name: 'Pending Reply', value: leads.filter((lead) => lead.status === 'Pending Reply').length },
+      { name: 'Interested', value: leads.filter((lead) => lead.status === 'Interested').length },
+      { name: 'Negotiating', value: leads.filter((lead) => lead.status === 'Negotiating').length },
+      { name: 'Deal Closed', value: leads.filter((lead) => lead.status === 'Deal Closed').length },
+    ];
 
-  const nicheData = Object.entries(nicheMap).map(([name, value]) => ({
-    name,
-    value,
-  }));
+    return raw.filter((item) => item.value > 0);
+  }, [leads]);
+
+  const categoryData = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    leads.forEach((lead) => {
+      counts[lead.category] = (counts[lead.category] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [leads]);
+
+  const priorityData = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    leads.forEach((lead) => {
+      counts[lead.priority] = (counts[lead.priority] || 0) + 1;
+    });
+
+    return Object.entries(counts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [leads]);
 
   const weeklyActivity = [
     { name: 'Mon', leads: 4, outreach: 2, conversions: 1 },
@@ -66,32 +117,8 @@ const Analytics = () => {
     { name: 'Sun', leads: 8, outreach: 4, conversions: 2 },
   ];
 
-  const metrics = [
-    {
-      label: 'Total Leads',
-      value: totalLeads,
-      icon: Users,
-      helper: 'All saved prospects',
-    },
-    {
-      label: 'Emails Sent',
-      value: emailSent,
-      icon: Mail,
-      helper: 'Outbound outreach volume',
-    },
-    {
-      label: 'Interested Leads',
-      value: interested,
-      icon: TrendingUp,
-      helper: 'Warm opportunities',
-    },
-    {
-      label: 'Closed Revenue',
-      value: `$${totalRevenue.toLocaleString()}`,
-      icon: DollarSign,
-      helper: 'Tracked deal value',
-    },
-  ];
+  const interestedRate =
+    totalLeads > 0 ? ((interested / totalLeads) * 100).toFixed(1) : '0.0';
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -106,7 +133,10 @@ const Analytics = () => {
         <div className="flex items-center gap-3 rounded-2xl bg-white/[0.03] px-4 py-3 shadow-[var(--surface-shadow-soft)]">
           <Activity className="text-[var(--accent)]" size={20} />
           <span className="font-bold text-lg">
-            {closedDeals} <span className="text-xs font-medium text-[var(--text-secondary)]">Closed Deals</span>
+            {interestedRate}%{' '}
+            <span className="text-xs font-medium text-[var(--text-secondary)]">
+              Interest Rate
+            </span>
           </span>
         </div>
       </header>
@@ -136,9 +166,9 @@ const Analytics = () => {
         <section className="neo-card p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold">Lead & Outreach Trend</h3>
+              <h3 className="text-xl font-bold">Lead Discovery Trend</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Weekly performance overview
+                Weekly discovery and outreach volume
               </p>
             </div>
             <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
@@ -156,8 +186,18 @@ const Analytics = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--text-secondary)" opacity={0.12} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'var(--card-bg)',
@@ -185,7 +225,7 @@ const Analytics = () => {
             <div>
               <h3 className="text-xl font-bold">Conversion Activity</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Outreach-to-conversion movement
+                Weekly movement toward deal closure
               </p>
             </div>
             <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
@@ -197,8 +237,18 @@ const Analytics = () => {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weeklyActivity}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--text-secondary)" opacity={0.12} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }} />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                  dy={10}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: 'var(--card-bg)',
@@ -216,7 +266,7 @@ const Analytics = () => {
       </div>
 
       {/* Bottom row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <section className="neo-card p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -235,8 +285,8 @@ const Analytics = () => {
                   data={statusData}
                   dataKey="value"
                   nameKey="name"
-                  innerRadius={70}
-                  outerRadius={110}
+                  innerRadius={65}
+                  outerRadius={105}
                   paddingAngle={4}
                 >
                   {statusData.map((_, index) => (
@@ -260,9 +310,9 @@ const Analytics = () => {
         <section className="neo-card p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold">Top Niches</h3>
+              <h3 className="text-xl font-bold">Top Categories</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Most common business categories in your pipeline
+                Most common business categories
               </p>
             </div>
             <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
@@ -271,18 +321,19 @@ const Analytics = () => {
           </div>
 
           <div className="space-y-4">
-            {nicheData.length === 0 ? (
+            {categoryData.length === 0 ? (
               <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
-                No niche analytics available yet.
+                No category analytics available yet.
               </div>
             ) : (
-              nicheData.map((item, index) => (
+              categoryData.map((item, index) => (
                 <div
                   key={item.name}
                   className="flex items-center justify-between p-4 rounded-2xl neo-in"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
                       style={{ background: COLORS[index % COLORS.length] }}
                     >
                       {index + 1}
@@ -290,7 +341,56 @@ const Analytics = () => {
                     <div>
                       <p className="font-bold">{item.name}</p>
                       <p className="text-sm text-[var(--text-secondary)]">
-                        Business category
+                        Lead category
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-lg font-black">{item.value}</p>
+                    <p className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
+                      Leads
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="neo-card p-8">
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-xl font-bold">Priority Mix</h3>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">
+                Lead urgency distribution
+              </p>
+            </div>
+            <Mail className="text-[var(--accent)]" size={20} />
+          </div>
+
+          <div className="space-y-4">
+            {priorityData.length === 0 ? (
+              <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
+                No priority data available yet.
+              </div>
+            ) : (
+              priorityData.map((item, index) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between p-4 rounded-2xl neo-in"
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
+                      style={{ background: COLORS[index % COLORS.length] }}
+                    >
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-bold">{item.name}</p>
+                      <p className="text-sm text-[var(--text-secondary)]">
+                        Lead priority
                       </p>
                     </div>
                   </div>
