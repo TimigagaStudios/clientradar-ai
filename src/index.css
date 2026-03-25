@@ -10,26 +10,25 @@
 }
 
 :root {
-  --bg-primary: #F4F7FE;
-  --bg-secondary: #FFFFFF;
+  --bg-primary: #EEF2FA;
+  --bg-secondary: #F8FAFF;
   --text-primary: #1B2559;
-  --text-secondary: #A3AED0;
+  --text-secondary: #94A3C7;
   --accent: #FF7A00;
-  --accent-soft: rgba(255, 122, 0, 0.12);
 
   --surface-shadow:
-    -10px -10px 24px rgba(255, 255, 255, 0.92),
-    12px 12px 26px rgba(170, 185, 220, 0.22);
+    10px 10px 24px rgba(180, 190, 220, 0.22),
+    -10px -10px 24px rgba(255, 255, 255, 0.92);
 
   --surface-shadow-soft:
-    -6px -6px 14px rgba(255, 255, 255, 0.82),
-    8px 8px 18px rgba(170, 185, 220, 0.16);
+    8px 8px 18px rgba(180, 190, 220, 0.16),
+    -8px -8px 18px rgba(255, 255, 255, 0.88);
 
-  --surface-inset:
-    inset 4px 4px 10px rgba(181, 193, 224, 0.18),
-    inset -4px -4px 10px rgba(255, 255, 255, 0.85);
+  --surface-shadow-pressed:
+    inset 3px 3px 8px rgba(180, 190, 220, 0.18),
+    inset -3px -3px 8px rgba(255, 255, 255, 0.8);
 
-  --surface-border: rgba(255, 255, 255, 0.6);
+  --surface-border: rgba(255, 255, 255, 0.55);
   --surface-border-soft: rgba(255, 255, 255, 0.35);
 
   --bg: var(--bg-primary);
@@ -42,19 +41,18 @@
   --text-primary: #FFFFFF;
   --text-secondary: #A3AED0;
   --accent: #FF7A00;
-  --accent-soft: rgba(255, 122, 0, 0.12);
 
   --surface-shadow:
-    -10px -10px 24px rgba(20, 34, 83, 0.75),
-    14px 14px 30px rgba(4, 10, 27, 0.55);
+    10px 10px 24px rgba(3, 8, 22, 0.55),
+    -10px -10px 24px rgba(20, 34, 83, 0.5);
 
   --surface-shadow-soft:
-    -6px -6px 14px rgba(20, 34, 83, 0.55),
-    8px 8px 18px rgba(4, 10, 27, 0.45);
+    8px 8px 18px rgba(3, 8, 22, 0.42),
+    -8px -8px 18px rgba(20, 34, 83, 0.35);
 
-  --surface-inset:
-    inset 4px 4px 10px rgba(4, 10, 27, 0.55),
-    inset -4px -4px 10px rgba(20, 34, 83, 0.45);
+  --surface-shadow-pressed:
+    inset 3px 3px 8px rgba(3, 8, 22, 0.45),
+    inset -3px -3px 8px rgba(20, 34, 83, 0.25);
 
   --surface-border: rgba(255, 255, 255, 0.05);
   --surface-border-soft: rgba(255, 255, 255, 0.04);
@@ -68,10 +66,7 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.06), transparent 24%),
-    radial-gradient(circle at bottom right, rgba(255, 122, 0, 0.05), transparent 20%),
-    var(--bg-primary);
+  background: var(--bg-primary);
   color: var(--text-primary);
   font-family: 'DM Sans', 'Inter', system-ui, -apple-system, sans-serif;
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -81,61 +76,23 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-@utility neumorph-card {
-  background: var(--bg-secondary);
-  border-radius: 24px;
-  box-shadow: var(--surface-shadow);
-  border: 1px solid var(--surface-border);
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--surface-shadow-soft);
-  }
-}
-
-@utility neumorph-inset {
-  background: color-mix(in srgb, var(--bg-primary) 88%, transparent);
-  border-radius: 16px;
-  box-shadow: var(--surface-inset);
-  border: 1px solid var(--surface-border-soft);
-  outline: none;
-}
-
 @utility neo-card {
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.12),
-      rgba(255, 255, 255, 0.03)
-    ),
-    var(--bg-secondary);
+  background: var(--bg-secondary);
   border-radius: 28px;
   box-shadow: var(--surface-shadow);
   border: 1px solid var(--surface-border);
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 
 @utility neo-in {
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.03),
-      rgba(255, 255, 255, 0.01)
-    ),
-    var(--bg-primary);
+  background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
   border-radius: 18px;
-  box-shadow: var(--surface-inset);
+  box-shadow: var(--surface-shadow-pressed);
   border: 1px solid var(--surface-border-soft);
 }
 
 @utility neo-button {
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.08),
-      rgba(255, 255, 255, 0.02)
-    ),
-    var(--bg-secondary);
+  background: var(--bg-secondary);
   border-radius: 18px;
   box-shadow: var(--surface-shadow-soft);
   border: 1px solid var(--surface-border-soft);
@@ -144,27 +101,20 @@ body {
     transform: translateY(-1px);
   }
   &:active {
-    box-shadow: var(--surface-inset);
+    box-shadow: var(--surface-shadow-pressed);
     transform: scale(0.985);
   }
 }
 
 @utility btn-neumorph {
-  position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.8rem 1.4rem;
+  padding: 0.8rem 1.25rem;
   border-radius: 9999px;
   font-weight: 700;
   transition: all 0.22s ease;
-  background:
-    linear-gradient(
-      145deg,
-      rgba(255, 255, 255, 0.08),
-      rgba(255, 255, 255, 0.02)
-    ),
-    var(--bg-secondary);
+  background: var(--bg-secondary);
   box-shadow: var(--surface-shadow-soft);
   border: 1px solid var(--surface-border-soft);
   color: var(--text-primary);
@@ -172,8 +122,8 @@ body {
     transform: translateY(-1px);
   }
   &:active {
-    scale: 0.97;
-    box-shadow: var(--surface-inset);
+    transform: scale(0.98);
+    box-shadow: var(--surface-shadow-pressed);
   }
 }
 
@@ -181,6 +131,7 @@ body {
   @apply btn-neumorph text-white;
   background: linear-gradient(135deg, var(--accent) 0%, #FF9533 100%);
   border: none;
+  box-shadow: 0 10px 24px rgba(255, 122, 0, 0.24);
 }
 
 @utility glass-card {
@@ -196,7 +147,6 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-/* Regular CSS class instead of invalid Tailwind @utility pseudo syntax */
 .surface-divider {
   position: relative;
 }
@@ -211,7 +161,7 @@ body {
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(255, 255, 255, 0.08),
+    rgba(0, 0, 0, 0.06),
     transparent
   );
 }
