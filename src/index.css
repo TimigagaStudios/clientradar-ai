@@ -196,11 +196,12 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-@utility surface-divider {
+/* Regular CSS class instead of invalid Tailwind @utility pseudo syntax */
+.surface-divider {
   position: relative;
 }
 
-@utility surface-divider::after {
+.surface-divider::after {
   content: "";
   position: absolute;
   left: 0;
