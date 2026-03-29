@@ -50,7 +50,7 @@ const LeadFinder = () => {
       setResults(result.data || []);
     } catch (error) {
       console.error(error);
-      alert('Failed to fetch business results. Check API setup.');
+      alert(error instanceof Error ? error.message : 'Failed to fetch business results.');
       setResults([]);
     } finally {
       setIsSearching(false);
