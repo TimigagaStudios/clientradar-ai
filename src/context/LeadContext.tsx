@@ -1,246 +1,277 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Lead, SearchResult, ActivityLog, LeadStatus, LeadPriority, OutreachLog } from '../types';
+import { Lead, ActivityLog, LeadStatus, OutreachLog } from '../types';
 
 interface LeadContextType {
   leads: Lead[];
-  addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => void;
-  updateLeadStatus: (id: string, status: LeadStatus) => void;
-  addDemoLink: (id: string, link: string) => void;
-  addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => void;
-  deleteLead: (id: string) => void;
-  importLeads: (leads: Lead[]) => void;
+  loading: boolean;
+  addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => Promise<void>;
+  updateLeadStatus: (id: string, status: LeadStatus) => Promise<void>;
+  addDemoLink: (id: string, link: string) => Promise<void>;
+  addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => Promise<void>;
+  deleteLead: (id: string) => Promise<void>;
+  importLeads: (leads: Lead[]) => Promise<void>;
   getLeadsByStatus: (status: LeadStatus) => Lead[];
-  resetData: () => void;
+  resetData: () => Promise<void>;
+  refreshLeads: () => Promise<void>;
 }
 
 const LeadContext = createContext<LeadContextType | undefined>(undefined);
 
-const initialLeads: Lead[] = [
-  {
-    id: '1',
-    businessName: 'Sunset Coffee Roasters',
-    category: 'Cafe',
-    city: 'San Diego',
-    rating: 4.8,
-    reviewCount: 124,
-    phone: '(555) 123-4567',
-    website: 'https://sunsetcoffee.com',
-    outdatedWebsite: true,
-    leadScore: 65,
-    priority: 'Medium',
-    status: 'New',
-    notes: 'Website looks very old, not mobile responsive.',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    timeline: [
-      {
-        id: 'e1',
-        type: 'Lead Found',
-        description: 'Lead discovered via Maps search',
-        date: new Date().toISOString()
-      }
-    ],
-    outreachHistory: []
-  },
-  {
-    id: '2',
-    businessName: 'Elite Plumbing Services',
-    category: 'Plumbing',
-    city: 'San Diego',
-    rating: 3.5,
-    reviewCount: 12,
-    phone: '(555) 987-6543',
-    website: undefined,
-    outdatedWebsite: false,
-    leadScore: 85,
-    priority: 'High',
-    status: 'Demo Created',
-    demoLink: 'https://demo-eliteplumbing.netlify.app',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    timeline: [
-      {
-        id: 'e2',
-        type: 'Lead Found',
-        description: 'Lead discovered via Maps search',
-        date: new Date(Date.now() - 86400000).toISOString()
-      },
-      {
-        id: 'e3',
-        type: 'Demo Created',
-        description: 'Created demo landing page',
-        date: new Date().toISOString()
-      }
-    ],
-    outreachHistory: []
-  },
-  {
-    id: '3',
-    businessName: 'Green Leaf Landscaping',
-    category: 'Landscaping',
-    city: 'Austin',
-    rating: 4.9,
-    reviewCount: 45,
-    phone: '(555) 555-5555',
-    website: 'https://greenleaf.com',
-    outdatedWebsite: false,
-    leadScore: 30,
-    priority: 'Low',
-    status: 'Deal Closed',
-    dealValue: 1500,
-    createdAt: new Date(Date.now() - 172800000).toISOString(),
-    updatedAt: new Date().toISOString(),
-    timeline: [
-      {
-        id: 'e4',
-        type: 'Lead Found',
-        description: 'Lead discovered',
-        date: new Date(Date.now() - 172800000).toISOString()
-      },
-      {
-        id: 'e5',
-        type: 'Deal Closed',
-        description: 'Signed contract for $1500 website redesign',
-        date: new Date().toISOString()
-      }
-    ],
-    outreachHistory: []
-  }
-];
+function mapSupabaseLead(row: any): Lead {
+  return {
+    id: row.id,
+    businessName: row.business_name,
+    category: row.category,
+    city: row.city,
+    rating: row.rating || 0,
+    reviewCount: row.review_count || 0,
+    phone: row.phone || undefined,
+    website: row.website || undefined,
+    outdatedWebsite: row.outdated_website || false,
+    leadScore: row.lead_score || 0,
+    priority: row.priority,
+    status: row.status,
+    notes: row.notes || '',
+    demoLink: row.demo_link || undefined,
+    dealValue: row.deal_value || undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    timeline: row.timeline || [],
+    outreachHistory: row.outreach_history || [],
+  };
+}
 
 export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [leads, setLeads] = useState<Lead[]>(() => {
-    const saved = localStorage.getItem('leads');
-    return saved ? JSON.parse(saved) : initialLeads;
-  });
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refreshLeads = async () => {
+    try {
+      setLoading(true);
+
+      const response = await fetch('/api/leads');
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to fetch leads');
+      }
+
+      const mapped = (result.data || []).map(mapSupabaseLead);
+      setLeads(mapped);
+    } catch (error) {
+      console.error('Failed to refresh leads:', error);
+      setLeads([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    localStorage.setItem('leads', JSON.stringify(leads));
-  }, [leads]);
+    refreshLeads();
+  }, []);
 
-  const addLead = (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => {
-    const newLead: Lead = {
+  const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => {
+    const payload = {
       ...leadData,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       timeline: [
         {
           id: crypto.randomUUID(),
           type: 'Lead Found',
           description: 'Added to database manually',
-          date: new Date().toISOString()
-        }
+          date: new Date().toISOString(),
+        },
       ],
       outreachHistory: [],
     };
-    setLeads(prev => [newLead, ...prev]);
+
+    const response = await fetch('/api/leads', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to add lead');
+    }
+
+    await refreshLeads();
   };
 
-  const updateLeadStatus = (id: string, status: LeadStatus) => {
-    setLeads(prev =>
-      prev.map(lead => {
-        if (lead.id === id) {
-          const newTimelineEvent: ActivityLog = {
-            id: crypto.randomUUID(),
-            type: status === 'Deal Closed' ? 'Deal Closed' : 'Status Change',
-            description: `Status updated to ${status}`,
-            date: new Date().toISOString()
-          };
+  const updateLeadStatus = async (id: string, status: LeadStatus) => {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
 
-          let dealValue = lead.dealValue;
-          if (status === 'Deal Closed' && !dealValue) {
-            dealValue = 2500;
-          }
+    const newTimelineEvent: ActivityLog = {
+      id: crypto.randomUUID(),
+      type: status === 'Deal Closed' ? 'Deal Closed' : 'Status Change',
+      description: `Status updated to ${status}`,
+      date: new Date().toISOString(),
+    };
 
-          return {
-            ...lead,
-            status,
-            dealValue,
-            updatedAt: new Date().toISOString(),
-            timeline: [newTimelineEvent, ...lead.timeline]
-          };
-        }
-        return lead;
-      })
-    );
+    let dealValue = lead.dealValue;
+    if (status === 'Deal Closed' && !dealValue) {
+      dealValue = 2500;
+    }
+
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        status,
+        dealValue,
+        timeline: [newTimelineEvent, ...(lead.timeline || [])],
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to update lead status');
+    }
+
+    await refreshLeads();
   };
 
-  const addDemoLink = (id: string, link: string) => {
-    setLeads(prev =>
-      prev.map(lead => {
-        if (lead.id === id) {
-          return {
-            ...lead,
-            demoLink: link,
-            status: lead.status === 'New' ? 'Demo Created' : lead.status,
-            updatedAt: new Date().toISOString(),
-            timeline: [
-              {
-                id: crypto.randomUUID(),
-                type: 'Demo Created',
-                description: `Demo link added: ${link}`,
-                date: new Date().toISOString()
-              },
-              ...lead.timeline
-            ]
-          };
-        }
-        return lead;
-      })
-    );
+  const addDemoLink = async (id: string, link: string) => {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
+
+    const updatedStatus = lead.status === 'New' ? 'Demo Created' : lead.status;
+
+    const newTimelineEvent: ActivityLog = {
+      id: crypto.randomUUID(),
+      type: 'Demo Created',
+      description: `Demo link added: ${link}`,
+      date: new Date().toISOString(),
+    };
+
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        demoLink: link,
+        status: updatedStatus,
+        timeline: [newTimelineEvent, ...(lead.timeline || [])],
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to add demo link');
+    }
+
+    await refreshLeads();
   };
 
-  const addOutreachLog = (id: string, log: Omit<OutreachLog, 'id'>) => {
-    setLeads(prev =>
-      prev.map(lead => {
-        if (lead.id === id) {
-          const outreachItem: OutreachLog = {
-            ...log,
-            id: crypto.randomUUID(),
-          };
+  const addOutreachLog = async (id: string, log: Omit<OutreachLog, 'id'>) => {
+    const lead = leads.find((l) => l.id === id);
+    if (!lead) return;
 
-          return {
-            ...lead,
-            updatedAt: new Date().toISOString(),
-            outreachHistory: [outreachItem, ...(lead.outreachHistory || [])],
-            timeline: [
-              {
-                id: crypto.randomUUID(),
-                type: 'Outreach Sent',
-                description: `Sent ${log.type} email outreach`,
-                date: new Date().toISOString()
-              },
-              ...lead.timeline
-            ]
-          };
-        }
-        return lead;
-      })
-    );
+    const outreachItem: OutreachLog = {
+      ...log,
+      id: crypto.randomUUID(),
+    };
+
+    const newTimelineEvent: ActivityLog = {
+      id: crypto.randomUUID(),
+      type: 'Outreach Sent',
+      description: `Sent ${log.type} email outreach`,
+      date: new Date().toISOString(),
+    };
+
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        outreachHistory: [outreachItem, ...(lead.outreachHistory || [])],
+        timeline: [newTimelineEvent, ...(lead.timeline || [])],
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to add outreach log');
+    }
+
+    await refreshLeads();
   };
 
-  const deleteLead = (id: string) => {
-    setLeads(prev => prev.filter(l => l.id !== id));
+  const deleteLead = async (id: string) => {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'DELETE',
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to delete lead');
+    }
+
+    await refreshLeads();
   };
 
-  const importLeads = (newLeads: Lead[]) => {
-    setLeads(prev => [...newLeads, ...prev]);
+  const importLeads = async (newLeads: Lead[]) => {
+    for (const lead of newLeads) {
+      await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          businessName: lead.businessName,
+          category: lead.category,
+          city: lead.city,
+          rating: lead.rating,
+          reviewCount: lead.reviewCount,
+          phone: lead.phone,
+          website: lead.website,
+          outdatedWebsite: lead.outdatedWebsite,
+          leadScore: lead.leadScore,
+          priority: lead.priority,
+          status: lead.status,
+          notes: lead.notes,
+          demoLink: lead.demoLink,
+          dealValue: lead.dealValue,
+          timeline: lead.timeline || [],
+          outreachHistory: lead.outreachHistory || [],
+        }),
+      });
+    }
+
+    await refreshLeads();
   };
 
   const getLeadsByStatus = (status: LeadStatus) => {
-    return leads.filter(l => l.status === status);
+    return leads.filter((lead) => lead.status === status);
   };
 
-  const resetData = () => {
-    setLeads(initialLeads);
-    localStorage.removeItem('leads');
+  const resetData = async () => {
+    for (const lead of leads) {
+      await fetch(`/api/leads/${lead.id}`, {
+        method: 'DELETE',
+      });
+    }
+
+    await refreshLeads();
   };
 
   return (
     <LeadContext.Provider
       value={{
         leads,
+        loading,
         addLead,
         updateLeadStatus,
         addDemoLink,
@@ -248,7 +279,8 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteLead,
         importLeads,
         getLeadsByStatus,
-        resetData
+        resetData,
+        refreshLeads,
       }}
     >
       {children}
