@@ -16,9 +16,11 @@ import {
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
+import AddLeadModal from './AddLeadModal';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
   const location = useLocation();
 
   const menuItems = [
@@ -38,8 +40,24 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Globe, label: 'Demo' },
   ];
 
+  const handleQuickAction = (label: string) => {
+    if (label === 'Add Lead') {
+      setIsAddLeadOpen(true);
+      return;
+    }
+
+    if (label === 'Outreach') {
+      window.location.href = '/outreach';
+      return;
+    }
+
+    alert(`${label} feature coming next.`);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
+      <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
+
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
@@ -139,6 +157,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   variant="icon"
                   className="hidden sm:flex"
                   title={action.label}
+                  onClick={() => handleQuickAction(action.label)}
                 >
                   <action.icon size={18} />
                 </Button>
