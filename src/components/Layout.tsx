@@ -17,10 +17,12 @@ import {
 import { cn } from '../utils/cn';
 import Button from './Button';
 import AddLeadModal from './AddLeadModal';
+import ImportLeadsModal from './ImportLeadsModal';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const location = useLocation();
 
   const menuItems = [
@@ -46,6 +48,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
+    if (label === 'Import') {
+      setIsImportOpen(true);
+      return;
+    }
+
     if (label === 'Outreach') {
       window.location.href = '/outreach';
       return;
@@ -57,6 +64,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
+      <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
       {isSidebarOpen && (
         <div
