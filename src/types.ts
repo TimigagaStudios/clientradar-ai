@@ -34,6 +34,8 @@ export type Lead = {
   rating: number;
   reviewCount: number;
   phone?: string;
+  email?: string;
+  instagram?: string;
   website?: string;
   outdatedWebsite: boolean;
   leadScore: number;
