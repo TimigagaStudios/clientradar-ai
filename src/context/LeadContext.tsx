@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Lead, SearchResult, ActivityLog, LeadStatus, LeadPriority } from '../types';
+import { Lead, SearchResult, ActivityLog, LeadStatus, LeadPriority, OutreachLog } from '../types';
 
 interface LeadContextType {
   leads: Lead[];
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => void;
   updateLeadStatus: (id: string, status: LeadStatus) => void;
   addDemoLink: (id: string, link: string) => void;
+  addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => void;
   deleteLead: (id: string) => void;
   importLeads: (leads: Lead[]) => void;
   getLeadsByStatus: (status: LeadStatus) => Lead[];
@@ -38,7 +39,8 @@ const initialLeads: Lead[] = [
         description: 'Lead discovered via Maps search',
         date: new Date().toISOString()
       }
-    ]
+    ],
+    outreachHistory: []
   },
   {
     id: '2',
@@ -69,7 +71,8 @@ const initialLeads: Lead[] = [
         description: 'Created demo landing page',
         date: new Date().toISOString()
       }
-    ]
+    ],
+    outreachHistory: []
   },
   {
     id: '3',
@@ -100,7 +103,8 @@ const initialLeads: Lead[] = [
         description: 'Signed contract for $1500 website redesign',
         date: new Date().toISOString()
       }
-    ]
+    ],
+    outreachHistory: []
   }
 ];
 
@@ -127,61 +131,93 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           description: 'Added to database manually',
           date: new Date().toISOString()
         }
-      ]
+      ],
+      outreachHistory: [],
     };
     setLeads(prev => [newLead, ...prev]);
   };
 
   const updateLeadStatus = (id: string, status: LeadStatus) => {
-    setLeads(prev => prev.map(lead => {
-      if (lead.id === id) {
-        const newTimelineEvent: ActivityLog = {
-          id: crypto.randomUUID(),
-          type: status === 'Deal Closed' ? 'Deal Closed' : 'Status Change',
-          description: `Status updated to ${status}`,
-          date: new Date().toISOString()
-        };
-        
-        // If closing deal, maybe assign a random value if not present? Or let user set it. 
-        // For now we'll just update status.
-        let dealValue = lead.dealValue;
-        if (status === 'Deal Closed' && !dealValue) {
-           dealValue = 2500; // Default deal value simulation
-        }
+    setLeads(prev =>
+      prev.map(lead => {
+        if (lead.id === id) {
+          const newTimelineEvent: ActivityLog = {
+            id: crypto.randomUUID(),
+            type: status === 'Deal Closed' ? 'Deal Closed' : 'Status Change',
+            description: `Status updated to ${status}`,
+            date: new Date().toISOString()
+          };
 
-        return {
-          ...lead,
-          status,
-          dealValue,
-          updatedAt: new Date().toISOString(),
-          timeline: [newTimelineEvent, ...lead.timeline]
-        };
-      }
-      return lead;
-    }));
+          let dealValue = lead.dealValue;
+          if (status === 'Deal Closed' && !dealValue) {
+            dealValue = 2500;
+          }
+
+          return {
+            ...lead,
+            status,
+            dealValue,
+            updatedAt: new Date().toISOString(),
+            timeline: [newTimelineEvent, ...lead.timeline]
+          };
+        }
+        return lead;
+      })
+    );
   };
 
   const addDemoLink = (id: string, link: string) => {
-    setLeads(prev => prev.map(lead => {
-      if (lead.id === id) {
-        return {
-          ...lead,
-          demoLink: link,
-          status: lead.status === 'New' ? 'Demo Created' : lead.status, // Auto update status if new
-          updatedAt: new Date().toISOString(),
-          timeline: [
-            {
-              id: crypto.randomUUID(),
-              type: 'Demo Created',
-              description: `Demo link added: ${link}`,
-              date: new Date().toISOString()
-            },
-            ...lead.timeline
-          ]
-        };
-      }
-      return lead;
-    }));
+    setLeads(prev =>
+      prev.map(lead => {
+        if (lead.id === id) {
+          return {
+            ...lead,
+            demoLink: link,
+            status: lead.status === 'New' ? 'Demo Created' : lead.status,
+            updatedAt: new Date().toISOString(),
+            timeline: [
+              {
+                id: crypto.randomUUID(),
+                type: 'Demo Created',
+                description: `Demo link added: ${link}`,
+                date: new Date().toISOString()
+              },
+              ...lead.timeline
+            ]
+          };
+        }
+        return lead;
+      })
+    );
+  };
+
+  const addOutreachLog = (id: string, log: Omit<OutreachLog, 'id'>) => {
+    setLeads(prev =>
+      prev.map(lead => {
+        if (lead.id === id) {
+          const outreachItem: OutreachLog = {
+            ...log,
+            id: crypto.randomUUID(),
+          };
+
+          return {
+            ...lead,
+            updatedAt: new Date().toISOString(),
+            outreachHistory: [outreachItem, ...(lead.outreachHistory || [])],
+            timeline: [
+              {
+                id: crypto.randomUUID(),
+                type: 'Outreach Sent',
+                description: `Sent ${log.type} email outreach`,
+                date: new Date().toISOString()
+              },
+              ...lead.timeline
+            ]
+          };
+        }
+        return lead;
+      })
+    );
   };
 
   const deleteLead = (id: string) => {
@@ -202,16 +238,19 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <LeadContext.Provider value={{ 
-      leads, 
-      addLead, 
-      updateLeadStatus, 
-      addDemoLink, 
-      deleteLead,
-      importLeads,
-      getLeadsByStatus,
-      resetData
-    }}>
+    <LeadContext.Provider
+      value={{
+        leads,
+        addLead,
+        updateLeadStatus,
+        addDemoLink,
+        addOutreachLog,
+        deleteLead,
+        importLeads,
+        getLeadsByStatus,
+        resetData
+      }}
+    >
       {children}
     </LeadContext.Provider>
   );
