@@ -12,7 +12,7 @@ import {
 import { cn } from '../utils/cn';
 
 const Outreach = () => {
-  const { leads, updateLeadStatus } = useLeads();
+  const { leads, updateLeadStatus, addOutreachLog } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [template, setTemplate] = useState('intro');
   const [isSending, setIsSending] = useState(false);
@@ -66,10 +66,20 @@ Best,
   };
 
   const handleSend = () => {
-    if (!selectedLeadId) return;
+    if (!selectedLeadId || !selectedLead) return;
     setIsSending(true);
 
+    const preview = getPreview();
+
     setTimeout(() => {
+      addOutreachLog(selectedLeadId, {
+        type: template as 'intro' | 'followup',
+        subject: preview.subject,
+        body: preview.body,
+        sentAt: new Date().toISOString(),
+        channel: 'email',
+      });
+
       updateLeadStatus(selectedLeadId, 'Email Sent');
       setIsSending(false);
       setSelectedLeadId(null);
