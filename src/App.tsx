@@ -9,6 +9,7 @@ import Outreach from './pages/Outreach';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Analytics from './pages/Analytics';
+import Deals from './pages/Deals';
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
 
@@ -102,7 +103,7 @@ const App = () => {
               element={
                 <RequireAuth>
                   <Layout>
-                    <Leads />
+                    <Deals />
                   </Layout>
                 </RequireAuth>
               }
