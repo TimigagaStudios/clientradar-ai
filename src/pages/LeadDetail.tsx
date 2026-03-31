@@ -13,6 +13,7 @@ import {
   Save,
   Send,
   MoreVertical,
+  Mail,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
@@ -73,7 +74,6 @@ const LeadDetail = () => {
   };
 
   const cardClasses = 'neo-card p-6 md:p-8';
-  const insetClasses = 'neo-in';
   const inputClasses =
     'w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none';
   const labelClasses =
@@ -274,6 +274,50 @@ const LeadDetail = () => {
                 <Save size={16} /> Save Notes
               </button>
             </div>
+          </div>
+
+          {/* Outreach History */}
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
+              Outreach History
+            </h3>
+
+            {lead.outreachHistory && lead.outreachHistory.length > 0 ? (
+              <div className="space-y-4">
+                {lead.outreachHistory.map((item) => (
+                  <div
+                    key={item.id}
+                    className="neo-in p-4 rounded-2xl"
+                  >
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
+                        <Mail size={16} className="text-[var(--accent)]" />
+                        <span className="capitalize">{item.type} Email</span>
+                      </div>
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        {format(new Date(item.sentAt), 'MMM d, yyyy h:mm a')}
+                      </span>
+                    </div>
+
+                    <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">
+                      {item.subject}
+                    </p>
+
+                    <p className="text-sm text-[var(--text-secondary)] leading-7 whitespace-pre-wrap">
+                      {item.body}
+                    </p>
+
+                    <div className="mt-3 text-xs text-[var(--text-secondary)] uppercase tracking-[0.14em]">
+                      Channel: {item.channel}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
+                No outreach history yet for this lead.
+              </div>
+            )}
           </div>
         </div>
 
