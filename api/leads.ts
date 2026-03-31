@@ -47,6 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             rating: lead.rating,
             review_count: lead.reviewCount,
             phone: lead.phone || null,
+            email: lead.email || null,
+            instagram: lead.instagram || null,
             website: lead.website || null,
             outdated_website: lead.outdatedWebsite || false,
             lead_score: lead.leadScore || 0,
