@@ -10,26 +10,26 @@
 }
 
 :root {
-  --bg-primary: #DDE1E7;
-  --bg-secondary: #E7EBF0;
+  --bg-primary: #D7DCE3;
+  --bg-secondary: #E1E6ED;
   --text-primary: #1B2559;
-  --text-secondary: #7A869F;
+  --text-secondary: #74829D;
   --accent: #FF7A00;
 
   --surface-shadow:
-    9px 9px 18px rgba(163, 177, 198, 0.28),
-    -9px -9px 18px rgba(255, 255, 255, 0.68);
+    5px 5px 10px rgba(163, 177, 198, 0.18),
+    -5px -5px 10px rgba(255, 255, 255, 0.34);
 
   --surface-shadow-soft:
-    6px 6px 12px rgba(163, 177, 198, 0.2),
-    -6px -6px 12px rgba(255, 255, 255, 0.55);
+    3px 3px 6px rgba(163, 177, 198, 0.12),
+    -3px -3px 6px rgba(255, 255, 255, 0.22);
 
   --surface-shadow-pressed:
-    inset 2px 2px 5px rgba(163, 177, 198, 0.14),
-    inset -2px -2px 5px rgba(255, 255, 255, 0.5);
+    inset 1px 1px 3px rgba(163, 177, 198, 0.12),
+    inset -1px -1px 3px rgba(255, 255, 255, 0.2);
 
-  --surface-border: rgba(255, 255, 255, 0.22);
-  --surface-border-soft: rgba(255, 255, 255, 0.14);
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --surface-border-soft: rgba(255, 255, 255, 0.08);
 
   --bg: var(--bg-primary);
   --card-bg: var(--bg-secondary);
@@ -131,14 +131,14 @@ body {
   @apply btn-neumorph text-white;
   background: linear-gradient(135deg, var(--accent) 0%, #FF9533 100%);
   border: none;
-  box-shadow: 0 10px 22px rgba(255, 122, 0, 0.18);
+  box-shadow: 0 6px 14px rgba(255, 122, 0, 0.12);
 }
 
 @utility glass-card {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  background-color: rgba(255, 255, 255, 0.42);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: var(--surface-shadow-soft);
 }
 
