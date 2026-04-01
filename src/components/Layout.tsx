@@ -12,6 +12,7 @@ import {
   Zap,
   PlusCircle,
   FileDown,
+  Download,
   Globe,
   ChevronDown,
   LogOut,
@@ -51,7 +52,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const quickActions = [
     { icon: PlusCircle, label: 'Add Lead' },
-    { icon: FileDown, label: 'Export' },
+    { icon: FileDown, label: 'Import' },
+    { icon: Download, label: 'Export' },
     { icon: Mail, label: 'Outreach' },
     { icon: Globe, label: 'Demo' },
   ];
@@ -224,7 +226,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 </Button>
               ))}
 
-              {/* Admin menu */}
               <div className="relative" ref={adminMenuRef}>
                 <button
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
