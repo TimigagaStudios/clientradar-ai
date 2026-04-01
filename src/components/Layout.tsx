@@ -18,6 +18,7 @@ import {
   LogOut,
   Moon,
   Sun,
+  MonitorPlay,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -45,6 +46,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: Search, label: 'Lead Finder', path: '/finder' },
     { icon: Users, label: 'Leads', path: '/leads' },
+    { icon: MonitorPlay, label: 'Demos', path: '/demos' },
     { icon: Mail, label: 'Outreach', path: '/outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
