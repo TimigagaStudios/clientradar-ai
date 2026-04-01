@@ -54,6 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             lead_score: lead.leadScore || 0,
             priority: lead.priority,
             status: lead.status,
+            demo_status: lead.demoStatus || 'Not Started',
             notes: lead.notes || '',
             demo_link: lead.demoLink || null,
             deal_value: lead.dealValue || null,
