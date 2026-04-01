@@ -33,6 +33,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState('');
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -97,8 +98,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       navigate('/demos');
       return;
     }
-
-    alert(`${label} feature coming next.`);
   };
 
   const handleLogout = async () => {
@@ -116,6 +115,17 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     setIsAdminMenuOpen(false);
   };
 
+  const handleGlobalSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!globalSearch.trim()) {
+      navigate('/leads');
+      return;
+    }
+
+    navigate(`/leads?q=${encodeURIComponent(globalSearch.trim())}`);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
@@ -128,7 +138,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={cn(
           'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-0 transition-transform duration-300 lg:translate-x-0 bg-[var(--card-bg)]/92 backdrop-blur-2xl',
@@ -188,7 +197,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="lg:ml-72 min-h-screen">
         <header className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-4 bg-[var(--bg)]/80 backdrop-blur-2xl surface-divider">
           <div className="flex items-center justify-between gap-4">
@@ -200,17 +208,19 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             </button>
 
             <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
-              <div className="relative group">
+              <form onSubmit={handleGlobalSearchSubmit} className="relative group">
                 <Search
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
                   size={18}
                 />
                 <input
                   type="text"
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
                   placeholder="Search leads, outreach, demos..."
                   className="w-full rounded-2xl bg-black/[0.03] dark:bg-white/5 border border-black/8 dark:border-white/8 py-3 pl-12 pr-4 outline-none focus:border-[var(--accent)]/70 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all shadow-[var(--surface-shadow-soft)] text-[var(--text-primary)]"
                 />
-              </div>
+              </form>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-3">
