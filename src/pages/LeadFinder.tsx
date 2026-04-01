@@ -12,9 +12,12 @@ import {
 } from 'lucide-react';
 import { SearchResult, LeadPriority } from '../types';
 import { cn } from '../utils/cn';
+import { useToast } from '../components/ui/useToast';
 
 const LeadFinder = () => {
   const { addLead } = useLeads();
+  const { showToast } = useToast();
+
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -32,13 +35,8 @@ const LeadFinder = () => {
     try {
       const response = await fetch('/api/search-places', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          category: searchParams.category,
-          city: searchParams.city,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: searchParams.category, city: searchParams.city }),
       });
 
       const result = await response.json();
@@ -48,9 +46,19 @@ const LeadFinder = () => {
       }
 
       setResults(result.data || []);
+
+      showToast({
+        type: 'success',
+        title: 'Search complete',
+        message: `${result.data?.length || 0} business result(s) loaded.`,
+      });
     } catch (error) {
       console.error(error);
-      alert(error instanceof Error ? error.message : 'Failed to fetch business results.');
+      showToast({
+        type: 'error',
+        title: 'Search failed',
+        message: error instanceof Error ? error.message : 'Failed to fetch business results.',
+      });
       setResults([]);
     } finally {
       setIsSearching(false);
@@ -73,25 +81,46 @@ const LeadFinder = () => {
     return { score, priority };
   };
 
-  const handleSaveLead = (result: SearchResult, index: number) => {
-    const { score, priority } = calculateScore(result);
+  const handleSaveLead = async (result: SearchResult, index: number) => {
+    try {
+      const { score, priority } = calculateScore(result);
 
-    addLead({
-      businessName: result.businessName,
-      category: searchParams.category || 'General',
-      city: searchParams.city || 'Unknown',
-      rating: result.rating,
-      reviewCount: result.reviewCount,
-      phone: result.phone,
-      website: result.website,
-      outdatedWebsite: result.outdatedWebsite,
-      leadScore: score,
-      priority,
-      status: 'New',
-      notes: `Found via Lead Finder. Address: ${result.address}`,
-    });
+      await addLead({
+        businessName: result.businessName,
+        category: searchParams.category || 'General',
+        city: searchParams.city || 'Unknown',
+        rating: result.rating,
+        reviewCount: result.reviewCount,
+        phone: result.phone,
+        email: undefined,
+        instagram: undefined,
+        website: result.website,
+        outdatedWebsite: result.outdatedWebsite,
+        leadScore: score,
+        priority,
+        status: 'New',
+        demoStatus: 'Not Started',
+        notes: `Found via Lead Finder. Address: ${result.address}`,
+        demoLink: undefined,
+        dealValue: undefined,
+        outreachHistory: [],
+      });
 
-    setSavedIds((prev) => new Set(prev).add(`${index}`));
+      setSavedIds((prev) => new Set(prev).add(`${index}`));
+
+      showToast({
+        type: 'success',
+        title: 'Lead saved',
+        message: `${result.businessName} was added to your lead database.`,
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        type: 'error',
+        title: 'Save failed',
+        message: 'Could not save this lead.',
+      });
+    }
   };
 
   const inputClasses =
@@ -108,7 +137,6 @@ const LeadFinder = () => {
         </p>
       </header>
 
-      {/* Search Form */}
       <section className="neo-card p-6 md:p-8">
         <form
           onSubmit={handleSearch}
@@ -119,10 +147,7 @@ const LeadFinder = () => {
               Category
             </label>
             <div className="relative">
-              <Search
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-                size={18}
-              />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
               <input
                 type="text"
                 placeholder="e.g. Dentist, Plumber"
@@ -141,10 +166,7 @@ const LeadFinder = () => {
               City
             </label>
             <div className="relative">
-              <MapPin
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-                size={18}
-              />
+              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
               <input
                 type="text"
                 placeholder="e.g. Austin, TX"
@@ -169,18 +191,10 @@ const LeadFinder = () => {
                 setSearchParams({ ...searchParams, radius: e.target.value })
               }
             >
-              <option className="bg-[#0A0A0A] text-white" value="5">
-                5 km
-              </option>
-              <option className="bg-[#0A0A0A] text-white" value="10">
-                10 km
-              </option>
-              <option className="bg-[#0A0A0A] text-white" value="25">
-                25 km
-              </option>
-              <option className="bg-[#0A0A0A] text-white" value="50">
-                50 km
-              </option>
+              <option className="bg-[#0A0A0A] text-white" value="5">5 km</option>
+              <option className="bg-[#0A0A0A] text-white" value="10">10 km</option>
+              <option className="bg-[#0A0A0A] text-white" value="25">25 km</option>
+              <option className="bg-[#0A0A0A] text-white" value="50">50 km</option>
             </select>
           </div>
 
@@ -194,7 +208,6 @@ const LeadFinder = () => {
         </form>
       </section>
 
-      {/* Results */}
       {results.length > 0 && (
         <section className="neo-card overflow-hidden">
           <div className="px-6 py-5 border-b border-black/8 dark:border-white/8 transition-colors duration-300">
@@ -210,21 +223,11 @@ const LeadFinder = () => {
             <table className="w-full min-w-[1000px] text-left border-collapse">
               <thead>
                 <tr className="bg-black/[0.03] dark:bg-white/[0.02] border-b border-black/8 dark:border-white/8 transition-colors duration-300">
-                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">
-                    Business
-                  </th>
-                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">
-                    Location
-                  </th>
-                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">
-                    Website Status
-                  </th>
-                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">
-                    Quality
-                  </th>
-                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">
-                    Action
-                  </th>
+                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Business</th>
+                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Location</th>
+                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Website Status</th>
+                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Quality</th>
+                  <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">Action</th>
                 </tr>
               </thead>
 
