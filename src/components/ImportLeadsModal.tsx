@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, FileSpreadsheet, Upload } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { X, FileSpreadsheet, Upload, CheckCircle2 } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { Lead } from '../types';
@@ -14,6 +14,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [hasPreviewed, setHasPreviewed] = useState(false);
 
   if (!open) return null;
 
@@ -30,54 +31,62 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
     const dataLines = hasHeader ? lines.slice(1) : lines;
 
-    return dataLines.map((line) => {
-      const [
-        businessName = '',
-        category = '',
-        city = '',
-        phone = '',
-        email = '',
-        instagram = '',
-        website = '',
-        leadScore = '0',
-        priority = 'Medium',
-        status = 'New',
-        notes = '',
-        dealValue = '',
-      ] = line.split(',').map((item) => item.trim());
+    return dataLines
+      .map((line) => {
+        const [
+          businessName = '',
+          category = '',
+          city = '',
+          phone = '',
+          email = '',
+          instagram = '',
+          website = '',
+          leadScore = '0',
+          priority = 'Medium',
+          status = 'New',
+          notes = '',
+          dealValue = '',
+        ] = line.split(',').map((item) => item.trim());
 
-      return {
-        id: crypto.randomUUID(),
-        businessName,
-        category,
-        city,
-        rating: 0,
-        reviewCount: 0,
-        phone: phone || undefined,
-        email: email || undefined,
-        instagram: instagram || undefined,
-        website: website || undefined,
-        outdatedWebsite: false,
-        leadScore: Number(leadScore) || 0,
-        priority: (priority as Lead['priority']) || 'Medium',
-        status: (status as Lead['status']) || 'New',
-        notes,
-        demoLink: undefined,
-        dealValue: dealValue ? Number(dealValue) : undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        timeline: [
-          {
-            id: crypto.randomUUID(),
-            type: 'Lead Imported',
-            description: 'Imported via CSV',
-            date: new Date().toISOString(),
-          },
-        ],
-        outreachHistory: [],
-      };
-    });
+        if (!businessName || !category || !city) {
+          return null;
+        }
+
+        return {
+          id: crypto.randomUUID(),
+          businessName,
+          category,
+          city,
+          rating: 0,
+          reviewCount: 0,
+          phone: phone || undefined,
+          email: email || undefined,
+          instagram: instagram || undefined,
+          website: website || undefined,
+          outdatedWebsite: false,
+          leadScore: Number(leadScore) || 0,
+          priority: (priority as Lead['priority']) || 'Medium',
+          status: (status as Lead['status']) || 'New',
+          notes,
+          demoLink: undefined,
+          dealValue: dealValue ? Number(dealValue) : undefined,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          timeline: [
+            {
+              id: crypto.randomUUID(),
+              type: 'Lead Imported',
+              description: 'Imported via CSV',
+              date: new Date().toISOString(),
+            },
+          ],
+          outreachHistory: [],
+        } as Lead;
+      })
+      .filter(Boolean) as Lead[];
   };
+
+  const previewRows = useMemo(() => parseCSVText(csvText), [csvText]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -87,22 +96,27 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
     const text = await file.text();
     setCsvText(text);
+    setHasPreviewed(false);
+  };
+
+  const handlePreview = () => {
+    setHasPreviewed(true);
   };
 
   const handleImport = async () => {
     try {
       setImporting(true);
 
-      const parsed = parseCSVText(csvText);
-
-      if (parsed.length === 0) {
+      if (previewRows.length === 0) {
         alert('No valid rows found.');
         return;
       }
 
-      await importLeads(parsed);
+      await importLeads(previewRows);
+
       setCsvText('');
       setFileName('');
+      setHasPreviewed(false);
       onClose();
     } catch (error) {
       console.error(error);
@@ -112,9 +126,16 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
     }
   };
 
+  const resetState = () => {
+    setCsvText('');
+    setFileName('');
+    setHasPreviewed(false);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-[999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl neo-card p-6 md:p-8 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-5xl neo-card p-6 md:p-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-3">
@@ -130,7 +151,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
           </div>
 
           <button
-            onClick={onClose}
+            onClick={resetState}
             className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
           >
             <X size={18} />
@@ -185,20 +206,94 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
             </label>
             <textarea
               value={csvText}
-              onChange={(e) => setCsvText(e.target.value)}
+              onChange={(e) => {
+                setCsvText(e.target.value);
+                setHasPreviewed(false);
+              }}
               placeholder="Paste your CSV rows here..."
-              className="w-full min-h-[240px] rounded-2xl neo-in p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
+              className="w-full min-h-[220px] rounded-2xl neo-in p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
             />
           </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleImport} disabled={importing || !csvText.trim()}>
-              {importing ? 'Importing...' : 'Import Leads'}
-            </Button>
+          {/* Preview Controls */}
+          <div className="flex justify-between items-center gap-4 flex-wrap">
+            <div className="text-sm text-[var(--text-secondary)]">
+              {hasPreviewed ? (
+                <span className="inline-flex items-center gap-2 text-green-500">
+                  <CheckCircle2 size={16} />
+                  {previewRows.length} valid row(s) ready for import
+                </span>
+              ) : (
+                <span>Preview your rows before importing</span>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={resetState}>
+                Cancel
+              </Button>
+
+              <Button
+                variant="secondary"
+                onClick={handlePreview}
+                disabled={!csvText.trim()}
+              >
+                Preview
+              </Button>
+
+              <Button
+                onClick={handleImport}
+                disabled={importing || !hasPreviewed || previewRows.length === 0}
+              >
+                {importing ? 'Importing...' : 'Confirm Import'}
+              </Button>
+            </div>
           </div>
+
+          {/* Preview Table */}
+          {hasPreviewed && (
+            <div className="neo-card p-4 overflow-x-auto">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
+                Import Preview
+              </h3>
+
+              {previewRows.length === 0 ? (
+                <p className="text-[var(--text-secondary)] text-sm">
+                  No valid rows detected. Make sure each row contains at least businessName, category, and city.
+                </p>
+              ) : (
+                <table className="w-full min-w-[900px] text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-black/8 dark:border-white/8">
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Business</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Category</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">City</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Email</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Phone</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Priority</th>
+                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.map((row) => (
+                      <tr
+                        key={row.id}
+                        className="border-b border-black/6 dark:border-white/6 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                      >
+                        <td className="p-3 text-[var(--text-primary)] font-medium">{row.businessName}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.category}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.city}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.email || '—'}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.phone || '—'}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.priority}</td>
+                        <td className="p-3 text-[var(--text-secondary)]">{row.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
