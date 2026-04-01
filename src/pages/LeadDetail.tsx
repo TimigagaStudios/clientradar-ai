@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 import {
@@ -14,6 +14,8 @@ import {
   Send,
   MoreVertical,
   Mail,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
@@ -22,13 +24,26 @@ import { cn } from '../utils/cn';
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { leads, updateLeadStatus, addDemoLink } = useLeads();
+  const { leads, updateLeadStatus, addDemoLink, deleteLead } = useLeads();
   const [lead, setLead] = useState(leads.find((l) => l.id === id));
   const [demoUrl, setDemoUrl] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setLead(leads.find((l) => l.id === id));
   }, [leads, id]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   if (!lead) {
     return (
@@ -54,6 +69,28 @@ const LeadDetail = () => {
       addDemoLink(lead.id, demoUrl);
       setDemoUrl('');
     }
+  };
+
+  const handleSendOutreach = () => {
+    navigate('/outreach');
+  };
+
+  const handleMarkInterested = async () => {
+    await updateLeadStatus(lead.id, 'Interested');
+    setMenuOpen(false);
+  };
+
+  const handleMarkRejected = async () => {
+    await updateLeadStatus(lead.id, 'Rejected');
+    setMenuOpen(false);
+  };
+
+  const handleDeleteLead = async () => {
+    const confirmed = window.confirm('Delete this lead permanently?');
+    if (!confirmed) return;
+
+    await deleteLead(lead.id);
+    navigate('/leads');
   };
 
   const statusOptions: LeadStatus[] = [
@@ -92,11 +129,47 @@ const LeadDetail = () => {
         </button>
 
         <div className="flex items-center gap-3">
-          <button className="p-2.5 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]">
-            <MoreVertical size={18} />
-          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((prev) => !prev)}
+              className="p-2.5 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
+            >
+              <MoreVertical size={18} />
+            </button>
 
-          <button className="btn-neumorph-primary px-5 py-3 text-sm font-bold tracking-[0.08em] uppercase gap-2">
+            {menuOpen && (
+              <div className="absolute right-0 mt-3 w-56 neo-card p-2 z-50">
+                <button
+                  onClick={handleMarkInterested}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                >
+                  <CheckCircle2 size={16} />
+                  <span className="font-medium">Mark Interested</span>
+                </button>
+
+                <button
+                  onClick={handleMarkRejected}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                >
+                  <XCircle size={16} />
+                  <span className="font-medium">Mark Rejected</span>
+                </button>
+
+                <button
+                  onClick={handleDeleteLead}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                >
+                  <XCircle size={16} />
+                  <span className="font-medium">Delete Lead</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleSendOutreach}
+            className="btn-neumorph-primary px-5 py-3 text-sm font-bold tracking-[0.08em] uppercase gap-2"
+          >
             <Send size={16} />
             Send Outreach
           </button>
@@ -106,7 +179,6 @@ const LeadDetail = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Profile */}
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
@@ -207,7 +279,6 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* Demo */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Demo Website
@@ -261,7 +332,6 @@ const LeadDetail = () => {
             )}
           </div>
 
-          {/* Notes */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
             <textarea
@@ -276,7 +346,6 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* Outreach History */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Outreach History
@@ -285,10 +354,7 @@ const LeadDetail = () => {
             {lead.outreachHistory && lead.outreachHistory.length > 0 ? (
               <div className="space-y-4">
                 {lead.outreachHistory.map((item) => (
-                  <div
-                    key={item.id}
-                    className="neo-in p-4 rounded-2xl"
-                  >
+                  <div key={item.id} className="neo-in p-4 rounded-2xl">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
                         <Mail size={16} className="text-[var(--accent)]" />
