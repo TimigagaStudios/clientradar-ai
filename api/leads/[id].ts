@@ -32,6 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       if ('status' in updates) payload.status = updates.status;
+      if ('demoStatus' in updates) payload.demo_status = updates.demoStatus;
       if ('demoLink' in updates) payload.demo_link = updates.demoLink;
       if ('dealValue' in updates) payload.deal_value = updates.dealValue;
       if ('notes' in updates) payload.notes = updates.notes;
