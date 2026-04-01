@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
 import {
   Search,
@@ -8,15 +8,21 @@ import {
   MapPin,
   ExternalLink,
   Send,
+  Plus,
   CheckCircle2,
   AlertCircle,
   XCircle,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Lead, LeadPriority, LeadStatus } from '../types';
 import { cn } from '../utils/cn';
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
+  const { updateLeadStatus, deleteLead } = useLeads();
+  const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
   const statusColors: Record<LeadStatus, string> = {
     New: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
     'Demo Created': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
@@ -32,6 +38,48 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     Low: 'text-gray-400',
     Medium: 'text-yellow-500',
     High: 'text-red-500',
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleMarkInterested = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await updateLeadStatus(lead.id, 'Interested');
+    setMenuOpen(false);
+  };
+
+  const handleMarkRejected = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    await updateLeadStatus(lead.id, 'Rejected');
+    setMenuOpen(false);
+  };
+
+  const handleDeleteLead = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const confirmed = window.confirm(`Delete ${lead.businessName}?`);
+    if (!confirmed) return;
+
+    await deleteLead(lead.id);
+    setMenuOpen(false);
+  };
+
+  const handleSendOutreach = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate('/outreach');
   };
 
   return (
@@ -50,12 +98,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
               </p>
             </div>
 
-            <div
-              className={cn(
-                'px-2 py-1 rounded-full text-xs font-medium border',
-                statusColors[lead.status]
-              )}
-            >
+            <div className={cn('px-2 py-1 rounded-full text-xs font-medium border', statusColors[lead.status])}>
               {lead.status}
             </div>
           </div>
@@ -117,12 +160,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
                   Priority
                 </span>
-                <span
-                  className={cn(
-                    'font-medium text-sm flex items-center gap-1',
-                    priorityColors[lead.priority]
-                  )}
-                >
+                <span className={cn('font-medium text-sm flex items-center gap-1', priorityColors[lead.priority])}>
                   {lead.priority}
                 </span>
               </div>
@@ -144,15 +182,47 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         <button
           className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
           title="Send Outreach"
+          onClick={handleSendOutreach}
         >
           <Send size={14} />
         </button>
-        <button
-          className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          title="More Options"
-        >
-          <MoreHorizontal size={14} />
-        </button>
+
+        <div className="relative" ref={menuRef}>
+          <button
+            className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
+            title="More Options"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMenuOpen((prev) => !prev);
+            }}
+          >
+            <MoreHorizontal size={14} />
+          </button>
+
+          {menuOpen && (
+            <div className="absolute right-0 mt-2 w-52 neo-card p-2 z-50">
+              <button
+                onClick={handleMarkInterested}
+                className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+              >
+                Mark Interested
+              </button>
+              <button
+                onClick={handleMarkRejected}
+                className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+              >
+                Mark Rejected
+              </button>
+              <button
+                onClick={handleDeleteLead}
+                className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+              >
+                Delete Lead
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -246,8 +316,13 @@ const Leads = () => {
         ))}
 
         {filteredLeads.length === 0 && (
-          <div className="col-span-full py-20 text-center text-[var(--text-secondary)]">
-            <p className="text-lg">No leads found matching your criteria.</p>
+          <div className="col-span-full neo-card p-10 text-center">
+            <h3 className="text-xl font-bold text-[var(--text-primary)] mb-3">
+              No leads found
+            </h3>
+            <p className="text-[var(--text-secondary)] max-w-xl mx-auto leading-8">
+              No leads match your current search or filter selection.
+            </p>
             <button
               onClick={() => {
                 setActiveFilter('All');
