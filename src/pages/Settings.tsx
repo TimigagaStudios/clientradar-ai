@@ -2,13 +2,14 @@ import { useTheme } from '../context/ThemeContext';
 import { Moon, Sun, Trash2, Shield, LogOut, Monitor } from 'lucide-react';
 import Button from '../components/Button';
 import { useLeads } from '../context/LeadContext';
+import { supabase } from '../lib/supabase';
 
 const Settings = () => {
   const { theme, toggleTheme } = useTheme();
   const { resetData } = useLeads();
 
-  const handleLogout = () => {
-    localStorage.removeItem('isAuthenticated');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     window.location.href = '/login';
   };
 
