@@ -16,9 +16,10 @@ import {
   Mail,
   CheckCircle2,
   XCircle,
+  MonitorPlay,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { LeadStatus, LeadPriority } from '../types';
+import { LeadStatus, LeadPriority, DemoStatus } from '../types';
 import { cn } from '../utils/cn';
 
 type LeadNote = {
@@ -39,7 +40,7 @@ type OutreachLog = {
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { leads, updateLeadStatus, addDemoLink, deleteLead } = useLeads();
+  const { leads, updateLeadStatus, addDemoLink, deleteLead, updateDemoStatus } = useLeads();
   const [lead, setLead] = useState(leads.find((l) => l.id === id));
   const [demoUrl, setDemoUrl] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
@@ -70,9 +71,7 @@ const LeadDetail = () => {
       try {
         const response = await fetch(`/api/lead-notes?leadId=${id}`);
         const result = await response.json();
-        if (response.ok) {
-          setNotes(result.data || []);
-        }
+        if (response.ok) setNotes(result.data || []);
       } catch (error) {
         console.error('Failed to fetch notes', error);
       }
@@ -84,9 +83,7 @@ const LeadDetail = () => {
       try {
         const response = await fetch(`/api/outreach-logs?leadId=${id}`);
         const result = await response.json();
-        if (response.ok) {
-          setOutreachLogs(result.data || []);
-        }
+        if (response.ok) setOutreachLogs(result.data || []);
       } catch (error) {
         console.error('Failed to fetch outreach logs', error);
       }
@@ -112,6 +109,10 @@ const LeadDetail = () => {
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     updateLeadStatus(lead.id, e.target.value as LeadStatus);
+  };
+
+  const handleDemoStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateDemoStatus(lead.id, e.target.value as DemoStatus);
   };
 
   const handleDemoSubmit = (e: React.FormEvent) => {
@@ -176,6 +177,20 @@ const LeadDetail = () => {
     'Deal Closed',
   ];
 
+  const demoStatusOptions: DemoStatus[] = [
+    'Not Started',
+    'In Progress',
+    'Ready',
+    'Sent',
+  ];
+
+  const demoStatusStyles: Record<string, string> = {
+    'Not Started': 'bg-gray-500/10 text-gray-400 border-gray-400/20',
+    'In Progress': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    Ready: 'bg-green-500/10 text-green-500 border-green-500/20',
+    Sent: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  };
+
   const priorityColors: Record<LeadPriority, string> = {
     Low: 'text-gray-400',
     Medium: 'text-yellow-500',
@@ -187,6 +202,8 @@ const LeadDetail = () => {
     'w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none';
   const labelClasses =
     'text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-[0.16em]';
+
+  const currentDemoStatus = lead.demoStatus || 'Not Started';
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -260,7 +277,7 @@ const LeadDetail = () => {
                 </div>
               </div>
 
-              <div className="flex flex-col items-end gap-2">
+              <div className="flex flex-col items-end gap-3">
                 <div className="text-right">
                   <span className="text-xs text-[var(--text-secondary)] uppercase block mb-2">
                     Status
@@ -276,6 +293,13 @@ const LeadDetail = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium border',
+                  demoStatusStyles[currentDemoStatus]
+                )}>
+                  {currentDemoStatus}
                 </div>
               </div>
             </div>
@@ -351,7 +375,77 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* Notes */}
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4 flex items-center gap-2">
+              <MonitorPlay size={18} className="text-[var(--accent)]" />
+              Demo Workflow
+            </h3>
+
+            <div className="space-y-5">
+              <div>
+                <label className={`${labelClasses} mb-3 block`}>Demo Status</label>
+                <select
+                  value={currentDemoStatus}
+                  onChange={handleDemoStatusChange}
+                  className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)] outline-none"
+                >
+                  {demoStatusOptions.map((status) => (
+                    <option key={status} value={status} className="bg-[#0A0A0A] text-white">
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {lead.demoLink ? (
+                <div className="flex items-center justify-between p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="bg-purple-500 text-white p-2 rounded-xl">
+                      <Globe size={20} />
+                    </div>
+                    <div className="overflow-hidden">
+                      <p className="text-sm text-purple-300 font-medium">Demo Available</p>
+                      <a
+                        href={lead.demoLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-400 hover:underline truncate block"
+                      >
+                        {lead.demoLink}
+                      </a>
+                    </div>
+                  </div>
+
+                  <a
+                    href={lead.demoLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 hover:bg-purple-500/20 rounded-xl transition-colors text-purple-400"
+                  >
+                    <ExternalLink size={20} />
+                  </a>
+                </div>
+              ) : (
+                <form onSubmit={handleDemoSubmit} className="flex gap-3">
+                  <input
+                    type="url"
+                    placeholder="Paste demo website link here..."
+                    className={`${inputClasses} flex-1`}
+                    value={demoUrl}
+                    onChange={(e) => setDemoUrl(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!demoUrl}
+                    className="btn-neumorph-primary px-5 py-3 text-sm font-semibold disabled:opacity-50"
+                  >
+                    Save
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
 
@@ -393,7 +487,6 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* Outreach History */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Outreach History
@@ -435,7 +528,6 @@ const LeadDetail = () => {
           </div>
         </div>
 
-        {/* Right Sidebar */}
         <div className="space-y-6">
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
