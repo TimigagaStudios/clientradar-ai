@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -10,16 +10,17 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
+import Demos from './pages/Demos';
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
-  const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = React.useState(true);
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const location = useLocation();
 
-  useEffect(() => {
+  React.useEffect(() => {
     const checkSession = async () => {
       const {
         data: { session },
@@ -137,6 +138,17 @@ const App = () => {
                 <RequireAuth>
                   <Layout>
                     <Deals />
+                  </Layout>
+                </RequireAuth>
+              }
+            />
+
+            <Route
+              path="/demos"
+              element={
+                <RequireAuth>
+                  <Layout>
+                    <Demos />
                   </Layout>
                 </RequireAuth>
               }
