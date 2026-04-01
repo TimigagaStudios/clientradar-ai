@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileSpreadsheet } from 'lucide-react';
+import { X, FileSpreadsheet, Upload } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { Lead } from '../types';
@@ -13,16 +13,24 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
   const { importLeads } = useLeads();
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
+  const [fileName, setFileName] = useState('');
 
   if (!open) return null;
 
-  const parseCSV = (): Lead[] => {
-    const lines = csvText
+  const parseCSVText = (text: string): Lead[] => {
+    const lines = text
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
 
-    return lines.map((line) => {
+    if (lines.length === 0) return [];
+
+    const firstLine = lines[0].toLowerCase();
+    const hasHeader = firstLine.includes('businessname');
+
+    const dataLines = hasHeader ? lines.slice(1) : lines;
+
+    return dataLines.map((line) => {
       const [
         businessName = '',
         category = '',
@@ -62,7 +70,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
           {
             id: crypto.randomUUID(),
             type: 'Lead Imported',
-            description: 'Imported via CSV paste',
+            description: 'Imported via CSV',
             date: new Date().toISOString(),
           },
         ],
@@ -71,11 +79,21 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
     });
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+
+    const text = await file.text();
+    setCsvText(text);
+  };
+
   const handleImport = async () => {
     try {
       setImporting(true);
 
-      const parsed = parseCSV();
+      const parsed = parseCSVText(csvText);
 
       if (parsed.length === 0) {
         alert('No valid rows found.');
@@ -84,6 +102,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
       await importLeads(parsed);
       setCsvText('');
+      setFileName('');
       onClose();
     } catch (error) {
       console.error(error);
@@ -103,11 +122,10 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
               Import Leads
             </h2>
             <p className="text-[var(--text-secondary)] mt-1">
-              Paste CSV rows in this format:
-              <br />
-              <span className="text-xs">
-                businessName, category, city, phone, email, instagram, website, leadScore, priority, status, notes, dealValue
-              </span>
+              Upload a CSV file or paste CSV text using this order:
+            </p>
+            <p className="text-xs text-[var(--text-secondary)] mt-2 break-all">
+              businessName, category, city, phone, email, instagram, website, leadScore, priority, status, notes, dealValue
             </p>
           </div>
 
@@ -119,23 +137,59 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
+          {/* File Upload */}
+          <div className="neo-in rounded-2xl p-5">
+            <label className="flex flex-col items-center justify-center gap-3 cursor-pointer text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
+                <Upload size={22} className="text-[var(--accent)]" />
+              </div>
+              <div>
+                <p className="font-semibold text-[var(--text-primary)]">
+                  Upload CSV file
+                </p>
+                <p className="text-sm text-[var(--text-secondary)] mt-1">
+                  Choose a .csv file from your device
+                </p>
+                {fileName && (
+                  <p className="text-xs text-[var(--accent)] mt-2">
+                    Selected: {fileName}
+                  </p>
+                )}
+              </div>
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {/* Example */}
           <div className="neo-in rounded-2xl p-4">
             <p className="text-sm text-[var(--text-secondary)] leading-7">
-              Example:
+              Example CSV:
             </p>
-            <pre className="text-xs text-[var(--text-primary)] mt-2 whitespace-pre-wrap">
-{`TradeCore Academy,Education,Lagos,+2349069584853,hello@tradecore.com,@tradecore,,85,High,New,Potential website client,500
-Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,https://novahomes.com,60,Medium,Interested,Needs redesign,2000`}
+            <pre className="text-xs text-[var(--text-primary)] mt-2 whitespace-pre-wrap overflow-x-auto">
+{`businessName,category,city,phone,email,instagram,website,leadScore,priority,status,notes,dealValue
+TradeCore Academy,Education,Lagos,+2349069584853,hello@tradecore.com,@tradecore,,85,High,New,Potential website redesign client,500
+Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,https://novahomes.com,60,Medium,Interested,Needs a better modern website,2000`}
             </pre>
           </div>
 
-          <textarea
-            value={csvText}
-            onChange={(e) => setCsvText(e.target.value)}
-            placeholder="Paste your CSV rows here..."
-            className="w-full min-h-[260px] rounded-2xl neo-in p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
-          />
+          {/* Paste CSV */}
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-[var(--text-primary)]">
+              Or paste CSV text
+            </label>
+            <textarea
+              value={csvText}
+              onChange={(e) => setCsvText(e.target.value)}
+              placeholder="Paste your CSV rows here..."
+              className="w-full min-h-[240px] rounded-2xl neo-in p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
+            />
+          </div>
 
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={onClose}>
