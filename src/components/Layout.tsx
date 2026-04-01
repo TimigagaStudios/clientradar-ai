@@ -24,6 +24,8 @@ import AddLeadModal from './AddLeadModal';
 import ImportLeadsModal from './ImportLeadsModal';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
+import { useLeads } from '../context/LeadContext';
+import { exportLeadsToCSV } from '../utils/exportLeads';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -35,6 +37,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
+  const { leads } = useLeads();
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -48,7 +51,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const quickActions = [
     { icon: PlusCircle, label: 'Add Lead' },
-    { icon: FileDown, label: 'Import' },
+    { icon: FileDown, label: 'Export' },
     { icon: Mail, label: 'Outreach' },
     { icon: Globe, label: 'Demo' },
   ];
@@ -73,8 +76,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
-    if (label === 'Import') {
-      setIsImportOpen(true);
+    if (label === 'Export') {
+      exportLeadsToCSV(leads);
       return;
     }
 
