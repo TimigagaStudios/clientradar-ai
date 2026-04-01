@@ -51,7 +51,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const quickActions = [
     { icon: PlusCircle, label: 'Add Lead' },
-    { icon: FileDown, label: 'Import' },
+    { icon: FileDown, label: 'Export' },
     { icon: Mail, label: 'Outreach' },
     { icon: Globe, label: 'Demo' },
   ];
@@ -81,20 +81,22 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       return;
     }
 
+    if (label === 'Export') {
+      exportLeadsToCSV(leads);
+      return;
+    }
+
     if (label === 'Outreach') {
       navigate('/outreach');
       return;
     }
 
     if (label === 'Demo') {
-      navigate('/finder');
+      navigate('/demos');
       return;
     }
 
-    if (label === 'Export') {
-      exportLeadsToCSV(leads);
-      return;
-    }
+    alert(`${label} feature coming next.`);
   };
 
   const handleLogout = async () => {
@@ -124,6 +126,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         />
       )}
 
+      {/* Sidebar */}
       <aside
         className={cn(
           'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-0 transition-transform duration-300 lg:translate-x-0 bg-[var(--card-bg)]/92 backdrop-blur-2xl',
@@ -183,6 +186,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
+      {/* Main */}
       <main className="lg:ml-72 min-h-screen">
         <header className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-4 bg-[var(--bg)]/80 backdrop-blur-2xl surface-divider">
           <div className="flex items-center justify-between gap-4">
@@ -220,6 +224,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 </Button>
               ))}
 
+              {/* Admin menu */}
               <div className="relative" ref={adminMenuRef}>
                 <button
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
