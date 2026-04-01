@@ -3,7 +3,6 @@ import {
   Users,
   Globe,
   MonitorOff,
-  Layout,
   Mail,
   DollarSign,
   TrendingUp,
@@ -11,6 +10,9 @@ import {
   ArrowDownRight,
   MonitorPlay,
   ExternalLink,
+  CheckCircle2,
+  Clock3,
+  Send,
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -19,7 +21,9 @@ const Dashboard = () => {
   const totalLeads = leads.length;
   const noWebsite = leads.filter((l) => !l.website).length;
   const outdatedWebsite = leads.filter((l) => l.outdatedWebsite).length;
-  const demosCreated = leads.filter((l) => l.status === 'Demo Created' || l.demoLink).length;
+  const demosTracked = leads.filter((l) => l.demoLink || l.demoStatus).length;
+  const readyDemos = leads.filter((l) => l.demoStatus === 'Ready').length;
+  const sentDemos = leads.filter((l) => l.demoStatus === 'Sent').length;
   const emailsSent = leads.filter(
     (l) => l.status === 'Email Sent' || l.status === 'Pending Reply'
   ).length;
@@ -30,22 +34,14 @@ const Dashboard = () => {
     { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true },
     { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true },
     { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false },
-    { label: 'Demos Ready', value: demosCreated, icon: MonitorPlay, trend: '+8%', up: true },
+    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true },
     { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true },
     { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true },
   ];
 
-  const chartData = [
-    { name: 'Mon', leads: 4, deals: 1 },
-    { name: 'Tue', leads: 7, deals: 2 },
-    { name: 'Wed', leads: 5, deals: 1 },
-    { name: 'Thu', leads: 9, deals: 3 },
-    { name: 'Fri', leads: 12, deals: 4 },
-    { name: 'Sat', leads: 6, deals: 2 },
-    { name: 'Sun', leads: 8, deals: 3 },
-  ];
-
-  const demoLeads = leads.filter((lead) => lead.demoLink).slice(0, 4);
+  const demoLeads = leads
+    .filter((lead) => lead.demoLink || lead.demoStatus)
+    .slice(0, 4);
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -56,6 +52,7 @@ const Dashboard = () => {
             Internal real-time analytics for Lead Engine
           </p>
         </div>
+
         <div className="flex items-center gap-3 p-3 neo-in rounded-2xl">
           <TrendingUp className="text-[var(--accent)]" size={20} />
           <span className="font-bold text-lg">
@@ -95,7 +92,59 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Demo section */}
+      {/* Demo Summary */}
+      <section className="neo-card p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-xl font-bold text-[var(--text-primary)]">
+              Demo Status Overview
+            </h3>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              Track where demo-related opportunities currently stand.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="neo-in p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <MonitorPlay size={18} className="text-[var(--accent)]" />
+              <span className="text-sm font-semibold text-[var(--text-primary)]">
+                Demos Tracked
+              </span>
+            </div>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {demosTracked}
+            </p>
+          </div>
+
+          <div className="neo-in p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <CheckCircle2 size={18} className="text-green-500" />
+              <span className="text-sm font-semibold text-[var(--text-primary)]">
+                Ready Demos
+              </span>
+            </div>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {readyDemos}
+            </p>
+          </div>
+
+          <div className="neo-in p-5 rounded-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <Send size={18} className="text-blue-500" />
+              <span className="text-sm font-semibold text-[var(--text-primary)]">
+                Sent Demos
+              </span>
+            </div>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {sentDemos}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Recent Demo Assets */}
       <section className="neo-card p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -126,7 +175,23 @@ const Dashboard = () => {
                   <MonitorPlay size={18} className="text-[var(--accent)]" />
                 </div>
 
-                {lead.demoLink && (
+                <div className="mb-3">
+                  <span
+                    className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${
+                      lead.demoStatus === 'Ready'
+                        ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                        : lead.demoStatus === 'Sent'
+                        ? 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                        : lead.demoStatus === 'In Progress'
+                        ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                        : 'bg-gray-500/10 text-gray-400 border-gray-400/20'
+                    }`}
+                  >
+                    {lead.demoStatus || 'Not Started'}
+                  </span>
+                </div>
+
+                {lead.demoLink ? (
                   <a
                     href={lead.demoLink}
                     target="_blank"
@@ -136,6 +201,10 @@ const Dashboard = () => {
                     Open demo
                     <ExternalLink size={14} />
                   </a>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    No demo link saved yet
+                  </p>
                 )}
               </div>
             ))}
