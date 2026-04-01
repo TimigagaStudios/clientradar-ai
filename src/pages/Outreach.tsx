@@ -12,7 +12,7 @@ import {
 import { cn } from '../utils/cn';
 
 const Outreach = () => {
-  const { leads, updateLeadStatus, addOutreachLog } = useLeads();
+  const { leads, updateLeadStatus, addOutreachLog, updateDemoStatus } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [template, setTemplate] = useState('intro');
   const [isSending, setIsSending] = useState(false);
@@ -71,8 +71,8 @@ Best,
 
     const preview = getPreview();
 
-    setTimeout(() => {
-      addOutreachLog(selectedLeadId, {
+    setTimeout(async () => {
+      await addOutreachLog(selectedLeadId, {
         type: template as 'intro' | 'followup',
         subject: preview.subject,
         body: preview.body,
@@ -80,7 +80,16 @@ Best,
         channel: 'email',
       });
 
-      updateLeadStatus(selectedLeadId, 'Email Sent');
+      await updateLeadStatus(selectedLeadId, 'Email Sent');
+
+      if (
+        selectedLead.demoLink ||
+        selectedLead.demoStatus === 'Ready' ||
+        selectedLead.status === 'Demo Created'
+      ) {
+        await updateDemoStatus(selectedLeadId, 'Sent');
+      }
+
       setIsSending(false);
       setSelectedLeadId(null);
     }, 1500);
@@ -88,7 +97,10 @@ Best,
 
   const filteredLeads = leads.filter(
     (l) =>
-      (l.status === 'New' || l.status === 'Demo Created') &&
+      (l.status === 'New' ||
+        l.status === 'Demo Created' ||
+        l.status === 'Interested' ||
+        l.status === 'Pending Reply') &&
       l.businessName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
