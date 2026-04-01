@@ -10,6 +10,8 @@ export type LeadStatus =
 
 export type LeadPriority = 'Low' | 'Medium' | 'High';
 
+export type DemoStatus = 'Not Started' | 'In Progress' | 'Ready' | 'Sent';
+
 export type ActivityLog = {
   id: string;
   type: string;
@@ -41,6 +43,7 @@ export type Lead = {
   leadScore: number;
   priority: LeadPriority;
   status: LeadStatus;
+  demoStatus?: DemoStatus;
   notes?: string;
   demoLink?: string;
   dealValue?: number;
