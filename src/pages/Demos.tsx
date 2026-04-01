@@ -5,8 +5,10 @@ import {
   ExternalLink,
   Search,
   CheckCircle2,
-  Clock,
   Eye,
+  MonitorPlay,
+  Clock3,
+  Send,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
@@ -14,20 +16,33 @@ import { cn } from '../utils/cn';
 const Demos = () => {
   const { leads } = useLeads();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const demoLeads = useMemo(() => {
-    return leads.filter((lead) => lead.demoLink || lead.status === 'Demo Created');
+    return leads.filter((lead) => lead.demoLink || lead.demoStatus);
   }, [leads]);
 
   const filteredDemos = useMemo(() => {
     return demoLeads.filter((lead) => {
-      return (
+      const matchesSearch =
         lead.businessName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         lead.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.category.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+        lead.category.toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStatus =
+        statusFilter === 'All' ||
+        (lead.demoStatus || 'Not Started') === statusFilter;
+
+      return matchesSearch && matchesStatus;
     });
-  }, [demoLeads, searchTerm]);
+  }, [demoLeads, searchTerm, statusFilter]);
+
+  const statusStyles: Record<string, string> = {
+    'Not Started': 'bg-gray-500/10 text-gray-400 border-gray-400/20',
+    'In Progress': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    Ready: 'bg-green-500/10 text-green-500 border-green-500/20',
+    Sent: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -37,15 +52,15 @@ const Demos = () => {
             Demo Tracking
           </h1>
           <p className="text-[var(--text-secondary)] font-medium">
-            Monitor demos created for leads and track which opportunities are presentation-ready.
+            Track demo progress, readiness, and sent status across active opportunities.
           </p>
         </div>
 
         <div className="neo-card px-5 py-4 inline-flex items-center gap-3">
-          <Globe className="text-[var(--accent)]" size={20} />
+          <MonitorPlay className="text-[var(--accent)]" size={20} />
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold">
-              Total Demos
+              Demo Leads
             </p>
             <p className="text-xl font-black text-[var(--text-primary)]">
               {demoLeads.length}
@@ -54,115 +69,136 @@ const Demos = () => {
         </div>
       </header>
 
-      {/* Search */}
-      <section className="neo-card p-6">
-        <div className="relative max-w-md">
-          <Search
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-            size={18}
-          />
-          <input
-            type="text"
-            placeholder="Search demos..."
-            className="w-full pl-11 pr-4 py-3 rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* Controls */}
+      <section className="neo-card p-6 space-y-4">
+        <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-md">
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
+              size={18}
+            />
+            <input
+              type="text"
+              placeholder="Search demos..."
+              className="w-full pl-11 pr-4 py-3 rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+            {['All', 'Not Started', 'In Progress', 'Ready', 'Sent'].map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={cn(
+                  'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
+                  statusFilter === status
+                    ? 'bg-[var(--accent)] text-white shadow-[0_10px_24px_rgba(255,122,0,0.22)]'
+                    : 'neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                )}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Demo Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredDemos.map((lead) => (
-          <div key={lead.id} className="neo-card p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h2 className="text-xl font-bold text-[var(--text-primary)]">
-                  {lead.businessName}
-                </h2>
-                <p className="text-sm text-[var(--text-secondary)] mt-1">
-                  {lead.city} • {lead.category}
-                </p>
-              </div>
+        {filteredDemos.map((lead) => {
+          const demoStatus = lead.demoStatus || 'Not Started';
 
-              <div
-                className={cn(
-                  'px-3 py-1 rounded-full text-xs font-medium border',
-                  lead.status === 'Demo Created'
-                    ? 'bg-purple-500/10 text-purple-500 border-purple-500/20'
-                    : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                )}
-              >
-                {lead.status}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="neo-in p-4 rounded-2xl">
-                <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
-                  Demo Link
-                </p>
-
-                {lead.demoLink ? (
-                  <a
-                    href={lead.demoLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--accent)] hover:underline break-all text-sm"
-                  >
-                    {lead.demoLink}
-                  </a>
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    No demo link saved yet
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="neo-in p-4 rounded-2xl">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
-                    Lead Score
-                  </p>
-                  <p className="text-lg font-black text-[var(--text-primary)]">
-                    {lead.leadScore}
+          return (
+            <div key={lead.id} className="neo-card p-6">
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-[var(--text-primary)]">
+                    {lead.businessName}
+                  </h2>
+                  <p className="text-sm text-[var(--text-secondary)] mt-1">
+                    {lead.city} • {lead.category}
                   </p>
                 </div>
 
-                <div className="neo-in p-4 rounded-2xl">
-                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
-                    Deal Value
-                  </p>
-                  <p className="text-lg font-black text-[var(--text-primary)]">
-                    ${lead.dealValue?.toLocaleString() || '0'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 pt-2">
-                <Link
-                  to={`/leads/${lead.id}`}
-                  className="btn-neumorph px-4 py-2 text-sm gap-2"
+                <div
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-medium border',
+                    statusStyles[demoStatus] || 'bg-gray-500/10 text-gray-400 border-gray-400/20'
+                  )}
                 >
-                  <Eye size={14} />
-                  View Lead
-                </Link>
+                  {demoStatus}
+                </div>
+              </div>
 
-                {lead.demoLink && (
-                  <a
-                    href={lead.demoLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn-neumorph-primary px-4 py-2 text-sm gap-2"
+              <div className="space-y-4">
+                <div className="neo-in p-4 rounded-2xl">
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
+                    Demo Link
+                  </p>
+
+                  {lead.demoLink ? (
+                    <a
+                      href={lead.demoLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--accent)] hover:underline break-all text-sm"
+                    >
+                      {lead.demoLink}
+                    </a>
+                  ) : (
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      No demo link saved yet
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="neo-in p-4 rounded-2xl">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
+                      Lead Score
+                    </p>
+                    <p className="text-lg font-black text-[var(--text-primary)]">
+                      {lead.leadScore}
+                    </p>
+                  </div>
+
+                  <div className="neo-in p-4 rounded-2xl">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
+                      Deal Value
+                    </p>
+                    <p className="text-lg font-black text-[var(--text-primary)]">
+                      ${lead.dealValue?.toLocaleString() || '0'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Link
+                    to={`/leads/${lead.id}`}
+                    className="btn-neumorph px-4 py-2 text-sm gap-2"
                   >
-                    <ExternalLink size={14} />
-                    Open Demo
-                  </a>
-                )}
+                    <Eye size={14} />
+                    View Lead
+                  </Link>
+
+                  {lead.demoLink && (
+                    <a
+                      href={lead.demoLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-neumorph-primary px-4 py-2 text-sm gap-2"
+                    >
+                      <ExternalLink size={14} />
+                      Open Demo
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {filteredDemos.length === 0 && (
           <div className="col-span-full neo-card p-10 text-center">
@@ -174,7 +210,7 @@ const Demos = () => {
               No demos tracked yet
             </h3>
             <p className="text-[var(--text-secondary)] max-w-xl mx-auto leading-8">
-              Demo-ready leads and saved demo links will appear here as your outreach workflow expands.
+              Demo-ready leads and saved demo links will appear here as your workflow grows.
             </p>
           </div>
         )}
