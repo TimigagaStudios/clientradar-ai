@@ -38,40 +38,47 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center p-6 transition-colors duration-500 overflow-hidden relative">
+    <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center px-4 py-8 md:px-6 transition-colors duration-500 overflow-hidden relative">
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
 
       <div className="w-full max-w-md animate-in fade-in zoom-in duration-700">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center w-18 h-18 sm:w-20 sm:h-20 bg-[var(--accent)] rounded-[30%] shadow-[0_14px_30px_rgba(255,122,0,0.28)] mb-6">
-            <Zap className="text-white" size={36} />
+        {/* Logo / Title */}
+        <div className="text-center mb-8 md:mb-10">
+          <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-[var(--accent)] rounded-[28%] shadow-[0_14px_30px_rgba(255,122,0,0.28)] mb-5 md:mb-6">
+            <Zap className="text-white" size={34} />
           </div>
-          <h1 className="text-4xl font-black tracking-tight mb-2">ClientRadar</h1>
-          <p className="text-[var(--text-secondary)] font-bold tracking-widest uppercase text-xs">
+
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2 text-[var(--text-primary)]">
+            ClientRadar
+          </h1>
+
+          <p className="text-[var(--text-secondary)] font-bold tracking-[0.22em] uppercase text-[10px] md:text-xs">
             Internal Lead Engine Access
           </p>
         </div>
 
+        {/* Form Card */}
         <form
           onSubmit={handleLogin}
-          className="neo-card p-8 md:p-10 space-y-7 relative overflow-hidden"
+          className="neo-card px-6 py-7 md:px-8 md:py-9 space-y-6 md:space-y-7 relative overflow-hidden"
         >
-          <div className="space-y-5">
+          <div className="space-y-4 md:space-y-5">
             <div className="space-y-2">
-              <label className="text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
+              <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Work Email
               </label>
+
               <div className="relative group">
                 <Mail
-                  className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
-                  size={19}
+                  className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
+                  size={18}
                 />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-4 pl-14 pr-4 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
+                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-3.5 md:py-4 pl-12 md:pl-14 pr-4 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
                   placeholder="name@company.com"
                   required
                 />
@@ -79,28 +86,29 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
+              <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Password
               </label>
+
               <div className="relative group">
                 <Lock
-                  className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
-                  size={19}
+                  className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
+                  size={18}
                 />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-4 pl-14 pr-14 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
+                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-3.5 md:py-4 pl-12 md:pl-14 pr-12 md:pr-14 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
                   placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                  className="absolute right-4 md:right-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
                 >
-                  {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
@@ -112,18 +120,18 @@ const Login = () => {
             </div>
           )}
 
-          <div className="pt-2">
+          <div className="pt-1 flex justify-center">
             <Button
               type="submit"
-              size="md"
-              className="mx-auto min-w-[240px] px-8 py-4 text-sm md:text-base font-black tracking-[0.12em] uppercase gap-3 shadow-[0_18px_30px_rgba(255,122,0,0.24)]"
+              size="sm"
+              className="min-w-[200px] md:min-w-[220px] px-5 md:px-6 py-3 text-[11px] md:text-sm font-black tracking-[0.1em] uppercase gap-2 shadow-[0_16px_26px_rgba(255,122,0,0.22)]"
               disabled={isLoading}
             >
               {isLoading ? (
-                <div className="w-5 h-5 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                <div className="w-4 h-4 md:w-5 md:h-5 border-4 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  <ShieldCheck size={20} />
+                  <ShieldCheck size={18} />
                   Enter Command Center
                 </>
               )}
@@ -131,13 +139,13 @@ const Login = () => {
           </div>
 
           <div className="text-center pt-1">
-            <p className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-widest opacity-50">
+            <p className="text-[10px] md:text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] opacity-50">
               Secured internal access
             </p>
           </div>
         </form>
 
-        <p className="text-center mt-8 text-sm font-medium text-[var(--text-secondary)]">
+        <p className="text-center mt-6 md:mt-8 text-sm font-medium text-[var(--text-secondary)]">
           Need access?{' '}
           <span className="text-[var(--accent)] font-bold">
             Contact the system administrator
