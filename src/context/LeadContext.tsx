@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Lead, ActivityLog, LeadStatus, OutreachLog } from '../types';
+import { Lead, ActivityLog, LeadStatus, OutreachLog, DemoStatus } from '../types';
 
 interface LeadContextType {
   leads: Lead[];
@@ -8,6 +8,7 @@ interface LeadContextType {
   updateLeadStatus: (id: string, status: LeadStatus) => Promise<void>;
   addDemoLink: (id: string, link: string) => Promise<void>;
   addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => Promise<void>;
+  updateDemoStatus: (id: string, demoStatus: DemoStatus) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   importLeads: (leads: Lead[]) => Promise<void>;
   getLeadsByStatus: (status: LeadStatus) => Lead[];
@@ -33,6 +34,7 @@ function mapSupabaseLead(row: any): Lead {
     leadScore: row.lead_score || 0,
     priority: row.priority,
     status: row.status,
+    demoStatus: row.demo_status || 'Not Started',
     notes: row.notes || '',
     demoLink: row.demo_link || undefined,
     dealValue: row.deal_value || undefined,
@@ -75,6 +77,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => {
     const payload = {
       ...leadData,
+      demoStatus: leadData.demoStatus || 'Not Started',
       timeline: [
         {
           id: crypto.randomUUID(),
@@ -160,6 +163,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       },
       body: JSON.stringify({
         demoLink: link,
+        demoStatus: 'Ready',
         status: updatedStatus,
         timeline: [newTimelineEvent, ...(lead.timeline || [])],
       }),
@@ -169,6 +173,26 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (!response.ok) {
       throw new Error(result?.error || 'Failed to add demo link');
+    }
+
+    await refreshLeads();
+  };
+
+  const updateDemoStatus = async (id: string, demoStatus: DemoStatus) => {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        demoStatus,
+      }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to update demo status');
     }
 
     await refreshLeads();
@@ -245,6 +269,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           leadScore: lead.leadScore,
           priority: lead.priority,
           status: lead.status,
+          demoStatus: lead.demoStatus || 'Not Started',
           notes: lead.notes,
           demoLink: lead.demoLink,
           dealValue: lead.dealValue,
@@ -280,6 +305,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateLeadStatus,
         addDemoLink,
         addOutreachLog,
+        updateDemoStatus,
         deleteLead,
         importLeads,
         getLeadsByStatus,
