@@ -3,24 +3,38 @@ import { useNavigate } from 'react-router-dom';
 import { Zap, Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
 import { useTheme } from '../context/ThemeContext';
+import { supabase } from '../lib/supabase';
 
 const Login = () => {
-  const [email, setEmail] = useState('admin@timigaga.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
   const { theme } = useTheme();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
 
-    setTimeout(() => {
-      localStorage.setItem('isAuthenticated', 'true');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      setError(error.message);
       setIsLoading(false);
+      return;
+    }
+
+    if (data.session) {
       navigate('/');
-    }, 1200);
+    }
+
+    setIsLoading(false);
   };
 
   return (
@@ -92,30 +106,17 @@ const Login = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-1">
-            <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="w-6 h-6 neo-in rounded-lg flex items-center justify-center">
-                <input type="checkbox" className="hidden peer" defaultChecked />
-                <div className="w-3 h-3 bg-[var(--accent)] rounded-sm opacity-0 peer-checked:opacity-100 transition-opacity" />
-              </div>
-              <span className="text-sm font-semibold text-[var(--text-secondary)]">
-                Remember me
-              </span>
-            </label>
-
-            <a
-              href="#"
-              className="text-sm font-semibold text-[var(--accent)] hover:underline"
-            >
-              Forgot password?
-            </a>
-          </div>
+          {error && (
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+              {error}
+            </div>
+          )}
 
           <div className="pt-2">
             <Button
               type="submit"
               size="md"
-              className="mx-auto min-w-[250px] px-8 py-4 text-sm md:text-base font-black tracking-[0.12em] uppercase gap-3 shadow-[0_18px_30px_rgba(255,122,0,0.24)]"
+              className="mx-auto min-w-[240px] px-8 py-4 text-sm md:text-base font-black tracking-[0.12em] uppercase gap-3 shadow-[0_18px_30px_rgba(255,122,0,0.24)]"
               disabled={isLoading}
             >
               {isLoading ? (
@@ -137,10 +138,10 @@ const Login = () => {
         </form>
 
         <p className="text-center mt-8 text-sm font-medium text-[var(--text-secondary)]">
-          Don&apos;t have an internal account?{' '}
-          <a href="#" className="text-[var(--accent)] font-bold hover:underline">
-            Contact System Admin
-          </a>
+          Need access?{' '}
+          <span className="text-[var(--accent)] font-bold">
+            Contact the system administrator
+          </span>
         </p>
       </div>
     </div>
