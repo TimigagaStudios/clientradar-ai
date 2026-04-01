@@ -14,6 +14,7 @@ import Demos from './pages/Demos';
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
+import { ToastProvider } from './components/ui/ToastProvider';
 
 const RequireAuth = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = React.useState(true);
@@ -61,114 +62,116 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 const App = () => {
   return (
     <ThemeProvider>
-      <LeadProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<Login />} />
+      <ToastProvider>
+        <LeadProvider>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
 
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Dashboard />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Dashboard />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/finder"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <LeadFinder />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/finder"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <LeadFinder />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/leads"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Leads />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/leads"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Leads />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/leads/:id"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <LeadDetail />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/leads/:id"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <LeadDetail />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/outreach"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Outreach />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/outreach"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Outreach />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/analytics"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Analytics />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/analytics"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Analytics />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/deals"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Deals />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/deals"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Deals />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/demos"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Demos />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/demos"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Demos />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="/settings"
-              element={
-                <RequireAuth>
-                  <Layout>
-                    <Settings />
-                  </Layout>
-                </RequireAuth>
-              }
-            />
+              <Route
+                path="/settings"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <Settings />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
 
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Router>
-      </LeadProvider>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Router>
+        </LeadProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 };
