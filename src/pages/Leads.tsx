@@ -13,7 +13,7 @@ import {
   AlertCircle,
   XCircle,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Lead, LeadPriority, LeadStatus } from '../types';
 import { cn } from '../utils/cn';
 
@@ -86,7 +86,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     <div className="group break-inside-avoid mb-6 relative">
       <Link to={`/leads/${lead.id}`} className="block">
         <div className="neo-card p-5 hover:-translate-y-1 transition-all duration-300">
-          {/* Header */}
           <div className="flex justify-between items-start mb-4">
             <div>
               <h3 className="font-bold text-lg text-[var(--text-primary)] leading-tight">
@@ -103,7 +102,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
             </div>
           </div>
 
-          {/* Stats / Info */}
           <div className="space-y-3 mb-4">
             <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
               <div className="flex items-center text-yellow-500">
@@ -177,7 +175,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
       </Link>
 
-      {/* Hover Actions */}
       <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex gap-2">
         <button
           className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
@@ -230,8 +227,15 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
 
 const Leads = () => {
   const { leads } = useLeads();
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get('q') || '';
+
+  const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [activeFilter, setActiveFilter] = useState<string>('All');
+
+  useEffect(() => {
+    setSearchTerm(searchParams.get('q') || '');
+  }, [searchParams]);
 
   const filters = [
     'All',
@@ -273,7 +277,6 @@ const Leads = () => {
 
   return (
     <div className="h-full flex flex-col space-y-6">
-      {/* Search + Filters */}
       <div className="sticky top-0 z-20 bg-[var(--bg)]/90 backdrop-blur-xl pb-4 pt-1 space-y-4">
         <div className="relative">
           <Search
@@ -307,7 +310,6 @@ const Leads = () => {
         </div>
       </div>
 
-      {/* Lead Grid */}
       <div className="masonry-grid flex-1 pb-10">
         {filteredLeads.map((lead) => (
           <div key={lead.id} className="masonry-item">
