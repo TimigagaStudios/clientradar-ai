@@ -21,6 +21,21 @@ import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
 import { cn } from '../utils/cn';
 
+type LeadNote = {
+  id: string;
+  content: string;
+  created_at: string;
+};
+
+type OutreachLog = {
+  id: string;
+  type: string;
+  subject: string;
+  body: string;
+  sent_at: string;
+  channel: string;
+};
+
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -28,6 +43,9 @@ const LeadDetail = () => {
   const [lead, setLead] = useState(leads.find((l) => l.id === id));
   const [demoUrl, setDemoUrl] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [noteInput, setNoteInput] = useState('');
+  const [notes, setNotes] = useState<LeadNote[]>([]);
+  const [outreachLogs, setOutreachLogs] = useState<OutreachLog[]>([]);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -44,6 +62,39 @@ const LeadDetail = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const fetchNotes = async () => {
+      if (!id) return;
+
+      try {
+        const response = await fetch(`/api/lead-notes?leadId=${id}`);
+        const result = await response.json();
+        if (response.ok) {
+          setNotes(result.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch notes', error);
+      }
+    };
+
+    const fetchOutreachLogs = async () => {
+      if (!id) return;
+
+      try {
+        const response = await fetch(`/api/outreach-logs?leadId=${id}`);
+        const result = await response.json();
+        if (response.ok) {
+          setOutreachLogs(result.data || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch outreach logs', error);
+      }
+    };
+
+    fetchNotes();
+    fetchOutreachLogs();
+  }, [id]);
 
   if (!lead) {
     return (
@@ -68,6 +119,27 @@ const LeadDetail = () => {
     if (demoUrl) {
       addDemoLink(lead.id, demoUrl);
       setDemoUrl('');
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!noteInput.trim() || !id) return;
+
+    try {
+      const response = await fetch('/api/lead-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: id, content: noteInput }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        setNotes((prev) => [result.data, ...prev]);
+        setNoteInput('');
+      }
+    } catch (error) {
+      console.error('Failed to save note', error);
     }
   };
 
@@ -118,7 +190,6 @@ const LeadDetail = () => {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <button
           onClick={() => navigate('/leads')}
@@ -141,26 +212,21 @@ const LeadDetail = () => {
               <div className="absolute right-0 mt-3 w-56 neo-card p-2 z-50">
                 <button
                   onClick={handleMarkInterested}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                  className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
                 >
-                  <CheckCircle2 size={16} />
-                  <span className="font-medium">Mark Interested</span>
+                  Mark Interested
                 </button>
-
                 <button
                   onClick={handleMarkRejected}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                  className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
                 >
-                  <XCircle size={16} />
-                  <span className="font-medium">Mark Rejected</span>
+                  Mark Rejected
                 </button>
-
                 <button
                   onClick={handleDeleteLead}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                  className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
                 >
-                  <XCircle size={16} />
-                  <span className="font-medium">Delete Lead</span>
+                  Delete Lead
                 </button>
               </div>
             )}
@@ -177,7 +243,6 @@ const LeadDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Info */}
         <div className="lg:col-span-2 space-y-6">
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -223,6 +288,13 @@ const LeadDetail = () => {
                     <Phone size={18} className="text-[var(--text-secondary)]" />
                     {lead.phone}
                   </div>
+
+                  {lead.email && (
+                    <div className="flex items-center gap-3 text-[var(--text-primary)]">
+                      <Mail size={18} className="text-[var(--text-secondary)]" />
+                      {lead.email}
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-3 text-[var(--text-primary)]">
                     <Globe size={18} className="text-[var(--text-secondary)]" />
@@ -279,81 +351,57 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          <div className={cardClasses}>
-            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
-              Demo Website
-            </h3>
-
-            {lead.demoLink ? (
-              <div className="flex items-center justify-between p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="bg-purple-500 text-white p-2 rounded-xl">
-                    <Globe size={20} />
-                  </div>
-                  <div className="overflow-hidden">
-                    <p className="text-sm text-purple-300 font-medium">Demo Available</p>
-                    <a
-                      href={lead.demoLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-purple-400 hover:underline truncate block"
-                    >
-                      {lead.demoLink}
-                    </a>
-                  </div>
-                </div>
-
-                <a
-                  href={lead.demoLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-2 hover:bg-purple-500/20 rounded-xl transition-colors text-purple-400"
-                >
-                  <ExternalLink size={20} />
-                </a>
-              </div>
-            ) : (
-              <form onSubmit={handleDemoSubmit} className="flex gap-3">
-                <input
-                  type="url"
-                  placeholder="Paste demo website link here..."
-                  className={`${inputClasses} flex-1`}
-                  value={demoUrl}
-                  onChange={(e) => setDemoUrl(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  disabled={!demoUrl}
-                  className="btn-neumorph-primary px-5 py-3 text-sm font-semibold disabled:opacity-50"
-                >
-                  Save
-                </button>
-              </form>
-            )}
-          </div>
-
+          {/* Notes */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
-            <textarea
-              className="w-full h-32 neo-in rounded-2xl p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
-              placeholder="Add notes about this lead..."
-              defaultValue={lead.notes}
-            />
-            <div className="flex justify-end mt-3">
-              <button className="inline-flex items-center gap-2 px-4 py-2 neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-xl text-sm font-medium transition-colors">
-                <Save size={16} /> Save Notes
-              </button>
+
+            <div className="space-y-4">
+              <textarea
+                className="w-full h-28 neo-in rounded-2xl p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
+                placeholder="Add notes about this lead..."
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+              />
+
+              <div className="flex justify-end">
+                <button
+                  onClick={handleAddNote}
+                  className="inline-flex items-center gap-2 px-4 py-2 neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-xl text-sm font-medium transition-colors"
+                >
+                  <Save size={16} /> Save Note
+                </button>
+              </div>
+
+              {notes.length > 0 ? (
+                <div className="space-y-3">
+                  {notes.map((note) => (
+                    <div key={note.id} className="neo-in p-4 rounded-2xl">
+                      <p className="text-sm text-[var(--text-primary)] leading-7">
+                        {note.content}
+                      </p>
+                      <p className="text-xs text-[var(--text-secondary)] mt-3">
+                        {format(new Date(note.created_at), 'MMM d, yyyy h:mm a')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
+                  No notes yet for this lead.
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Outreach History */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Outreach History
             </h3>
 
-            {lead.outreachHistory && lead.outreachHistory.length > 0 ? (
+            {outreachLogs.length > 0 ? (
               <div className="space-y-4">
-                {lead.outreachHistory.map((item) => (
+                {outreachLogs.map((item) => (
                   <div key={item.id} className="neo-in p-4 rounded-2xl">
                     <div className="flex items-start justify-between gap-4 mb-3">
                       <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
@@ -361,7 +409,7 @@ const LeadDetail = () => {
                         <span className="capitalize">{item.type} Email</span>
                       </div>
                       <span className="text-xs text-[var(--text-secondary)]">
-                        {format(new Date(item.sentAt), 'MMM d, yyyy h:mm a')}
+                        {format(new Date(item.sent_at), 'MMM d, yyyy h:mm a')}
                       </span>
                     </div>
 
@@ -387,7 +435,7 @@ const LeadDetail = () => {
           </div>
         </div>
 
-        {/* Timeline */}
+        {/* Right Sidebar */}
         <div className="space-y-6">
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
