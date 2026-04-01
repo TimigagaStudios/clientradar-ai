@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Search,
@@ -13,17 +13,28 @@ import {
   PlusCircle,
   FileDown,
   Globe,
+  ChevronDown,
+  LogOut,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
 import AddLeadModal from './AddLeadModal';
 import ImportLeadsModal from './ImportLeadsModal';
+import { useTheme } from '../context/ThemeContext';
+import { supabase } from '../lib/supabase';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
+
   const location = useLocation();
+  const navigate = useNavigate();
+  const adminMenuRef = useRef<HTMLDivElement | null>(null);
+  const { theme, toggleTheme } = useTheme();
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -42,6 +53,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Globe, label: 'Demo' },
   ];
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        adminMenuRef.current &&
+        !adminMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsAdminMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleQuickAction = (label: string) => {
     if (label === 'Add Lead') {
       setIsAddLeadOpen(true);
@@ -54,11 +79,26 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     }
 
     if (label === 'Outreach') {
-      window.location.href = '/outreach';
+      navigate('/outreach');
       return;
     }
 
     alert(`${label} feature coming next.`);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
+
+  const handleGoToSettings = () => {
+    setIsAdminMenuOpen(false);
+    navigate('/settings');
+  };
+
+  const handleToggleTheme = () => {
+    toggleTheme();
+    setIsAdminMenuOpen(false);
   };
 
   return (
@@ -171,15 +211,59 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 </Button>
               ))}
 
-              <div className="flex items-center gap-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300">
-                <div className="text-right hidden sm:block">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">Admin</p>
-                  <p className="text-xs text-[var(--text-secondary)]">Internal User</p>
-                </div>
+              {/* Admin menu */}
+              <div className="relative" ref={adminMenuRef}>
+                <button
+                  onClick={() => setIsAdminMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300 hover:opacity-95"
+                >
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Admin</p>
+                    <p className="text-xs text-[var(--text-secondary)]">Internal User</p>
+                  </div>
 
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_12px_24px_rgba(255,122,0,0.22)]">
-                  A
-                </div>
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_12px_24px_rgba(255,122,0,0.22)]">
+                    A
+                  </div>
+
+                  <ChevronDown
+                    size={16}
+                    className={cn(
+                      'text-[var(--text-secondary)] transition-transform hidden sm:block',
+                      isAdminMenuOpen && 'rotate-180'
+                    )}
+                  />
+                </button>
+
+                {isAdminMenuOpen && (
+                  <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
+                    <button
+                      onClick={handleGoToSettings}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                    >
+                      <SettingsIcon size={17} />
+                      <span className="font-medium">Settings</span>
+                    </button>
+
+                    <button
+                      onClick={handleToggleTheme}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                    >
+                      {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
+                      <span className="font-medium">
+                        Switch to {theme === 'light' ? 'Dark' : 'Light'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                    >
+                      <LogOut size={17} />
+                      <span className="font-medium">Logout</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
