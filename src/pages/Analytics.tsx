@@ -12,14 +12,12 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
   CartesianGrid,
   XAxis,
   YAxis,
   Tooltip,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -107,18 +105,12 @@ const Analytics = () => {
       .sort((a, b) => b.value - a.value);
   }, [leads]);
 
-  const weeklyActivity = [
-    { name: 'Mon', leads: 4, outreach: 2, conversions: 1 },
-    { name: 'Tue', leads: 7, outreach: 4, conversions: 2 },
-    { name: 'Wed', leads: 6, outreach: 3, conversions: 1 },
-    { name: 'Thu', leads: 10, outreach: 6, conversions: 3 },
-    { name: 'Fri', leads: 12, outreach: 7, conversions: 4 },
-    { name: 'Sat', leads: 5, outreach: 2, conversions: 1 },
-    { name: 'Sun', leads: 8, outreach: 4, conversions: 2 },
-  ];
-
   const interestedRate =
     totalLeads > 0 ? ((interested / totalLeads) * 100).toFixed(1) : '0.0';
+
+  const chartCard = 'neo-card p-8';
+  const emptyCard =
+    'neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm';
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -161,221 +153,117 @@ const Analytics = () => {
         ))}
       </div>
 
-      {/* Charts row */}
+      {/* Real Charts */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <section className="neo-card p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-xl font-bold">Lead Discovery Trend</h3>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Weekly discovery and outreach volume
-              </p>
-            </div>
-            <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
-              Weekly
-            </div>
-          </div>
-
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyActivity}>
-                <defs>
-                  <linearGradient id="analyticsLeads" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FF7A00" stopOpacity={0.28} />
-                    <stop offset="95%" stopColor="#FF7A00" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--text-secondary)" opacity={0.12} />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card-bg)',
-                    borderRadius: '16px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: 'var(--surface-shadow-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="leads"
-                  stroke="#FF7A00"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#analyticsLeads)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        <section className="neo-card p-8">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h3 className="text-xl font-bold">Conversion Activity</h3>
-              <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Weekly movement toward deal closure
-              </p>
-            </div>
-            <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
-              Conversion
-            </div>
-          </div>
-
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={weeklyActivity}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--text-secondary)" opacity={0.12} />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card-bg)',
-                    borderRadius: '16px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: 'var(--surface-shadow-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-                <Bar dataKey="conversions" fill="#FF7A00" radius={[8, 8, 0, 0]} barSize={24} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <section className="neo-card p-8">
+        <section className={chartCard}>
           <div className="flex items-center justify-between mb-8">
             <div>
               <h3 className="text-xl font-bold">Lead Status Breakdown</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Pipeline distribution by stage
+                Distribution by current pipeline stage
               </p>
             </div>
             <PieChartIcon className="text-[var(--accent)]" size={20} />
           </div>
 
-          <div className="h-80 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={65}
-                  outerRadius={105}
-                  paddingAngle={4}
-                >
-                  {statusData.map((_, index) => (
-                    <Cell key={index} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card-bg)',
-                    borderRadius: '16px',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    boxShadow: 'var(--surface-shadow-soft)',
-                    color: 'var(--text-primary)',
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+          {statusData.length === 0 ? (
+            <div className={emptyCard}>Not enough status data yet.</div>
+          ) : (
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={70}
+                    outerRadius={110}
+                    paddingAngle={4}
+                  >
+                    {statusData.map((_, index) => (
+                      <Cell key={index} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--card-bg)',
+                      borderRadius: '16px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: 'var(--surface-shadow-soft)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </section>
 
-        <section className="neo-card p-8">
+        <section className={chartCard}>
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold">Top Categories</h3>
+              <h3 className="text-xl font-bold">Lead Category Demand</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Most common business categories
+                Which niches appear most often in your system
               </p>
             </div>
-            <div className="rounded-xl px-3 py-1.5 neo-in text-xs uppercase font-bold">
-              Live
+            <TrendingUp className="text-[var(--accent)]" size={20} />
+          </div>
+
+          {categoryData.length === 0 ? (
+            <div className={emptyCard}>Not enough category data yet.</div>
+          ) : (
+            <div className="h-80 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={categoryData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--text-secondary)" opacity={0.12} />
+                  <XAxis
+                    dataKey="name"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                    dy={10}
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: 'var(--text-secondary)', fontSize: 12, fontWeight: 600 }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--card-bg)',
+                      borderRadius: '16px',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      boxShadow: 'var(--surface-shadow-soft)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
+                  <Bar dataKey="value" fill="#FF7A00" radius={[8, 8, 0, 0]} barSize={28} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-
-          <div className="space-y-4">
-            {categoryData.length === 0 ? (
-              <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
-                No category analytics available yet.
-              </div>
-            ) : (
-              categoryData.map((item, index) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between p-4 rounded-2xl neo-in"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold"
-                      style={{ background: COLORS[index % COLORS.length] }}
-                    >
-                      {index + 1}
-                    </div>
-                    <div>
-                      <p className="font-bold">{item.name}</p>
-                      <p className="text-sm text-[var(--text-secondary)]">
-                        Lead category
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-lg font-black">{item.value}</p>
-                    <p className="text-xs uppercase tracking-wide text-[var(--text-secondary)]">
-                      Leads
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          )}
         </section>
+      </div>
 
-        <section className="neo-card p-8">
+      {/* Lower insights */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <section className={chartCard}>
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold">Priority Mix</h3>
+              <h3 className="text-xl font-bold">Priority Distribution</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">
-                Lead urgency distribution
+                How your current lead urgency is spread
               </p>
             </div>
             <Mail className="text-[var(--accent)]" size={20} />
           </div>
 
-          <div className="space-y-4">
-            {priorityData.length === 0 ? (
-              <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
-                No priority data available yet.
-              </div>
-            ) : (
-              priorityData.map((item, index) => (
+          {priorityData.length === 0 ? (
+            <div className={emptyCard}>No priority data available yet.</div>
+          ) : (
+            <div className="space-y-4">
+              {priorityData.map((item, index) => (
                 <div
                   key={item.name}
                   className="flex items-center justify-between p-4 rounded-2xl neo-in"
@@ -402,8 +290,50 @@ const Analytics = () => {
                     </p>
                   </div>
                 </div>
-              ))
-            )}
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className={chartCard}>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h3 className="text-xl font-bold">Insight Summary</h3>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">
+                Current operating signals from your data
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <div className="neo-in p-5 rounded-2xl">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-3">
+                Highest Demand Category
+              </p>
+              <p className="text-[var(--text-primary)] text-xl font-semibold">
+                {categoryData[0]?.name || '—'}
+              </p>
+            </div>
+
+            <div className="neo-in p-5 rounded-2xl">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-3">
+                Interest Rate
+              </p>
+              <p className="text-[var(--text-primary)] text-xl font-semibold">
+                {interestedRate}%
+              </p>
+            </div>
+
+            <div className="neo-in p-5 rounded-2xl">
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-3">
+                Revenue Readiness
+              </p>
+              <p className="text-[var(--text-secondary)] leading-8">
+                {closedDeals > 0
+                  ? 'The system is already tracking real commercial outcomes. You can expand toward deeper pipeline reporting next.'
+                  : 'You are collecting structured lead data, but closed revenue still needs more pipeline maturity.'}
+              </p>
+            </div>
           </div>
         </section>
       </div>
