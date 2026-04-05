@@ -3,16 +3,18 @@ import { useLeads } from '../context/LeadContext';
 import {
   Send,
   Mail,
-  CheckCircle,
   ChevronRight,
   User,
   Search,
   Sparkles,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { useToast } from '../components/ui/useToast';
 
 const Outreach = () => {
   const { leads, updateLeadStatus, addOutreachLog, updateDemoStatus } = useLeads();
+  const { showToast } = useToast();
+
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [template, setTemplate] = useState('intro');
   const [isSending, setIsSending] = useState(false);
@@ -33,7 +35,7 @@ I've created a quick demo of what a modern site for your business could look lik
 Let me know if you'd like to discuss.
 
 Best,
-[Your Name]`,
+Timigaga Studios`,
     },
     followup: {
       subject: "Re: Question about {business_name}'s website",
@@ -47,7 +49,7 @@ Here is the link again:
 Let me know what you think.
 
 Best,
-[Your Name]`,
+Timigaga Studios`,
     },
   };
 
@@ -65,13 +67,42 @@ Best,
     };
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!selectedLeadId || !selectedLead) return;
+
+    if (!selectedLead.email) {
+      showToast({
+        type: 'error',
+        title: 'Missing email',
+        message: 'This lead does not have an email address yet.',
+      });
+      return;
+    }
+
     setIsSending(true);
 
-    const preview = getPreview();
+    try {
+      const preview = getPreview();
 
-    setTimeout(async () => {
+      const response = await fetch('/api/send-outreach', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          toEmail: selectedLead.email,
+          toName: selectedLead.businessName,
+          subject: preview.subject,
+          body: preview.body,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Failed to send outreach email');
+      }
+
       await addOutreachLog(selectedLeadId, {
         type: template as 'intro' | 'followup',
         subject: preview.subject,
@@ -90,9 +121,23 @@ Best,
         await updateDemoStatus(selectedLeadId, 'Sent');
       }
 
-      setIsSending(false);
+      showToast({
+        type: 'success',
+        title: 'Outreach sent',
+        message: `Email successfully sent to ${selectedLead.businessName}.`,
+      });
+
       setSelectedLeadId(null);
-    }, 1500);
+    } catch (error) {
+      console.error(error);
+      showToast({
+        type: 'error',
+        title: 'Send failed',
+        message: error instanceof Error ? error.message : 'Failed to send outreach email.',
+      });
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const filteredLeads = leads.filter(
@@ -190,7 +235,7 @@ Best,
                     {selectedLead.businessName}
                   </h2>
                   <p className="text-sm text-[var(--text-secondary)]">
-                    To: {selectedLead.email || 'No email found (manual follow-up needed)'}
+                    To: {selectedLead.email || 'No email found'}
                   </p>
                 </div>
               </div>
