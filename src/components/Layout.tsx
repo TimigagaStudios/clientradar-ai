@@ -140,6 +140,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         />
       )}
 
+      {/* Sidebar */}
       <aside
         className={cn(
           'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-0 transition-transform duration-300 lg:translate-x-0 bg-[var(--card-bg)]/92 backdrop-blur-2xl',
@@ -147,12 +148,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         )}
         style={{
           boxShadow:
-            '8px 0 30px rgba(15, 23, 42, 0.06), 2px 0 10px rgba(15, 23, 42, 0.04)',
+            theme === 'dark'
+              ? '8px 0 30px rgba(3, 8, 22, 0.30), 2px 0 10px rgba(3, 8, 22, 0.18)'
+              : '8px 0 24px rgba(120, 136, 159, 0.10), 2px 0 10px rgba(120, 136, 159, 0.06)',
         }}
       >
         <div className="flex flex-col h-full p-6">
           <div className="flex items-center gap-3 mb-10 px-1">
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-[var(--accent)] shadow-[0_12px_30px_rgba(255,122,0,0.25)]">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-[var(--accent)] shadow-[0_12px_24px_rgba(255,122,0,0.20)]">
               <Zap className="text-white" size={22} />
             </div>
             <div>
@@ -174,8 +177,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   className={cn(
                     'flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-200 group',
                     isActive
-                      ? 'bg-[var(--accent)] text-white shadow-[0_16px_30px_rgba(255,122,0,0.28)]'
-                      : 'text-[var(--text-secondary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:text-[var(--text-primary)]'
+                      ? 'bg-[var(--accent)] text-white shadow-[0_14px_24px_rgba(255,122,0,0.22)]'
+                      : 'text-[var(--text-secondary)] hover:bg-black/[0.025] dark:hover:bg-white/[0.04] hover:text-[var(--text-primary)]'
                   )}
                   onClick={() => setIsSidebarOpen(false)}
                 >
@@ -187,7 +190,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </nav>
 
           <div className="mt-auto pt-6">
-            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-4 py-4 shadow-[var(--surface-shadow-soft)] transition-colors duration-300">
+            <div className="rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-4 py-4 shadow-[var(--surface-shadow-soft)] transition-colors duration-300">
               <p className="text-sm font-semibold mb-1 text-[var(--text-primary)]">
                 Lead Engine Active
               </p>
@@ -199,8 +202,25 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
+      {/* Main */}
       <main className="lg:ml-72 min-h-screen">
-        <header className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-4 bg-[var(--bg)]/80 backdrop-blur-2xl surface-divider">
+        <header
+          className="sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-4 backdrop-blur-2xl surface-divider"
+          style={{
+            background:
+              theme === 'dark'
+                ? 'rgba(11, 20, 55, 0.72)'
+                : 'rgba(225, 230, 237, 0.72)',
+            boxShadow:
+              theme === 'dark'
+                ? '0 10px 24px rgba(3, 8, 22, 0.18)'
+                : '0 10px 18px rgba(120, 136, 159, 0.08)',
+            borderBottom:
+              theme === 'dark'
+                ? '1px solid rgba(255,255,255,0.04)'
+                : '1px solid rgba(255,255,255,0.16)',
+          }}
+        >
           <div className="flex items-center justify-between gap-4">
             <button
               className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5 transition-colors hover:bg-white/10"
@@ -220,7 +240,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   value={globalSearch}
                   onChange={(e) => setGlobalSearch(e.target.value)}
                   placeholder="Search leads, outreach, demos..."
-                  className="w-full rounded-2xl bg-black/[0.03] dark:bg-white/5 border border-black/8 dark:border-white/8 py-3 pl-12 pr-4 outline-none focus:border-[var(--accent)]/70 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all shadow-[var(--surface-shadow-soft)] text-[var(--text-primary)]"
+                  className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none focus:border-[var(--accent)]/70 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all shadow-[var(--surface-shadow-soft)] text-[var(--text-primary)]"
                 />
               </form>
             </div>
@@ -241,14 +261,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               <div className="relative" ref={adminMenuRef}>
                 <button
                   onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                  className="flex items-center gap-3 rounded-2xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300 hover:opacity-95"
+                  className="flex items-center gap-3 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300 hover:opacity-95"
                 >
                   <div className="text-right hidden sm:block">
                     <p className="text-sm font-semibold text-[var(--text-primary)]">Admin</p>
                     <p className="text-xs text-[var(--text-secondary)]">Internal User</p>
                   </div>
 
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_12px_24px_rgba(255,122,0,0.22)]">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_10px_18px_rgba(255,122,0,0.16)]">
                     A
                   </div>
 
