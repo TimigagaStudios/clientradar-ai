@@ -19,6 +19,7 @@ import {
   Moon,
   Sun,
   MonitorPlay,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -48,6 +49,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Users, label: 'Leads', path: '/leads' },
     { icon: MonitorPlay, label: 'Demos', path: '/demos' },
     { icon: Mail, label: 'Outreach', path: '/outreach' },
+    { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
