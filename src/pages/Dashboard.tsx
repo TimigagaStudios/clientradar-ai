@@ -11,9 +11,9 @@ import {
   MonitorPlay,
   ExternalLink,
   CheckCircle2,
-  Clock3,
   Send,
   Sparkles,
+  Clock3,
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -30,19 +30,6 @@ const Dashboard = () => {
   ).length;
   const dealsClosed = leads.filter((l) => l.status === 'Deal Closed').length;
   const totalRevenue = leads.reduce((acc, lead) => acc + (lead.dealValue || 0), 0);
-
-  const stats = [
-    { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true },
-    { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true },
-    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false },
-    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true },
-    { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true },
-    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true },
-  ];
-
-  const demoLeads = leads
-    .filter((lead) => lead.demoLink || lead.demoStatus)
-    .slice(0, 4);
 
   const needsOutreach = leads.filter(
     (lead) =>
@@ -61,6 +48,54 @@ const Dashboard = () => {
   const warmOpportunities = leads.filter(
     (lead) => lead.status === 'Interested' || lead.status === 'Negotiating'
   );
+
+  const stats = [
+    { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true },
+    { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true },
+    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false },
+    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true },
+    { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true },
+    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true },
+  ];
+
+  const demoLeads = leads
+    .filter((lead) => lead.demoLink || lead.demoStatus)
+    .slice(0, 4);
+
+  const reminderGroups = [
+    {
+      title: 'Needs First Outreach',
+      count: needsOutreach.length,
+      icon: Send,
+      color: 'text-orange-500',
+      leads: needsOutreach.slice(0, 3),
+      helper: 'New leads with no message sent yet.',
+    },
+    {
+      title: 'Demo Ready to Send',
+      count: demoReadyToSend.length,
+      icon: MonitorPlay,
+      color: 'text-green-500',
+      leads: demoReadyToSend.slice(0, 3),
+      helper: 'Demos are ready but still need outreach.',
+    },
+    {
+      title: 'Awaiting Reply',
+      count: awaitingReply.length,
+      icon: Clock3,
+      color: 'text-yellow-500',
+      leads: awaitingReply.slice(0, 3),
+      helper: 'Leads that need timely follow-up.',
+    },
+    {
+      title: 'Warm Opportunities',
+      count: warmOpportunities.length,
+      icon: CheckCircle2,
+      color: 'text-blue-500',
+      leads: warmOpportunities.slice(0, 3),
+      helper: 'Interested or negotiating leads close to value.',
+    },
+  ];
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -111,7 +146,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* AI Follow-up Organizer */}
+      {/* Follow-up Organizer */}
       <section className="neo-card p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2.5 neo-in rounded-xl">
@@ -119,62 +154,55 @@ const Dashboard = () => {
           </div>
           <div>
             <h3 className="text-xl font-bold text-[var(--text-primary)]">
-              AI Follow-up Organizer
+              Smarter Follow-up Organizer
             </h3>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
-              Free-first intelligence to help you know what deserves attention next.
+              Action-focused reminders based on current lead and demo states.
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div className="neo-in p-5 rounded-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
-              Needs First Outreach
-            </p>
-            <p className="text-2xl font-black text-[var(--text-primary)]">
-              {needsOutreach.length}
-            </p>
-            <p className="text-sm text-[var(--text-secondary)] mt-2">
-              New leads with no outreach history yet.
-            </p>
-          </div>
+          {reminderGroups.map((group) => (
+            <div key={group.title} className="neo-in p-5 rounded-2xl">
+              <div className="flex items-center gap-3 mb-3">
+                <group.icon size={18} className={group.color} />
+                <span className="text-sm font-semibold text-[var(--text-primary)]">
+                  {group.title}
+                </span>
+              </div>
 
-          <div className="neo-in p-5 rounded-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
-              Demo Ready to Send
-            </p>
-            <p className="text-2xl font-black text-[var(--text-primary)]">
-              {demoReadyToSend.length}
-            </p>
-            <p className="text-sm text-[var(--text-secondary)] mt-2">
-              Leads that have demos ready but may still need outbound action.
-            </p>
-          </div>
+              <p className="text-2xl font-black text-[var(--text-primary)] mb-2">
+                {group.count}
+              </p>
 
-          <div className="neo-in p-5 rounded-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
-              Awaiting Reply
-            </p>
-            <p className="text-2xl font-black text-[var(--text-primary)]">
-              {awaitingReply.length}
-            </p>
-            <p className="text-sm text-[var(--text-secondary)] mt-2">
-              Leads currently sitting in reply wait mode.
-            </p>
-          </div>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">
+                {group.helper}
+              </p>
 
-          <div className="neo-in p-5 rounded-2xl">
-            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
-              Warm Opportunities
-            </p>
-            <p className="text-2xl font-black text-[var(--text-primary)]">
-              {warmOpportunities.length}
-            </p>
-            <p className="text-sm text-[var(--text-secondary)] mt-2">
-              Interested or negotiating leads closest to revenue.
-            </p>
-          </div>
+              <div className="space-y-2">
+                {group.leads.length > 0 ? (
+                  group.leads.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="rounded-xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-3"
+                    >
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">
+                        {lead.businessName}
+                      </p>
+                      <p className="text-xs text-[var(--text-secondary)] mt-1">
+                        {lead.city} • {lead.category}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">
+                    Nothing urgent here.
+                  </p>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
