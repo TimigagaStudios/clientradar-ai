@@ -62,4 +62,9 @@ export function exportLeadsToCSV(leads: Lead[]) {
   document.body.removeChild(link);
 
   URL.revokeObjectURL(url);
+
+  return {
+    count: leads.length,
+    filename: 'clientradar-leads.csv',
+  };
 }
