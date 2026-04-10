@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
+import { useToast } from './ui/useToast';
 
 interface AddLeadModalProps {
   open: boolean;
@@ -10,6 +11,7 @@ interface AddLeadModalProps {
 
 const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
   const { addLead } = useLeads();
+  const { showToast } = useToast();
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -23,6 +25,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
     leadScore: 50,
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
     status: 'New' as const,
+    demoStatus: 'Not Started' as const,
     notes: '',
     dealValue: '',
   });
@@ -65,10 +68,17 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
         leadScore: Number(formData.leadScore),
         priority: formData.priority,
         status: formData.status,
+        demoStatus: formData.demoStatus,
         notes: formData.notes,
         demoLink: undefined,
         dealValue: formData.dealValue ? Number(formData.dealValue) : undefined,
         outreachHistory: [],
+      });
+
+      showToast({
+        type: 'success',
+        title: 'Lead added',
+        message: `${formData.businessName} was added successfully.`,
       });
 
       onClose();
@@ -84,12 +94,17 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
         leadScore: 50,
         priority: 'Medium',
         status: 'New',
+        demoStatus: 'Not Started',
         notes: '',
         dealValue: '',
       });
     } catch (error) {
       console.error(error);
-      alert('Failed to add lead.');
+      showToast({
+        type: 'error',
+        title: 'Add lead failed',
+        message: 'Could not save the lead. Please try again.',
+      });
     } finally {
       setSaving(false);
     }
