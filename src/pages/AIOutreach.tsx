@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Sparkles, Wand2, Copy, Mail, MessageSquare } from 'lucide-react';
+import { Sparkles, Wand2, Mail } from 'lucide-react';
 import { useToast } from '../components/ui/useToast';
+import { useNavigate } from 'react-router-dom';
 
 const AIOutreach = () => {
   const { leads } = useLeads();
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [outreachType, setOutreachType] = useState('Intro Email');
@@ -25,8 +27,6 @@ const AIOutreach = () => {
     }
 
     const business = selectedLead.businessName;
-    const city = selectedLead.city;
-    const category = selectedLead.category;
     const website = selectedLead.website ? 'website' : 'online presence';
     const demo = selectedLead.demoLink || '[demo link]';
 
@@ -93,6 +93,28 @@ Timigaga Studios`;
         message: `Could not copy ${label.toLowerCase()}.`,
       });
     }
+  };
+
+  const handleUseInOutreach = () => {
+    if (!selectedLead) return;
+
+    localStorage.setItem(
+      'clientradar-outreach-draft',
+      JSON.stringify({
+        leadId: selectedLead.id,
+        subject: generated.subject,
+        body: generated.body,
+        type: outreachType,
+      })
+    );
+
+    showToast({
+      type: 'success',
+      title: 'Draft moved to Outreach',
+      message: 'Your generated message is ready in the Outreach workspace.',
+    });
+
+    navigate('/outreach');
   };
 
   return (
@@ -271,7 +293,10 @@ Timigaga Studios`;
                   <Wand2 size={14} />
                   Refine Later
                 </button>
-                <button className="btn-neumorph-primary px-4 py-2 text-sm gap-2">
+                <button
+                  onClick={handleUseInOutreach}
+                  className="btn-neumorph-primary px-4 py-2 text-sm gap-2"
+                >
                   <Mail size={14} />
                   Use in Outreach
                 </button>
