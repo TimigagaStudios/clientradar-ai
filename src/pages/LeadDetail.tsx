@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 import {
@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   XCircle,
   MonitorPlay,
+  Sparkles,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority, DemoStatus } from '../types';
@@ -197,6 +198,56 @@ const LeadDetail = () => {
     High: 'text-red-500',
   };
 
+  const aiSummary = useMemo(() => {
+    const reasons: string[] = [];
+    const opportunities: string[] = [];
+
+    if (!lead.website) {
+      reasons.push('has no visible website');
+      opportunities.push('offer a full website build');
+    } else if (lead.outdatedWebsite) {
+      reasons.push('has an outdated website');
+      opportunities.push('pitch a redesign or modernization');
+    } else {
+      reasons.push('already has a web presence');
+      opportunities.push('improve branding, UX, and conversion');
+    }
+
+    if (lead.leadScore >= 70) {
+      reasons.push(`has a strong lead score of ${lead.leadScore}`);
+    } else if (lead.leadScore >= 40) {
+      reasons.push(`has a moderate lead score of ${lead.leadScore}`);
+    } else {
+      reasons.push(`has a lower lead score of ${lead.leadScore}`);
+    }
+
+    if (lead.priority === 'High') {
+      opportunities.push('prioritize this lead for early follow-up');
+    }
+
+    if (lead.demoStatus === 'Ready') {
+      opportunities.push('send the demo as soon as possible');
+    }
+
+    if (lead.status === 'Interested' || lead.status === 'Negotiating') {
+      opportunities.push('move quickly toward proposal or closing');
+    }
+
+    const summary = `${lead.businessName} is a ${lead.priority.toLowerCase()}-priority ${lead.category.toLowerCase()} lead in ${lead.city} that ${reasons.join(
+      ' and '
+    )}.`;
+
+    const nextStep =
+      opportunities.length > 0
+        ? `Recommended next step: ${opportunities[0]}.`
+        : 'Recommended next step: continue qualification and monitor response.';
+
+    return {
+      summary,
+      nextStep,
+    };
+  }, [lead]);
+
   const cardClasses = 'neo-card p-6 md:p-8';
   const inputClasses =
     'w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none';
@@ -261,6 +312,35 @@ const LeadDetail = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* AI Summary */}
+          <div className={cardClasses}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 neo-in rounded-xl">
+                <Sparkles size={18} className="text-[var(--accent)]" />
+              </div>
+              <h3 className="font-bold text-lg text-[var(--text-primary)]">
+                AI Lead Summary
+              </h3>
+            </div>
+
+            <div className="space-y-4">
+              <div className="neo-in p-5 rounded-2xl">
+                <p className="text-sm text-[var(--text-primary)] leading-7">
+                  {aiSummary.summary}
+                </p>
+              </div>
+              <div className="neo-in p-5 rounded-2xl">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">
+                  Recommended next action
+                </p>
+                <p className="text-sm text-[var(--text-secondary)] leading-7">
+                  {aiSummary.nextStep}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Existing cards continue... */}
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
@@ -375,6 +455,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Demo Workflow */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4 flex items-center gap-2">
               <MonitorPlay size={18} className="text-[var(--accent)]" />
@@ -446,6 +527,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Notes */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
 
@@ -487,6 +569,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Outreach History */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Outreach History
