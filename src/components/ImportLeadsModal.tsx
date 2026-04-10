@@ -3,6 +3,7 @@ import { X, FileSpreadsheet, Upload, CheckCircle2 } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { Lead } from '../types';
+import { useToast } from './ui/useToast';
 
 interface ImportLeadsModalProps {
   open: boolean;
@@ -11,6 +12,8 @@ interface ImportLeadsModalProps {
 
 const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
   const { importLeads } = useLeads();
+  const { showToast } = useToast();
+
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -67,6 +70,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
           leadScore: Number(leadScore) || 0,
           priority: (priority as Lead['priority']) || 'Medium',
           status: (status as Lead['status']) || 'New',
+          demoStatus: 'Not Started',
           notes,
           demoLink: undefined,
           dealValue: dealValue ? Number(dealValue) : undefined,
@@ -108,11 +112,21 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
       setImporting(true);
 
       if (previewRows.length === 0) {
-        alert('No valid rows found.');
+        showToast({
+          type: 'error',
+          title: 'Import failed',
+          message: 'No valid rows were found in the provided CSV data.',
+        });
         return;
       }
 
       await importLeads(previewRows);
+
+      showToast({
+        type: 'success',
+        title: 'Import complete',
+        message: `${previewRows.length} lead(s) imported successfully.`,
+      });
 
       setCsvText('');
       setFileName('');
@@ -120,7 +134,11 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
       onClose();
     } catch (error) {
       console.error(error);
-      alert('Failed to import leads.');
+      showToast({
+        type: 'error',
+        title: 'Import failed',
+        message: 'Could not import leads. Please check your CSV format and try again.',
+      });
     } finally {
       setImporting(false);
     }
@@ -159,7 +177,6 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
         </div>
 
         <div className="space-y-5">
-          {/* File Upload */}
           <div className="neo-in rounded-2xl p-5">
             <label className="flex flex-col items-center justify-center gap-3 cursor-pointer text-center">
               <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
@@ -187,7 +204,6 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
             </label>
           </div>
 
-          {/* Example */}
           <div className="neo-in rounded-2xl p-4">
             <p className="text-sm text-[var(--text-secondary)] leading-7">
               Example CSV:
@@ -199,7 +215,6 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
             </pre>
           </div>
 
-          {/* Paste CSV */}
           <div className="space-y-2">
             <label className="text-sm font-semibold text-[var(--text-primary)]">
               Or paste CSV text
@@ -215,7 +230,6 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
             />
           </div>
 
-          {/* Preview Controls */}
           <div className="flex justify-between items-center gap-4 flex-wrap">
             <div className="text-sm text-[var(--text-secondary)]">
               {hasPreviewed ? (
@@ -250,7 +264,6 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
             </div>
           </div>
 
-          {/* Preview Table */}
           {hasPreviewed && (
             <div className="neo-card p-4 overflow-x-auto">
               <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
