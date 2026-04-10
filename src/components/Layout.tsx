@@ -143,7 +143,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-0 transition-transform duration-300 lg:translate-x-0',
+          'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-30 transition-transform duration-300 lg:translate-x-0',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
         style={{
@@ -208,124 +208,123 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="lg:ml-72 min-h-screen">
-        <div className="px-4 sm:px-6 lg:px-8 pt-4">
-          <header
-            className="sticky top-4 z-30 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
-            style={{
-              background:
-                theme === 'dark'
-                  ? 'rgba(17, 28, 68, 0.58)'
-                  : 'rgba(231, 236, 244, 0.58)',
-              backdropFilter: 'blur(28px)',
-              WebkitBackdropFilter: 'blur(28px)',
-              boxShadow:
-                theme === 'dark'
-                  ? '0 14px 34px rgba(3, 8, 22, 0.18)'
-                  : '0 12px 26px rgba(120, 136, 159, 0.10)',
-              border:
-                theme === 'dark'
-                  ? '1px solid rgba(255,255,255,0.05)'
-                  : '1px solid rgba(255,255,255,0.14)',
-            }}
+      {/* Fixed Header */}
+      <header
+        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
+        style={{
+          background:
+            theme === 'dark'
+              ? 'rgba(17, 28, 68, 0.58)'
+              : 'rgba(231, 236, 244, 0.58)',
+          backdropFilter: 'blur(28px)',
+          WebkitBackdropFilter: 'blur(28px)',
+          boxShadow:
+            theme === 'dark'
+              ? '0 14px 34px rgba(3, 8, 22, 0.18)'
+              : '0 12px 26px rgba(120, 136, 159, 0.08)',
+          border:
+            theme === 'dark'
+              ? '1px solid rgba(255,255,255,0.05)'
+              : '1px solid rgba(255,255,255,0.14)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-4">
+          <button
+            className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5 transition-colors hover:bg-white/10"
+            onClick={() => setIsSidebarOpen(true)}
           >
-            <div className="flex items-center justify-between gap-4">
-              <button
-                className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5 transition-colors hover:bg-white/10"
-                onClick={() => setIsSidebarOpen(true)}
+            <Menu size={22} />
+          </button>
+
+          <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
+            <form onSubmit={handleGlobalSearchSubmit} className="relative group">
+              <Search
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
+                size={18}
+              />
+              <input
+                type="text"
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+                placeholder="Search leads, outreach, demos..."
+                className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none focus:border-[var(--accent)]/70 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all shadow-[var(--surface-shadow-soft)] text-[var(--text-primary)]"
+              />
+            </form>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {quickActions.map((action, i) => (
+              <Button
+                key={i}
+                variant="icon"
+                className="hidden sm:flex"
+                title={action.label}
+                onClick={() => handleQuickAction(action.label)}
               >
-                <Menu size={22} />
+                <action.icon size={18} />
+              </Button>
+            ))}
+
+            <div className="relative" ref={adminMenuRef}>
+              <button
+                onClick={() => setIsAdminMenuOpen((prev) => !prev)}
+                className="flex items-center gap-3 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300 hover:opacity-95"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Admin</p>
+                  <p className="text-xs text-[var(--text-secondary)]">Internal User</p>
+                </div>
+
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_10px_18px_rgba(255,122,0,0.16)]">
+                  A
+                </div>
+
+                <ChevronDown
+                  size={16}
+                  className={cn(
+                    'text-[var(--text-secondary)] transition-transform hidden sm:block',
+                    isAdminMenuOpen && 'rotate-180'
+                  )}
+                />
               </button>
 
-              <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
-                <form onSubmit={handleGlobalSearchSubmit} className="relative group">
-                  <Search
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
-                    size={18}
-                  />
-                  <input
-                    type="text"
-                    value={globalSearch}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
-                    placeholder="Search leads, outreach, demos..."
-                    className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none focus:border-[var(--accent)]/70 focus:ring-2 focus:ring-[var(--accent)]/20 transition-all shadow-[var(--surface-shadow-soft)] text-[var(--text-primary)]"
-                  />
-                </form>
-              </div>
-
-              <div className="flex items-center gap-2 sm:gap-3">
-                {quickActions.map((action, i) => (
-                  <Button
-                    key={i}
-                    variant="icon"
-                    className="hidden sm:flex"
-                    title={action.label}
-                    onClick={() => handleQuickAction(action.label)}
-                  >
-                    <action.icon size={18} />
-                  </Button>
-                ))}
-
-                <div className="relative" ref={adminMenuRef}>
+              {isAdminMenuOpen && (
+                <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
                   <button
-                    onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                    className="flex items-center gap-3 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shadow-[var(--surface-shadow-soft)] transition-colors duration-300 hover:opacity-95"
+                    onClick={handleGoToSettings}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
                   >
-                    <div className="text-right hidden sm:block">
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">Admin</p>
-                      <p className="text-xs text-[var(--text-secondary)]">Internal User</p>
-                    </div>
-
-                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold shadow-[0_10px_18px_rgba(255,122,0,0.16)]">
-                      A
-                    </div>
-
-                    <ChevronDown
-                      size={16}
-                      className={cn(
-                        'text-[var(--text-secondary)] transition-transform hidden sm:block',
-                        isAdminMenuOpen && 'rotate-180'
-                      )}
-                    />
+                    <SettingsIcon size={17} />
+                    <span className="font-medium">Settings</span>
                   </button>
 
-                  {isAdminMenuOpen && (
-                    <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
-                      <button
-                        onClick={handleGoToSettings}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-                      >
-                        <SettingsIcon size={17} />
-                        <span className="font-medium">Settings</span>
-                      </button>
+                  <button
+                    onClick={handleToggleTheme}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                  >
+                    {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
+                    <span className="font-medium">
+                      Switch to {theme === 'light' ? 'Dark' : 'Light'}
+                    </span>
+                  </button>
 
-                      <button
-                        onClick={handleToggleTheme}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-                      >
-                        {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
-                        <span className="font-medium">
-                          Switch to {theme === 'light' ? 'Dark' : 'Light'}
-                        </span>
-                      </button>
-
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
-                      >
-                        <LogOut size={17} />
-                        <span className="font-medium">Logout</span>
-                      </button>
-                    </div>
-                  )}
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                  >
+                    <LogOut size={17} />
+                    <span className="font-medium">Logout</span>
+                  </button>
                 </div>
-              </div>
+              )}
             </div>
-          </header>
+          </div>
         </div>
+      </header>
 
-        <div className="p-4 sm:p-6 lg:p-8 xl:p-10 pt-6">
+      {/* Page Content */}
+      <main className="lg:ml-72 min-h-screen pt-32">
+        <div className="p-4 sm:p-6 lg:p-8 xl:p-10">
           <div className="max-w-[1600px] mx-auto">{children}</div>
         </div>
       </main>
