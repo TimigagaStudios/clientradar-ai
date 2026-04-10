@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import {
   Send,
@@ -19,6 +19,8 @@ const Outreach = () => {
   const [template, setTemplate] = useState('intro');
   const [isSending, setIsSending] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [customSubject, setCustomSubject] = useState('');
+  const [customBody, setCustomBody] = useState('');
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
@@ -53,17 +55,43 @@ Timigaga Studios`,
     },
   };
 
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('clientradar-outreach-draft');
+
+    if (!savedDraft) return;
+
+    try {
+      const parsed = JSON.parse(savedDraft);
+      if (parsed.leadId) setSelectedLeadId(parsed.leadId);
+      if (parsed.subject) setCustomSubject(parsed.subject);
+      if (parsed.body) setCustomBody(parsed.body);
+
+      if (parsed.type === 'Follow-up Email') {
+        setTemplate('followup');
+      } else {
+        setTemplate('intro');
+      }
+
+      localStorage.removeItem('clientradar-outreach-draft');
+    } catch (error) {
+      console.error('Failed to load outreach draft', error);
+    }
+  }, []);
+
   const getPreview = () => {
     if (!selectedLead) return { subject: '', body: '' };
 
     const t = templates[template as keyof typeof templates];
     const demoLink = selectedLead.demoLink || '(No demo link yet)';
 
+    const defaultSubject = t.subject.replace(/{business_name}/g, selectedLead.businessName);
+    const defaultBody = t.body
+      .replace(/{business_name}/g, selectedLead.businessName)
+      .replace(/{demo_link}/g, demoLink);
+
     return {
-      subject: t.subject.replace(/{business_name}/g, selectedLead.businessName),
-      body: t.body
-        .replace(/{business_name}/g, selectedLead.businessName)
-        .replace(/{demo_link}/g, demoLink),
+      subject: customSubject || defaultSubject,
+      body: customBody || defaultBody,
     };
   };
 
@@ -86,9 +114,7 @@ Timigaga Studios`,
 
       const response = await fetch('/api/send-outreach', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           toEmail: selectedLead.email,
           toName: selectedLead.businessName,
@@ -128,6 +154,8 @@ Timigaga Studios`,
       });
 
       setSelectedLeadId(null);
+      setCustomSubject('');
+      setCustomBody('');
     } catch (error) {
       console.error(error);
       showToast({
@@ -153,7 +181,6 @@ Timigaga Studios`,
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col xl:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Lead List */}
       <div className="w-full xl:w-[360px] shrink-0 neo-card overflow-hidden flex flex-col">
         <div className="p-5 border-b border-black/8 dark:border-white/8 transition-colors duration-300">
           <h2 className="font-bold text-[var(--text-primary)] mb-4 text-lg">
@@ -221,7 +248,6 @@ Timigaga Studios`,
         </div>
       </div>
 
-      {/* Composer */}
       <div className="flex-1 neo-card overflow-hidden flex flex-col min-h-[600px]">
         {selectedLead ? (
           <>
@@ -261,18 +287,23 @@ Timigaga Studios`,
                 <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em]">
                   Subject
                 </label>
-                <div className="neo-in rounded-2xl p-4 text-[var(--text-primary)] text-sm font-medium">
-                  {preview.subject}
-                </div>
+                <textarea
+                  value={customSubject || preview.subject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  rows={2}
+                  className="w-full neo-in rounded-2xl p-4 text-[var(--text-primary)] text-sm font-medium outline-none resize-none"
+                />
               </div>
 
               <div className="space-y-2 h-full flex flex-col">
                 <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em]">
                   Message
                 </label>
-                <div className="flex-1 neo-in rounded-2xl p-5 text-[var(--text-primary)] text-sm whitespace-pre-wrap leading-7 font-mono">
-                  {preview.body}
-                </div>
+                <textarea
+                  value={customBody || preview.body}
+                  onChange={(e) => setCustomBody(e.target.value)}
+                  className="flex-1 w-full neo-in rounded-2xl p-5 text-[var(--text-primary)] text-sm whitespace-pre-wrap leading-7 font-mono outline-none resize-none"
+                />
               </div>
             </div>
 
