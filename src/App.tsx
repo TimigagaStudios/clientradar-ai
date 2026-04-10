@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
 import Demos from './pages/Demos';
+import AIOutreach from './pages/AIOutreach';
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
@@ -151,6 +152,17 @@ const App = () => {
                   <RequireAuth>
                     <Layout>
                       <Demos />
+                    </Layout>
+                  </RequireAuth>
+                }
+              />
+
+              <Route
+                path="/ai-outreach"
+                element={
+                  <RequireAuth>
+                    <Layout>
+                      <AIOutreach />
                     </Layout>
                   </RequireAuth>
                 }
