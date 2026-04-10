@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   Clock3,
   Send,
+  Sparkles,
 } from 'lucide-react';
 
 const Dashboard = () => {
@@ -42,6 +43,24 @@ const Dashboard = () => {
   const demoLeads = leads
     .filter((lead) => lead.demoLink || lead.demoStatus)
     .slice(0, 4);
+
+  const needsOutreach = leads.filter(
+    (lead) =>
+      lead.status === 'New' &&
+      (!lead.outreachHistory || lead.outreachHistory.length === 0)
+  );
+
+  const demoReadyToSend = leads.filter(
+    (lead) => lead.demoStatus === 'Ready'
+  );
+
+  const awaitingReply = leads.filter(
+    (lead) => lead.status === 'Pending Reply'
+  );
+
+  const warmOpportunities = leads.filter(
+    (lead) => lead.status === 'Interested' || lead.status === 'Negotiating'
+  );
 
   return (
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -92,7 +111,74 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Demo Summary */}
+      {/* AI Follow-up Organizer */}
+      <section className="neo-card p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 neo-in rounded-xl">
+            <Sparkles size={18} className="text-[var(--accent)]" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-[var(--text-primary)]">
+              AI Follow-up Organizer
+            </h3>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">
+              Free-first intelligence to help you know what deserves attention next.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="neo-in p-5 rounded-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
+              Needs First Outreach
+            </p>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {needsOutreach.length}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mt-2">
+              New leads with no outreach history yet.
+            </p>
+          </div>
+
+          <div className="neo-in p-5 rounded-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
+              Demo Ready to Send
+            </p>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {demoReadyToSend.length}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mt-2">
+              Leads that have demos ready but may still need outbound action.
+            </p>
+          </div>
+
+          <div className="neo-in p-5 rounded-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
+              Awaiting Reply
+            </p>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {awaitingReply.length}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mt-2">
+              Leads currently sitting in reply wait mode.
+            </p>
+          </div>
+
+          <div className="neo-in p-5 rounded-2xl">
+            <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
+              Warm Opportunities
+            </p>
+            <p className="text-2xl font-black text-[var(--text-primary)]">
+              {warmOpportunities.length}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mt-2">
+              Interested or negotiating leads closest to revenue.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Demo Overview */}
       <section className="neo-card p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
