@@ -13,7 +13,6 @@ interface ImportLeadsModalProps {
 const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
   const { importLeads } = useLeads();
   const { showToast } = useToast();
-
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -122,16 +121,16 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
       await importLeads(previewRows);
 
-      showToast({
-        type: 'success',
-        title: 'Import complete',
-        message: `${previewRows.length} lead(s) imported successfully.`,
-      });
-
       setCsvText('');
       setFileName('');
       setHasPreviewed(false);
       onClose();
+
+      showToast({
+        type: 'success',
+        title: 'Import successful',
+        message: `${previewRows.length} lead(s) imported successfully.`,
+      });
     } catch (error) {
       console.error(error);
       showToast({
