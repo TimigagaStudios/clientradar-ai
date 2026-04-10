@@ -16,11 +16,15 @@ import {
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Lead, LeadPriority, LeadStatus } from '../types';
 import { cn } from '../utils/cn';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { useToast } from '../components/ui/useToast';
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const { updateLeadStatus, deleteLead } = useLeads();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const statusColors: Record<LeadStatus, string> = {
@@ -56,6 +60,12 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     e.stopPropagation();
     await updateLeadStatus(lead.id, 'Interested');
     setMenuOpen(false);
+
+    showToast({
+      type: 'success',
+      title: 'Lead updated',
+      message: `${lead.businessName} marked as Interested.`,
+    });
   };
 
   const handleMarkRejected = async (e: React.MouseEvent) => {
@@ -63,17 +73,24 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     e.stopPropagation();
     await updateLeadStatus(lead.id, 'Rejected');
     setMenuOpen(false);
+
+    showToast({
+      type: 'success',
+      title: 'Lead updated',
+      message: `${lead.businessName} marked as Rejected.`,
+    });
   };
 
-  const handleDeleteLead = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const confirmed = window.confirm(`Delete ${lead.businessName}?`);
-    if (!confirmed) return;
-
+  const handleDeleteLead = async () => {
     await deleteLead(lead.id);
+    setConfirmDeleteOpen(false);
     setMenuOpen(false);
+
+    showToast({
+      type: 'success',
+      title: 'Lead deleted',
+      message: `${lead.businessName} was removed from your pipeline.`,
+    });
   };
 
   const handleSendOutreach = (e: React.MouseEvent) => {
@@ -212,7 +229,11 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
                 Mark Rejected
               </button>
               <button
-                onClick={handleDeleteLead}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setConfirmDeleteOpen(true);
+                }}
                 className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
               >
                 Delete Lead
@@ -221,6 +242,17 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
           )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteOpen}
+        title="Delete Lead"
+        description={`Are you sure you want to permanently delete ${lead.businessName}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        destructive
+        onConfirm={handleDeleteLead}
+        onCancel={() => setConfirmDeleteOpen(false)}
+      />
     </div>
   );
 };
