@@ -18,6 +18,7 @@ import {
   XCircle,
   MonitorPlay,
   Sparkles,
+  Brain,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority, DemoStatus } from '../types';
@@ -248,6 +249,54 @@ const LeadDetail = () => {
     };
   }, [lead]);
 
+  const aiScoring = useMemo(() => {
+    const strengths: string[] = [];
+    const risks: string[] = [];
+    const recommendation: string[] = [];
+
+    if (!lead.website) {
+      strengths.push('No website creates strong immediate opportunity.');
+    } else if (lead.outdatedWebsite) {
+      strengths.push('Outdated website gives a clear redesign angle.');
+    } else {
+      risks.push('Existing website may reduce urgency unless positioning is weak.');
+    }
+
+    if (lead.rating >= 4) {
+      strengths.push('Strong review reputation suggests business credibility.');
+    } else {
+      risks.push('Lower review strength may reduce commercial urgency.');
+    }
+
+    if (lead.reviewCount >= 20) {
+      strengths.push('Healthy review count suggests active customer demand.');
+    } else {
+      risks.push('Low review count may indicate weaker market traction.');
+    }
+
+    if (lead.priority === 'High') {
+      strengths.push('Already classified as high priority.');
+    }
+
+    if (lead.demoStatus === 'Ready') {
+      recommendation.push('Send the demo immediately while momentum is strong.');
+    } else if (lead.demoStatus === 'In Progress') {
+      recommendation.push('Finish the demo and prepare the outreach angle.');
+    } else if (lead.status === 'New') {
+      recommendation.push('Decide whether to create a demo or send a first-touch message.');
+    } else if (lead.status === 'Interested') {
+      recommendation.push('Move toward a proposal or direct next-step conversation.');
+    } else {
+      recommendation.push('Continue progressing this lead through the pipeline.');
+    }
+
+    return {
+      strengths,
+      risks,
+      recommendation,
+    };
+  }, [lead]);
+
   const cardClasses = 'neo-card p-6 md:p-8';
   const inputClasses =
     'w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none';
@@ -312,7 +361,7 @@ const LeadDetail = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          {/* AI Summary */}
+          {/* AI Lead Summary */}
           <div className={cardClasses}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 neo-in rounded-xl">
@@ -340,7 +389,62 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* Existing cards continue... */}
+          {/* AI Scoring Assistant */}
+          <div className={cardClasses}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 neo-in rounded-xl">
+                <Brain size={18} className="text-[var(--accent)]" />
+              </div>
+              <h3 className="font-bold text-lg text-[var(--text-primary)]">
+                AI Lead Scoring Assistant
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="neo-in p-5 rounded-2xl">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+                  Strengths
+                </p>
+                {aiScoring.strengths.length > 0 ? (
+                  <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+                    {aiScoring.strengths.map((item, index) => (
+                      <li key={index}>• {item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">No major strengths yet.</p>
+                )}
+              </div>
+
+              <div className="neo-in p-5 rounded-2xl">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+                  Risks
+                </p>
+                {aiScoring.risks.length > 0 ? (
+                  <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+                    {aiScoring.risks.map((item, index) => (
+                      <li key={index}>• {item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">No significant risks detected.</p>
+                )}
+              </div>
+
+              <div className="neo-in p-5 rounded-2xl">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+                  Recommendation
+                </p>
+                <ul className="space-y-2 text-sm text-[var(--text-secondary)]">
+                  {aiScoring.recommendation.map((item, index) => (
+                    <li key={index}>• {item}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Existing cards remain below */}
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
@@ -375,10 +479,12 @@ const LeadDetail = () => {
                   </select>
                 </div>
 
-                <div className={cn(
-                  'px-3 py-1 rounded-full text-xs font-medium border',
-                  demoStatusStyles[currentDemoStatus]
-                )}>
+                <div
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs font-medium border',
+                    demoStatusStyles[currentDemoStatus]
+                  )}
+                >
                   {currentDemoStatus}
                 </div>
               </div>
