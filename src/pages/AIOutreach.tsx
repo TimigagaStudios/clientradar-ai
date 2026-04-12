@@ -27,38 +27,52 @@ const AIOutreach = () => {
     }
 
     const business = selectedLead.businessName;
-    const website = selectedLead.website ? 'website' : 'online presence';
     const demo = selectedLead.demoLink || '[demo link]';
+    const hasDemo = !!selectedLead.demoLink;
+    const hasWebsite = !!selectedLead.website;
+    const isFollowUp =
+      outreachType === 'Follow-up Email' || outreachType === 'AI Follow-up';
 
     const toneOpenings: Record<string, string> = {
-      Professional: `Hi, I came across ${business} and wanted to reach out.`,
-      Friendly: `Hi there, I found ${business} and thought I should say hello.`,
-      Bold: `Hi, I noticed an opportunity for ${business} that could make a strong difference.`,
-      Premium: `Hello, I was reviewing ${business} and saw a clear opportunity to elevate its digital presentation.`,
+      Professional: isFollowUp
+        ? `Hi, I wanted to follow up regarding ${business}.`
+        : `Hi, I came across ${business} and wanted to reach out.`,
+      Friendly: isFollowUp
+        ? `Hi again, just checking in on my earlier message about ${business}.`
+        : `Hi there, I found ${business} and thought I should say hello.`,
+      Bold: isFollowUp
+        ? `Hi, I didn’t want this opportunity for ${business} to get missed.`
+        : `Hi, I noticed an opportunity for ${business} that could make a strong difference.`,
+      Premium: isFollowUp
+        ? `Hello, I wanted to revisit the opportunity I mentioned for ${business}.`
+        : `Hello, I was reviewing ${business} and saw a clear opportunity to elevate its digital presentation.`,
     };
 
     const focusLines: Record<string, string> = {
       'No website': `${business} appears to have limited online visibility, which may be costing valuable opportunities.`,
       'Outdated website': `Your current website presence could be modernized to better reflect the quality of your business.`,
       'Better branding': `There’s room to strengthen how ${business} is presented visually and strategically online.`,
-      'Demo offer': `I’ve put together a concept direction that shows how ${business} could look with a stronger digital experience.`,
+      'Demo offer': hasDemo
+        ? `I prepared a concept direction that shows how ${business} could look with a stronger digital experience.`
+        : `A quick demo concept could help show the digital potential for ${business}.`,
       'More clients': `A stronger online experience can help ${business} attract more qualified customers and build trust faster.`,
     };
 
     const ctaLines: Record<string, string> = {
       'Book a call': `If you're open to it, I'd be happy to schedule a quick call and show you the opportunity.`,
-      'Review the demo': `You can take a look at the concept here: ${demo}`,
+      'Review the demo': hasDemo
+        ? `You can take a look at the concept here: ${demo}`
+        : `If helpful, I can also put together a short demo concept to illustrate the direction.`,
       'Reply if interested': `If this is something you’d like to explore, just reply and I’ll share the next step.`,
     };
 
-    const subject =
-      outreachType === 'Follow-up Email'
-        ? `Following up on ${business}`
-        : outreachType === 'Short DM'
-        ? `${business} quick idea`
-        : `Quick idea for ${business}`;
+    let subject = '';
+    let body = '';
+    let short = '';
 
-    const body = `${toneOpenings[tone]}
+    if (outreachType === 'Intro Email') {
+      subject = `Quick idea for ${business}`;
+      body = `${toneOpenings[tone]}
 
 ${focusLines[focus]}
 
@@ -69,7 +83,60 @@ ${ctaLines[cta]}
 Best,
 Timigaga Studios`;
 
-    const short = `Hi ${business}, I noticed a digital opportunity around your ${website}. ${focusLines[focus]} ${ctaLines[cta]}`;
+      short = `Hi ${business}, I noticed a digital opportunity for your business. ${focusLines[focus]} ${ctaLines[cta]}`;
+    }
+
+    if (outreachType === 'Follow-up Email') {
+      subject = `Following up on ${business}`;
+      body = `${toneOpenings[tone]}
+
+I wanted to check if you had a chance to see my earlier note.
+
+${focusLines[focus]}
+
+${ctaLines[cta]}
+
+Best,
+Timigaga Studios`;
+
+      short = `Hi ${business}, just following up on my earlier message. ${ctaLines[cta]}`;
+    }
+
+    if (outreachType === 'Short DM') {
+      subject = `${business} quick idea`;
+      body = `${toneOpenings[tone]}
+
+${focusLines[focus]}
+
+${ctaLines[cta]}
+
+- Timigaga Studios`;
+
+      short = `Hi ${business}, I noticed an opportunity around your online presence. ${ctaLines[cta]}`;
+    }
+
+    if (outreachType === 'AI Follow-up') {
+      subject = `Still open to improving ${business}'s online presence?`;
+
+      body = `${toneOpenings[tone]}
+
+I wanted to follow up because ${business} still seems like a strong fit for the kind of work we do.
+
+${focusLines[focus]}
+
+${
+  hasDemo
+    ? `I already prepared a concept direction you can review here:\n${demo}\n`
+    : ''
+}
+
+If timing is better now, I’d be happy to continue the conversation and show you the next step.
+
+Best,
+Timigaga Studios`;
+
+      short = `Hi ${business}, following up in case now is a better time to revisit the digital opportunity I mentioned.`;
+    }
 
     return {
       subject,
@@ -125,7 +192,7 @@ Timigaga Studios`;
             AI Outreach Generator
           </h1>
           <p className="text-[var(--text-secondary)] font-medium">
-            Generate smarter outreach messages based on your lead data, tone, and offer angle.
+            Generate smarter outreach and follow-up messages based on your lead data, tone, and positioning.
           </p>
         </div>
 
@@ -143,14 +210,13 @@ Timigaga Studios`;
       </header>
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
-        {/* Controls */}
         <section className="neo-card p-6 md:p-8 space-y-5">
           <div>
             <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
               Generator Controls
             </h2>
             <p className="text-sm text-[var(--text-secondary)]">
-              Select a lead and customize the messaging direction.
+              Select a lead and customize the message direction.
             </p>
           </div>
 
@@ -175,7 +241,7 @@ Timigaga Studios`;
               onChange={(e) => setOutreachType(e.target.value)}
               className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] outline-none"
             >
-              {['Intro Email', 'Follow-up Email', 'Short DM'].map((item) => (
+              {['Intro Email', 'Follow-up Email', 'Short DM', 'AI Follow-up'].map((item) => (
                 <option key={item} value={item} className="bg-[#0A0A0A] text-white">
                   {item}
                 </option>
@@ -220,14 +286,13 @@ Timigaga Studios`;
           </div>
         </section>
 
-        {/* Output */}
         <section className="neo-card p-6 md:p-8 space-y-6">
           <div>
             <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
               Generated Outreach
             </h2>
             <p className="text-sm text-[var(--text-secondary)]">
-              Copy and use this in your outreach workflow.
+              Copy this content or push it into the Outreach workspace.
             </p>
           </div>
 
