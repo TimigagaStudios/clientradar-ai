@@ -24,8 +24,6 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
   const [fileName, setFileName] = useState('');
   const [hasPreviewed, setHasPreviewed] = useState(false);
 
-  if (!open) return null;
-
   const existingNames = new Set(
     leads.map((lead) => lead.businessName.toLowerCase().trim())
   );
@@ -219,6 +217,8 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
     setHasPreviewed(false);
     onClose();
   };
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
