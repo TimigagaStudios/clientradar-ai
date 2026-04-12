@@ -174,7 +174,7 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
       showToast({
         type: 'success',
         title: 'Import successful',
-        message: `${validRows.length} valid lead(s) imported successfully.`,
+        message: `${validRows.length} lead(s) imported successfully.`,
       });
     } catch (error) {
       console.error(error);
