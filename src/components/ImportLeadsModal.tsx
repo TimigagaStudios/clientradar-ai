@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { X, FileSpreadsheet, Upload, CheckCircle2 } from 'lucide-react';
+import { X, FileSpreadsheet, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { Lead } from '../types';
@@ -10,8 +10,13 @@ interface ImportLeadsModalProps {
   onClose: () => void;
 }
 
+type ParsedRow = Lead & {
+  validationErrors?: string[];
+  duplicate?: boolean;
+};
+
 const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
-  const { importLeads } = useLeads();
+  const { importLeads, leads } = useLeads();
   const { showToast } = useToast();
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
@@ -20,7 +25,19 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
   if (!open) return null;
 
-  const parseCSVText = (text: string): Lead[] => {
+  const existingNames = new Set(leads.map((lead) => lead.businessName.toLowerCase().trim()));
+  const existingEmails = new Set(
+    leads
+      .map((lead) => lead.email?.toLowerCase().trim())
+      .filter(Boolean) as string[]
+  );
+
+  const isValidEmail = (email: string) => {
+    if (!email) return true;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const parseCSVText = (text: string): ParsedRow[] => {
     const lines = text
       .split('\n')
       .map((line) => line.trim())
@@ -33,63 +50,91 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
     const dataLines = hasHeader ? lines.slice(1) : lines;
 
-    return dataLines
-      .map((line) => {
-        const [
-          businessName = '',
-          category = '',
-          city = '',
-          phone = '',
-          email = '',
-          instagram = '',
-          website = '',
-          leadScore = '0',
-          priority = 'Medium',
-          status = 'New',
-          notes = '',
-          dealValue = '',
-        ] = line.split(',').map((item) => item.trim());
+    return dataLines.map((line) => {
+      const [
+        businessName = '',
+        category = '',
+        city = '',
+        phone = '',
+        email = '',
+        instagram = '',
+        website = '',
+        leadScore = '0',
+        priority = 'Medium',
+        status = 'New',
+        notes = '',
+        dealValue = '',
+      ] = line.split(',').map((item) => item.trim());
 
-        if (!businessName || !category || !city) {
-          return null;
-        }
+      const validationErrors: string[] = [];
 
-        return {
-          id: crypto.randomUUID(),
-          businessName,
-          category,
-          city,
-          rating: 0,
-          reviewCount: 0,
-          phone: phone || undefined,
-          email: email || undefined,
-          instagram: instagram || undefined,
-          website: website || undefined,
-          outdatedWebsite: false,
-          leadScore: Number(leadScore) || 0,
-          priority: (priority as Lead['priority']) || 'Medium',
-          status: (status as Lead['status']) || 'New',
-          demoStatus: 'Not Started',
-          notes,
-          demoLink: undefined,
-          dealValue: dealValue ? Number(dealValue) : undefined,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          timeline: [
-            {
-              id: crypto.randomUUID(),
-              type: 'Lead Imported',
-              description: 'Imported via CSV',
-              date: new Date().toISOString(),
-            },
-          ],
-          outreachHistory: [],
-        } as Lead;
-      })
-      .filter(Boolean) as Lead[];
+      if (!businessName) validationErrors.push('Missing business name');
+      if (!category) validationErrors.push('Missing category');
+      if (!city) validationErrors.push('Missing city');
+      if (email && !isValidEmail(email)) validationErrors.push('Invalid email format');
+
+      const duplicate =
+        existingNames.has(businessName.toLowerCase()) ||
+        (!!email && existingEmails.has(email.toLowerCase()));
+
+      return {
+        id: crypto.randomUUID(),
+        businessName,
+        category,
+        city,
+        rating: 0,
+        reviewCount: 0,
+        phone: phone || undefined,
+        email: email || undefined,
+        instagram: instagram || undefined,
+        website: website || undefined,
+        outdatedWebsite: false,
+        leadScore: Number(leadScore) || 0,
+        priority: (priority as Lead['priority']) || 'Medium',
+        status: (status as Lead['status']) || 'New',
+        demoStatus: 'Not Started',
+        notes,
+        demoLink: undefined,
+        dealValue: dealValue ? Number(dealValue) : undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        timeline: [
+          {
+            id: crypto.randomUUID(),
+            type: 'Lead Imported',
+            description: 'Imported via CSV',
+            date: new Date().toISOString(),
+          },
+        ],
+        outreachHistory: [],
+        validationErrors,
+        duplicate,
+      };
+    });
   };
 
-  const previewRows = useMemo(() => parseCSVText(csvText), [csvText]);
+  const previewRows = useMemo(() => parseCSVText(csvText), [csvText, leads]);
+
+  const validRows = useMemo(
+    () =>
+      previewRows.filter(
+        (row) => (!row.validationErrors || row.validationErrors.length === 0) && !row.duplicate
+      ),
+    [previewRows]
+  );
+
+  const invalidRows = useMemo(
+    () =>
+      previewRows.filter(
+        (row) => row.validationErrors && row.validationErrors.length > 0
+      ),
+    [previewRows]
+  );
+
+  const duplicateRows = useMemo(
+    () => previewRows.filter((row) => row.duplicate),
+    [previewRows]
+  );
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -110,16 +155,16 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
     try {
       setImporting(true);
 
-      if (previewRows.length === 0) {
+      if (validRows.length === 0) {
         showToast({
           type: 'error',
           title: 'Import failed',
-          message: 'No valid rows were found in the provided CSV data.',
+          message: 'There are no valid rows available to import.',
         });
         return;
       }
 
-      await importLeads(previewRows);
+      await importLeads(validRows);
 
       setCsvText('');
       setFileName('');
@@ -129,14 +174,14 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
       showToast({
         type: 'success',
         title: 'Import successful',
-        message: `${previewRows.length} lead(s) imported successfully.`,
+        message: `${validRows.length} valid lead(s) imported successfully.`,
       });
     } catch (error) {
       console.error(error);
       showToast({
         type: 'error',
         title: 'Import failed',
-        message: 'Could not import leads. Please check your CSV format and try again.',
+        message: 'Could not import leads. Please review your data and try again.',
       });
     } finally {
       setImporting(false);
@@ -234,7 +279,7 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
               {hasPreviewed ? (
                 <span className="inline-flex items-center gap-2 text-green-500">
                   <CheckCircle2 size={16} />
-                  {previewRows.length} valid row(s) ready for import
+                  {validRows.length} valid row(s), {invalidRows.length} invalid, {duplicateRows.length} duplicate(s)
                 </span>
               ) : (
                 <span>Preview your rows before importing</span>
@@ -256,7 +301,7 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
 
               <Button
                 onClick={handleImport}
-                disabled={importing || !hasPreviewed || previewRows.length === 0}
+                disabled={importing || !hasPreviewed || validRows.length === 0}
               >
                 {importing ? 'Importing...' : 'Confirm Import'}
               </Button>
@@ -264,46 +309,85 @@ Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,htt
           </div>
 
           {hasPreviewed && (
-            <div className="neo-card p-4 overflow-x-auto">
-              <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                Import Preview
-              </h3>
-
-              {previewRows.length === 0 ? (
-                <p className="text-[var(--text-secondary)] text-sm">
-                  No valid rows detected. Make sure each row contains at least businessName, category, and city.
-                </p>
-              ) : (
-                <table className="w-full min-w-[900px] text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-black/8 dark:border-white/8">
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Business</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Category</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">City</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Email</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Phone</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Priority</th>
-                      <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="border-b border-black/6 dark:border-white/6 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                      >
-                        <td className="p-3 text-[var(--text-primary)] font-medium">{row.businessName}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.category}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.city}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.email || '—'}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.phone || '—'}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.priority}</td>
-                        <td className="p-3 text-[var(--text-secondary)]">{row.status}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-4">
+              {invalidRows.length > 0 && (
+                <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-4 text-sm text-yellow-200">
+                  <div className="flex items-center gap-2 font-semibold mb-2">
+                    <AlertTriangle size={16} />
+                    Invalid rows detected
+                  </div>
+                  <p>Rows missing required fields or using invalid email formats will not be imported.</p>
+                </div>
               )}
+
+              {duplicateRows.length > 0 && (
+                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-sm text-orange-200">
+                  <div className="flex items-center gap-2 font-semibold mb-2">
+                    <AlertTriangle size={16} />
+                    Duplicate rows detected
+                  </div>
+                  <p>Rows matching existing business names or emails will be skipped.</p>
+                </div>
+              )}
+
+              <div className="neo-card p-4 overflow-x-auto">
+                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
+                  Import Preview
+                </h3>
+
+                {previewRows.length === 0 ? (
+                  <p className="text-[var(--text-secondary)] text-sm">
+                    No valid rows detected. Make sure each row contains at least businessName, category, and city.
+                  </p>
+                ) : (
+                  <table className="w-full min-w-[1000px] text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-black/8 dark:border-white/8">
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Business</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Category</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">City</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Email</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Phone</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Priority</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Status</th>
+                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Validation</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRows.map((row) => {
+                        const isInvalid = row.validationErrors && row.validationErrors.length > 0;
+                        const isDuplicate = row.duplicate;
+
+                        return (
+                          <tr
+                            key={row.id}
+                            className="border-b border-black/6 dark:border-white/6 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+                          >
+                            <td className="p-3 text-[var(--text-primary)] font-medium">{row.businessName}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.category}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.city}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.email || '—'}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.phone || '—'}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.priority}</td>
+                            <td className="p-3 text-[var(--text-secondary)]">{row.status}</td>
+                            <td className="p-3">
+                              {isInvalid ? (
+                                <span className="text-red-400 text-xs">
+                                  {row.validationErrors?.join(', ')}
+                                </span>
+                              ) : isDuplicate ? (
+                                <span className="text-orange-400 text-xs">Duplicate</span>
+                              ) : (
+                                <span className="text-green-500 text-xs">Valid</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
         </div>
