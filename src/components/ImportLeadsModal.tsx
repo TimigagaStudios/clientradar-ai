@@ -18,6 +18,7 @@ type ParsedRow = Lead & {
 const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
   const { importLeads, leads } = useLeads();
   const { showToast } = useToast();
+
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
   const [fileName, setFileName] = useState('');
@@ -25,7 +26,10 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
   if (!open) return null;
 
-  const existingNames = new Set(leads.map((lead) => lead.businessName.toLowerCase().trim()));
+  const existingNames = new Set(
+    leads.map((lead) => lead.businessName.toLowerCase().trim())
+  );
+
   const existingEmails = new Set(
     leads
       .map((lead) => lead.email?.toLowerCase().trim())
@@ -142,13 +146,34 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
 
     setFileName(file.name);
 
-    const text = await file.text();
-    setCsvText(text);
-    setHasPreviewed(false);
+    try {
+      const text = await file.text();
+      setCsvText(text);
+      setHasPreviewed(false);
+
+      showToast({
+        type: 'info',
+        title: 'CSV file loaded',
+        message: `${file.name} is ready for preview.`,
+      });
+    } catch (error) {
+      console.error(error);
+      showToast({
+        type: 'error',
+        title: 'File load failed',
+        message: 'Could not read the selected CSV file.',
+      });
+    }
   };
 
   const handlePreview = () => {
     setHasPreviewed(true);
+
+    showToast({
+      type: 'info',
+      title: 'Preview ready',
+      message: `${previewRows.length} row(s) parsed. Review before importing.`,
+    });
   };
 
   const handleImport = async () => {
