@@ -6,6 +6,7 @@ interface LeadContextType {
   loading: boolean;
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => Promise<void>;
   updateLeadStatus: (id: string, status: LeadStatus) => Promise<void>;
+  updateLead: (id: string, updates: Partial<Lead>) => Promise<void>; // ✅ NEW
   addDemoLink: (id: string, link: string) => Promise<void>;
   addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => Promise<void>;
   updateDemoStatus: (id: string, demoStatus: DemoStatus) => Promise<void>;
@@ -52,7 +53,6 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const refreshLeads = async () => {
     try {
       setLoading(true);
-
       const response = await fetch('/api/leads');
       const result = await response.json();
 
@@ -74,128 +74,35 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     refreshLeads();
   }, []);
 
-  const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => {
-    const payload = {
-      ...leadData,
-      demoStatus: leadData.demoStatus || 'Not Started',
-      timeline: [
-        {
-          id: crypto.randomUUID(),
-          type: 'Lead Found',
-          description: 'Added to database manually',
-          date: new Date().toISOString(),
-        },
-      ],
-      outreachHistory: [],
-    };
-
-    const response = await fetch('/api/leads', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+  const updateLead = async (id: string, updates: Partial<Lead>) => {
+    const response = await fetch(`/api/leads/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
     });
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result?.error || 'Failed to add lead');
+      throw new Error(result?.error || 'Failed to update lead');
     }
 
     await refreshLeads();
   };
 
   const updateLeadStatus = async (id: string, status: LeadStatus) => {
-    const lead = leads.find((l) => l.id === id);
-    if (!lead) return;
-
-    const newTimelineEvent: ActivityLog = {
-      id: crypto.randomUUID(),
-      type: status === 'Deal Closed' ? 'Deal Closed' : 'Status Change',
-      description: `Status updated to ${status}`,
-      date: new Date().toISOString(),
-    };
-
-    let dealValue = lead.dealValue;
-    if (status === 'Deal Closed' && !dealValue) {
-      dealValue = 2500;
-    }
-
-    const response = await fetch(`/api/leads/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        status,
-        dealValue,
-        timeline: [newTimelineEvent, ...(lead.timeline || [])],
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result?.error || 'Failed to update lead status');
-    }
-
-    await refreshLeads();
+    await updateLead(id, { status });
   };
 
   const addDemoLink = async (id: string, link: string) => {
-    const lead = leads.find((l) => l.id === id);
-    if (!lead) return;
-
-    const updatedStatus = lead.status === 'New' ? 'Demo Created' : lead.status;
-
-    const newTimelineEvent: ActivityLog = {
-      id: crypto.randomUUID(),
-      type: 'Demo Created',
-      description: `Demo link added: ${link}`,
-      date: new Date().toISOString(),
-    };
-
-    const response = await fetch(`/api/leads/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        demoLink: link,
-        demoStatus: 'Ready',
-        status: updatedStatus,
-        timeline: [newTimelineEvent, ...(lead.timeline || [])],
-      }),
+    await updateLead(id, {
+      demoLink: link,
+      demoStatus: 'Ready',
     });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result?.error || 'Failed to add demo link');
-    }
-
-    await refreshLeads();
   };
 
   const updateDemoStatus = async (id: string, demoStatus: DemoStatus) => {
-    const response = await fetch(`/api/leads/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        demoStatus,
-      }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result?.error || 'Failed to update demo status');
-    }
-
-    await refreshLeads();
+    await updateLead(id, { demoStatus });
   };
 
   const addOutreachLog = async (id: string, log: Omit<OutreachLog, 'id'>) => {
@@ -207,31 +114,9 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       id: crypto.randomUUID(),
     };
 
-    const newTimelineEvent: ActivityLog = {
-      id: crypto.randomUUID(),
-      type: 'Outreach Sent',
-      description: `Sent ${log.type} email outreach`,
-      date: new Date().toISOString(),
-    };
-
-    const response = await fetch(`/api/leads/${id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        outreachHistory: [outreachItem, ...(lead.outreachHistory || [])],
-        timeline: [newTimelineEvent, ...(lead.timeline || [])],
-      }),
+    await updateLead(id, {
+      outreachHistory: [outreachItem, ...(lead.outreachHistory || [])],
     });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result?.error || 'Failed to add outreach log');
-    }
-
-    await refreshLeads();
   };
 
   const deleteLead = async (id: string) => {
@@ -248,34 +133,28 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await refreshLeads();
   };
 
+  const addLead = async (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => {
+    const response = await fetch('/api/leads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(leadData),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result?.error || 'Failed to add lead');
+    }
+
+    await refreshLeads();
+  };
+
   const importLeads = async (newLeads: Lead[]) => {
     for (const lead of newLeads) {
       await fetch('/api/leads', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          businessName: lead.businessName,
-          category: lead.category,
-          city: lead.city,
-          rating: lead.rating,
-          reviewCount: lead.reviewCount,
-          phone: lead.phone,
-          email: lead.email,
-          instagram: lead.instagram,
-          website: lead.website,
-          outdatedWebsite: lead.outdatedWebsite,
-          leadScore: lead.leadScore,
-          priority: lead.priority,
-          status: lead.status,
-          demoStatus: lead.demoStatus || 'Not Started',
-          notes: lead.notes,
-          demoLink: lead.demoLink,
-          dealValue: lead.dealValue,
-          timeline: lead.timeline || [],
-          outreachHistory: lead.outreachHistory || [],
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lead),
       });
     }
 
@@ -288,11 +167,8 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const resetData = async () => {
     for (const lead of leads) {
-      await fetch(`/api/leads/${lead.id}`, {
-        method: 'DELETE',
-      });
+      await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
     }
-
     await refreshLeads();
   };
 
@@ -303,6 +179,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         addLead,
         updateLeadStatus,
+        updateLead, // ✅ NEW
         addDemoLink,
         addOutreachLog,
         updateDemoStatus,
@@ -320,7 +197,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useLeads = () => {
   const context = useContext(LeadContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useLeads must be used within a LeadProvider');
   }
   return context;
