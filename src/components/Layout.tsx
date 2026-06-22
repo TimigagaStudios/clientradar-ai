@@ -1,5 +1,3 @@
-// ✅ FULL UPDATED LAYOUT.TSX (Mobile Quick Actions Integrated)
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -44,18 +42,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
   const { leads } = useLeads();
-
-  const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
-    { icon: Search, label: 'Lead Finder', path: '/finder' },
-    { icon: Users, label: 'Leads', path: '/leads' },
-    { icon: MonitorPlay, label: 'Demos', path: '/demos' },
-    { icon: Mail, label: 'Outreach', path: '/outreach' },
-    { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
-    { icon: CheckSquare, label: 'Deals', path: '/deals' },
-    { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-    { icon: SettingsIcon, label: 'Settings', path: '/settings' },
-  ];
 
   const quickActions = [
     { icon: PlusCircle, label: 'Add Lead' },
@@ -104,20 +90,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     setIsAdminMenuOpen(false);
   };
 
-  const handleGlobalSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!globalSearch.trim()) return navigate('/leads');
-    navigate(`/leads?q=${encodeURIComponent(globalSearch.trim())}`);
-  };
-
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
-      {/* HEADER */}
-      <header
-        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
+      <header className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
         style={{
           background:
             theme === 'dark'
@@ -136,8 +114,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
+          {/* Search hidden on mobile (as requested) */}
           <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
-            <form onSubmit={handleGlobalSearchSubmit} className="relative">
+            <div className="relative">
               <Search
                 className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
                 size={18}
@@ -149,16 +128,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 placeholder="Search leads, outreach, demos..."
                 className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none"
               />
-            </form>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-3">
 
-            {/* ✅ Desktop Quick Actions */}
+            {/* Desktop Quick Actions */}
             <div className="hidden sm:flex gap-2">
-              {quickActions.map((action, i) => (
+              {quickActions.map((action) => (
                 <Button
-                  key={i}
+                  key={action.label}
                   variant="icon"
                   title={action.label}
                   onClick={() => handleQuickAction(action.label)}
@@ -168,7 +147,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               ))}
             </div>
 
-            {/* ✅ Admin + Mobile Dropdown */}
+            {/* Profile Dropdown */}
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
@@ -177,11 +156,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
                   A
                 </div>
-
                 <ChevronDown
                   size={16}
                   className={cn(
-                    'text-[var(--text-secondary)] transition-transform hidden sm:block',
+                    'hidden sm:block text-[var(--text-secondary)] transition-transform',
                     isAdminMenuOpen && 'rotate-180'
                   )}
                 />
@@ -229,9 +207,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <LogOut size={17} />
                     <span className="font-medium">Logout</span>
                   </button>
+
                 </div>
               )}
             </div>
+
           </div>
         </div>
       </header>
