@@ -31,6 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updated_at: new Date().toISOString(),
       };
 
+      // ✅ Existing fields
       if ('status' in updates) payload.status = updates.status;
       if ('demoStatus' in updates) payload.demo_status = updates.demoStatus;
       if ('demoLink' in updates) payload.demo_link = updates.demoLink;
@@ -38,6 +39,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if ('notes' in updates) payload.notes = updates.notes;
       if ('timeline' in updates) payload.timeline = updates.timeline;
       if ('outreachHistory' in updates) payload.outreach_history = updates.outreachHistory;
+
+      // ✅ NEW editable fields
+      if ('businessName' in updates) payload.business_name = updates.businessName;
+      if ('category' in updates) payload.category = updates.category;
+      if ('city' in updates) payload.city = updates.city;
+      if ('rating' in updates) payload.rating = updates.rating;
+      if ('reviewCount' in updates) payload.review_count = updates.reviewCount;
+      if ('leadScore' in updates) payload.lead_score = updates.leadScore;
+      if ('priority' in updates) payload.priority = updates.priority;
 
       const { data, error } = await supabase
         .from('leads')
