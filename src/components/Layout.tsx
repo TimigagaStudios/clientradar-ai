@@ -95,7 +95,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
-      <header className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
+      <header
+        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
         style={{
           background:
             theme === 'dark'
@@ -114,7 +115,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
-          {/* Search hidden on mobile (as requested) */}
+          {/* Search hidden on mobile */}
           <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
             <div className="relative">
               <Search
@@ -133,8 +134,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
           <div className="flex items-center gap-3">
 
-            {/* Desktop Quick Actions */}
-            <div className="hidden sm:flex gap-2">
+            {/* ✅ Desktop Quick Actions */}
+            <div className="hidden md:flex gap-2">
               {quickActions.map((action) => (
                 <Button
                   key={action.label}
@@ -147,7 +148,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               ))}
             </div>
 
-            {/* Profile Dropdown */}
+            {/* ✅ Profile Dropdown */}
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
@@ -156,10 +157,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
                   A
                 </div>
+
                 <ChevronDown
                   size={16}
                   className={cn(
-                    'hidden sm:block text-[var(--text-secondary)] transition-transform',
+                    'hidden md:block text-[var(--text-secondary)] transition-transform',
                     isAdminMenuOpen && 'rotate-180'
                   )}
                 />
@@ -169,7 +171,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
 
                   {/* ✅ Mobile Quick Actions */}
-                  <div className="sm:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
+                  <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
                       <button
                         key={action.label}
