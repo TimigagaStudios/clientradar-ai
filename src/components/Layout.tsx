@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Search,
@@ -37,7 +37,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
 
-  const location = useLocation();
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -90,13 +89,19 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     setIsAdminMenuOpen(false);
   };
 
+  const handleGlobalSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!globalSearch.trim()) return navigate('/leads');
+    navigate(`/leads?q=${encodeURIComponent(globalSearch.trim())}`);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
       <header
-        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-5 sm:px-6 lg:px-8 py-4"
+        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
         style={{
           background:
             theme === 'dark'
@@ -106,8 +111,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           WebkitBackdropFilter: 'blur(28px)',
         }}
       >
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
 
+          {/* Sidebar Button */}
           <button
             className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5"
             onClick={() => setIsSidebarOpen(true)}
@@ -115,26 +121,27 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
-          {/* Search hidden on mobile */}
-          <div className="flex-1 max-w-xl mx-0 md:mx-4 hidden md:block">
-            <div className="relative">
-              <Search
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-                size={18}
-              />
-              <input
-                type="text"
-                value={globalSearch}
-                onChange={(e) => setGlobalSearch(e.target.value)}
-                placeholder="Search leads, outreach, demos..."
-                className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none"
-              />
-            </div>
-          </div>
+          {/* ✅ Search Now Always Visible */}
+          <form
+            onSubmit={handleGlobalSearchSubmit}
+            className="flex-1 relative"
+          >
+            <Search
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
+              size={18}
+            />
+            <input
+              type="text"
+              value={globalSearch}
+              onChange={(e) => setGlobalSearch(e.target.value)}
+              placeholder="Search leads, outreach, demos..."
+              className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none text-sm sm:text-base"
+            />
+          </form>
 
           <div className="flex items-center gap-3">
 
-            {/* ✅ Desktop Quick Actions */}
+            {/* Desktop Quick Actions */}
             <div className="hidden md:flex gap-2">
               {quickActions.map((action) => (
                 <Button
@@ -148,16 +155,15 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               ))}
             </div>
 
-            {/* ✅ Profile Dropdown */}
+            {/* Profile Dropdown */}
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                className="flex items-center gap-3 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2"
+                className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2"
               >
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
                   A
                 </div>
-
                 <ChevronDown
                   size={16}
                   className={cn(
@@ -170,7 +176,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               {isAdminMenuOpen && (
                 <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
 
-                  {/* ✅ Mobile Quick Actions */}
+                  {/* Mobile Quick Actions */}
                   <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
                       <button
