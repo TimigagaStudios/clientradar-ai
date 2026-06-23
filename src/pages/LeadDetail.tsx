@@ -357,7 +357,7 @@ const lead = leads.find((l) => l.id === id);
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
-              className="p-2.5 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
+className="w-11 h-11 flex items-center justify-center rounded-2xl neo-button text-[var(--text-secondary)] hover:text-[var(--accent)] shrink-0"
             >
               <MoreVertical size={18} />
             </button>
