@@ -45,8 +45,16 @@ const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { leads, updateLeadStatus, addDemoLink, deleteLead, updateDemoStatus } = useLeads();
-  const [lead, setLead] = useState(leads.find((l) => l.id === id));
+const {
+  leads,
+  loading,
+  updateLeadStatus,
+  addDemoLink,
+  deleteLead,
+  updateDemoStatus,
+} = useLeads();
+
+const lead = leads.find((l) => l.id === id);
   const [demoUrl, setDemoUrl] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -55,9 +63,6 @@ const LeadDetail = () => {
   const [outreachLogs, setOutreachLogs] = useState<OutreachLog[]>([]);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    setLead(leads.find((l) => l.id === id));
-  }, [leads, id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -348,7 +353,7 @@ const LeadDetail = () => {
           Back to Leads
         </button>
 
-        <div className="flex items-center gap-3">
+<div className="flex items-center gap-4 shrink-0">
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
