@@ -112,7 +112,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
-      {/* ✅ Sidebar Overlay */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
@@ -120,7 +119,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         />
       )}
 
-      {/* ✅ Sidebar */}
       <aside
         className={cn(
           'fixed top-0 left-0 bottom-0 w-72 z-50 lg:z-30 transition-transform duration-300 lg:translate-x-0',
@@ -132,7 +130,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               ? 'rgba(17, 28, 68, 0.94)'
               : 'rgba(231, 236, 244, 0.96)',
           backdropFilter: 'blur(26px)',
-          WebkitBackdropFilter: 'blur(26px)',
         }}
       >
         <div className="flex flex-col h-full p-6">
@@ -167,7 +164,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
-      {/* ✅ Header (UNCHANGED STYLING) */}
       <header
         className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
         style={{
@@ -176,7 +172,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               ? 'rgba(17, 28, 68, 0.58)'
               : 'rgba(231, 236, 244, 0.58)',
           backdropFilter: 'blur(28px)',
-          WebkitBackdropFilter: 'blur(28px)',
         }}
       >
         <div className="flex items-center gap-3">
@@ -188,7 +183,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
-          <form onSubmit={handleGlobalSearchSubmit} className="flex-1 relative">
+          {/* ✅ FIXED: prevent dropdown push-off */}
+          <form
+            onSubmit={handleGlobalSearchSubmit}
+            className="flex-1 max-w-[65%] md:max-w-none relative"
+          >
             <Search
               className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
               size={18}
@@ -236,7 +235,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
               {isAdminMenuOpen && (
                 <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
-
                   <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
                       <button
@@ -275,7 +273,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <LogOut size={17} />
                     <span className="font-medium">Logout</span>
                   </button>
-
                 </div>
               )}
             </div>
@@ -289,7 +286,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <div className="max-w-[1600px] mx-auto">{children}</div>
         </div>
       </main>
-
     </div>
   );
 };
