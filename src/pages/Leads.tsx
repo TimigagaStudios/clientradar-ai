@@ -147,7 +147,8 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
       </Link>
 
-      <div className="absolute top-3 right-3 hidden lg:flex gap-2">
+      {/* ✅ FIXED: visible on ALL screen sizes */}
+      <div className="absolute top-3 right-3 flex gap-2">
         <button
           className="p-2 neo-button"
           onClick={handleSendOutreach}
