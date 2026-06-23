@@ -90,16 +90,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     window.location.href = '/login';
   };
 
-  const handleGoToSettings = () => {
-    setIsAdminMenuOpen(false);
-    navigate('/settings');
-  };
-
-  const handleToggleTheme = () => {
-    toggleTheme();
-    setIsAdminMenuOpen(false);
-  };
-
   const handleGlobalSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!globalSearch.trim()) return navigate('/leads');
@@ -107,7 +97,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
 
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
@@ -164,6 +154,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
+      {/* ✅ FIXED HEADER */}
       <header
         className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
         style={{
@@ -174,7 +165,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           backdropFilter: 'blur(28px)',
         }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full">
 
           <button
             className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5"
@@ -183,10 +174,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
-          {/* ✅ FIXED: prevent dropdown push-off */}
+          {/* ✅ Critical Fix: min-w-0 allows flex shrink */}
           <form
             onSubmit={handleGlobalSearchSubmit}
-            className="flex-1 max-w-[65%] md:max-w-none relative"
+            className="flex-1 min-w-0 relative"
           >
             <Search
               className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
@@ -201,14 +192,13 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             />
           </form>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
 
             <div className="hidden md:flex gap-2">
               {quickActions.map((action) => (
                 <Button
                   key={action.label}
                   variant="icon"
-                  title={action.label}
                   onClick={() => handleQuickAction(action.label)}
                 >
                   <action.icon size={18} />
@@ -219,18 +209,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2"
+                className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shrink-0"
               >
                 <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
                   A
                 </div>
-                <ChevronDown
-                  size={16}
-                  className={cn(
-                    'hidden md:block text-[var(--text-secondary)] transition-transform',
-                    isAdminMenuOpen && 'rotate-180'
-                  )}
-                />
               </button>
 
               {isAdminMenuOpen && (
@@ -240,38 +223,32 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                       <button
                         key={action.label}
                         onClick={() => handleQuickAction(action.label)}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                        className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                       >
-                        <action.icon size={17} />
-                        <span className="font-medium">{action.label}</span>
+                        {action.label}
                       </button>
                     ))}
                   </div>
 
                   <button
-                    onClick={handleGoToSettings}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left"
+                    onClick={() => navigate('/settings')}
+                    className="w-full px-4 py-3 text-left rounded-xl"
                   >
-                    <SettingsIcon size={17} />
-                    <span className="font-medium">Settings</span>
+                    Settings
                   </button>
 
                   <button
-                    onClick={handleToggleTheme}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left"
+                    onClick={toggleTheme}
+                    className="w-full px-4 py-3 text-left rounded-xl"
                   >
-                    {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
-                    <span className="font-medium">
-                      Switch to {theme === 'light' ? 'Dark' : 'Light'}
-                    </span>
+                    Toggle Theme
                   </button>
 
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500"
+                    className="w-full px-4 py-3 text-left rounded-xl text-red-500"
                   >
-                    <LogOut size={17} />
-                    <span className="font-medium">Logout</span>
+                    Logout
                   </button>
                 </div>
               )}
@@ -286,6 +263,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <div className="max-w-[1600px] mx-auto">{children}</div>
         </div>
       </main>
+
     </div>
   );
 };
