@@ -8,16 +8,17 @@ import {
   MapPin,
   ExternalLink,
   Send,
-  Plus,
   CheckCircle2,
   AlertCircle,
   XCircle,
+  Edit3,
 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Lead, LeadPriority, LeadStatus } from '../types';
 import { cn } from '../utils/cn';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/useToast';
+import EditLeadModal from '../components/EditLeadModal';
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const { updateLeadStatus, deleteLead } = useLeads();
@@ -25,6 +26,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const statusColors: Record<LeadStatus, string> = {
@@ -50,7 +52,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         setMenuOpen(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
@@ -60,7 +61,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     e.stopPropagation();
     await updateLeadStatus(lead.id, 'Interested');
     setMenuOpen(false);
-
     showToast({
       type: 'success',
       title: 'Lead updated',
@@ -73,7 +73,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     e.stopPropagation();
     await updateLeadStatus(lead.id, 'Rejected');
     setMenuOpen(false);
-
     showToast({
       type: 'success',
       title: 'Lead updated',
@@ -85,11 +84,10 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     await deleteLead(lead.id);
     setConfirmDeleteOpen(false);
     setMenuOpen(false);
-
     showToast({
       type: 'success',
       title: 'Lead deleted',
-      message: `${lead.businessName} was removed from your pipeline.`,
+      message: `${lead.businessName} removed from pipeline.`,
     });
   };
 
@@ -128,74 +126,30 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
               <span>({lead.reviewCount} reviews)</span>
             </div>
 
-            <div className="flex items-center gap-2 text-sm">
-              {lead.website ? (
-                lead.outdatedWebsite ? (
-                  <span className="flex items-center gap-1.5 text-orange-400 bg-orange-400/10 px-2 py-1 rounded-full text-xs">
-                    <AlertCircle size={12} /> Outdated Website
-                  </span>
-                ) : (
-                  <a
-                    href={lead.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-blue-400 hover:underline bg-blue-400/10 px-2 py-1 rounded-full text-xs"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Globe size={12} /> Has Website
-                  </a>
-                )
-              ) : (
-                <span className="flex items-center gap-1.5 text-red-400 bg-red-400/10 px-2 py-1 rounded-full text-xs">
-                  <XCircle size={12} /> No Website
-                </span>
-              )}
-            </div>
-
             <div className="flex items-center justify-between pt-3 border-t border-black/8 dark:border-white/8">
               <div className="flex flex-col">
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
                   Lead Score
                 </span>
-                <span
-                  className={cn(
-                    'font-bold text-lg',
-                    lead.leadScore > 70
-                      ? 'text-green-500'
-                      : lead.leadScore > 40
-                      ? 'text-yellow-500'
-                      : 'text-gray-400'
-                  )}
-                >
-                  {lead.leadScore}
-                </span>
+                <span className="font-bold text-lg">{lead.leadScore}</span>
               </div>
 
               <div className="flex flex-col items-end">
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
                   Priority
                 </span>
-                <span className={cn('font-medium text-sm flex items-center gap-1', priorityColors[lead.priority])}>
+                <span className={cn('font-medium text-sm', priorityColors[lead.priority])}>
                   {lead.priority}
                 </span>
               </div>
             </div>
           </div>
-
-          {lead.demoLink && (
-            <div className="mt-3 bg-purple-500/10 border border-purple-500/20 rounded-xl p-2.5 flex items-center gap-2 text-xs text-purple-400">
-              <CheckCircle2 size={14} />
-              <span className="truncate flex-1">Demo Ready</span>
-              <ExternalLink size={12} />
-            </div>
-          )}
         </div>
       </Link>
 
-      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity hidden lg:flex gap-2">
+      <div className="absolute top-3 right-3 hidden lg:flex gap-2">
         <button
-          className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          title="Send Outreach"
+          className="p-2 neo-button"
           onClick={handleSendOutreach}
         >
           <Send size={14} />
@@ -203,8 +157,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
 
         <div className="relative" ref={menuRef}>
           <button
-            className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
-            title="More Options"
+            className="p-2 neo-button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -217,24 +170,39 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
           {menuOpen && (
             <div className="absolute right-0 mt-2 w-52 neo-card p-2 z-50">
               <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditOpen(true);
+                  setMenuOpen(false);
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+              >
+                <Edit3 size={14} className="inline mr-2" />
+                Edit Lead
+              </button>
+
+              <button
                 onClick={handleMarkInterested}
-                className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
               >
                 Mark Interested
               </button>
+
               <button
                 onClick={handleMarkRejected}
-                className="w-full text-left px-4 py-3 rounded-xl text-[var(--text-primary)] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
               >
                 Mark Rejected
               </button>
+
               <button
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
                   setConfirmDeleteOpen(true);
                 }}
-                className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
+                className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
               >
                 Delete Lead
               </button>
@@ -243,10 +211,16 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
       </div>
 
+      <EditLeadModal
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        lead={lead}
+      />
+
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Delete Lead"
-        description={`Are you sure you want to permanently delete ${lead.businessName}? This action cannot be undone.`}
+        description={`Are you sure you want to permanently delete ${lead.businessName}?`}
         confirmText="Delete"
         cancelText="Cancel"
         destructive
@@ -317,8 +291,8 @@ const Leads = () => {
           />
           <input
             type="text"
-            placeholder="Search businesses, cities, or categories..."
-            className="w-full pl-12 pr-4 py-3 rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none"
+            placeholder="Search businesses..."
+            className="w-full pl-12 pr-4 py-3 rounded-2xl neo-in"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -332,8 +306,8 @@ const Leads = () => {
               className={cn(
                 'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                 activeFilter === filter
-                  ? 'bg-[var(--accent)] text-white shadow-[0_10px_24px_rgba(255,122,0,0.22)]'
-                  : 'neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'neo-button'
               )}
             >
               {filter}
@@ -348,26 +322,6 @@ const Leads = () => {
             <LeadCard lead={lead} />
           </div>
         ))}
-
-        {filteredLeads.length === 0 && (
-          <div className="col-span-full neo-card p-10 text-center">
-            <h3 className="text-xl font-bold text-[var(--text-primary)] mb-3">
-              No leads found
-            </h3>
-            <p className="text-[var(--text-secondary)] max-w-xl mx-auto leading-8">
-              No leads match your current search or filter selection.
-            </p>
-            <button
-              onClick={() => {
-                setActiveFilter('All');
-                setSearchTerm('');
-              }}
-              className="mt-4 text-[var(--accent)] hover:underline"
-            >
-              Clear filters
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
