@@ -104,19 +104,27 @@ const lead = leads.find((l) => l.id === id);
     fetchOutreachLogs();
   }, [id]);
 
-  if (!lead) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)]">
-        <p>Lead not found</p>
-        <button
-          onClick={() => navigate('/leads')}
-          className="mt-4 text-[var(--accent)] hover:underline"
-        >
-          Back to Leads
-        </button>
-      </div>
-    );
-  }
+if (loading) {
+  return (
+    <div className="flex items-center justify-center h-full text-[var(--text-secondary)]">
+      Loading lead details...
+    </div>
+  );
+}
+
+if (!lead) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)]">
+      <p>Lead not found</p>
+      <button
+        onClick={() => navigate('/leads')}
+        className="mt-4 text-[var(--accent)] hover:underline"
+      >
+        Back to Leads
+      </button>
+    </div>
+  );
+}
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     updateLeadStatus(lead.id, e.target.value as LeadStatus);
