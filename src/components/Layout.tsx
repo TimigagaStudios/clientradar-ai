@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Search,
@@ -37,10 +37,23 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
 
+  const location = useLocation();
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
   const { leads } = useLeads();
+
+  const menuItems = [
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: Search, label: 'Lead Finder', path: '/finder' },
+    { icon: Users, label: 'Leads', path: '/leads' },
+    { icon: MonitorPlay, label: 'Demos', path: '/demos' },
+    { icon: Mail, label: 'Outreach', path: '/outreach' },
+    { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
+    { icon: CheckSquare, label: 'Deals', path: '/deals' },
+    { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+    { icon: SettingsIcon, label: 'Settings', path: '/settings' },
+  ];
 
   const quickActions = [
     { icon: PlusCircle, label: 'Add Lead' },
@@ -59,14 +72,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         setIsAdminMenuOpen(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleQuickAction = (label: string) => {
     setIsAdminMenuOpen(false);
-
     if (label === 'Add Lead') return setIsAddLeadOpen(true);
     if (label === 'Import') return setIsImportOpen(true);
     if (label === 'Export') return exportLeadsToCSV(leads);
@@ -79,16 +90,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     window.location.href = '/login';
   };
 
-  const handleGoToSettings = () => {
-    setIsAdminMenuOpen(false);
-    navigate('/settings');
-  };
-
-  const handleToggleTheme = () => {
-    toggleTheme();
-    setIsAdminMenuOpen(false);
-  };
-
   const handleGlobalSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!globalSearch.trim()) return navigate('/leads');
@@ -96,139 +97,137 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] transition-colors duration-300">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
+
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
-      <header
-        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
+      {/* ✅ Sidebar */}
+      <aside
+        className={cn(
+          'fixed top-0 left-0 bottom-0 w-72 z-50 transition-transform duration-300 lg:translate-x-0',
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
         style={{
           background:
             theme === 'dark'
-              ? 'rgba(17, 28, 68, 0.58)'
-              : 'rgba(231, 236, 244, 0.58)',
-          backdropFilter: 'blur(28px)',
-          WebkitBackdropFilter: 'blur(28px)',
+              ? 'rgba(17, 28, 68, 0.94)'
+              : 'rgba(231, 236, 244, 0.96)',
+          backdropFilter: 'blur(26px)',
         }}
       >
+        <div className="flex flex-col h-full p-6">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-[var(--accent)]">
+              <Zap className="text-white" size={22} />
+            </div>
+            <span className="text-xl font-bold">ClientRadar</span>
+          </div>
+
+          <nav className="flex-1 space-y-3">
+            {menuItems.map((item) => {
+              const isActive = location.pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setIsSidebarOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 rounded-xl transition',
+                    isActive
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'text-[var(--text-secondary)] hover:bg-black/10'
+                  )}
+                >
+                  <item.icon size={18} />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
+
+      {/* ✅ Header */}
+      <header className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-2xl px-4 py-4 backdrop-blur-xl bg-black/20">
+
         <div className="flex items-center gap-3">
 
-          {/* Sidebar Button */}
           <button
-            className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5"
+            className="lg:hidden p-2"
             onClick={() => setIsSidebarOpen(true)}
           >
             <Menu size={22} />
           </button>
 
-          {/* ✅ Search Now Always Visible */}
-          <form
-            onSubmit={handleGlobalSearchSubmit}
-            className="flex-1 relative"
-          >
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-              size={18}
-            />
+          <form onSubmit={handleGlobalSearchSubmit} className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={18} />
             <input
-              type="text"
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
-              placeholder="Search leads, outreach, demos..."
-              className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none text-sm sm:text-base"
+              placeholder="Search leads..."
+              className="w-full pl-10 pr-4 py-2 rounded-xl"
             />
           </form>
 
-          <div className="flex items-center gap-3">
-
-            {/* Desktop Quick Actions */}
-            <div className="hidden md:flex gap-2">
-              {quickActions.map((action) => (
-                <Button
-                  key={action.label}
-                  variant="icon"
-                  title={action.label}
-                  onClick={() => handleQuickAction(action.label)}
-                >
-                  <action.icon size={18} />
-                </Button>
-              ))}
-            </div>
-
-            {/* Profile Dropdown */}
-            <div className="relative" ref={adminMenuRef}>
-              <button
-                onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2"
+          <div className="hidden md:flex gap-2">
+            {quickActions.map((action) => (
+              <Button
+                key={action.label}
+                variant="icon"
+                onClick={() => handleQuickAction(action.label)}
               >
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
-                  A
-                </div>
-                <ChevronDown
-                  size={16}
-                  className={cn(
-                    'hidden md:block text-[var(--text-secondary)] transition-transform',
-                    isAdminMenuOpen && 'rotate-180'
-                  )}
-                />
-              </button>
-
-              {isAdminMenuOpen && (
-                <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
-
-                  {/* Mobile Quick Actions */}
-                  <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
-                    {quickActions.map((action) => (
-                      <button
-                        key={action.label}
-                        onClick={() => handleQuickAction(action.label)}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                      >
-                        <action.icon size={17} />
-                        <span className="font-medium">{action.label}</span>
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={handleGoToSettings}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left"
-                  >
-                    <SettingsIcon size={17} />
-                    <span className="font-medium">Settings</span>
-                  </button>
-
-                  <button
-                    onClick={handleToggleTheme}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left"
-                  >
-                    {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
-                    <span className="font-medium">
-                      Switch to {theme === 'light' ? 'Dark' : 'Light'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-red-500"
-                  >
-                    <LogOut size={17} />
-                    <span className="font-medium">Logout</span>
-                  </button>
-
-                </div>
-              )}
-            </div>
-
+                <action.icon size={18} />
+              </Button>
+            ))}
           </div>
+
+          <div className="relative" ref={adminMenuRef}>
+            <button
+              onClick={() => setIsAdminMenuOpen((prev) => !prev)}
+              className="p-2"
+            >
+              A
+            </button>
+
+            {isAdminMenuOpen && (
+              <div className="absolute right-0 mt-2 w-56 neo-card p-2">
+
+                <div className="md:hidden border-b pb-2 mb-2">
+                  {quickActions.map((action) => (
+                    <button
+                      key={action.label}
+                      onClick={() => handleQuickAction(action.label)}
+                      className="w-full text-left px-4 py-2"
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button onClick={() => navigate('/settings')} className="w-full text-left px-4 py-2">
+                  Settings
+                </button>
+
+                <button onClick={toggleTheme} className="w-full text-left px-4 py-2">
+                  Toggle Theme
+                </button>
+
+                <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-red-500">
+                  Logout
+                </button>
+
+              </div>
+            )}
+          </div>
+
         </div>
       </header>
 
-      <main className="lg:ml-72 min-h-screen pt-32">
-        <div className="p-4 sm:p-6 lg:p-8 xl:p-10">
-          <div className="max-w-[1600px] mx-auto">{children}</div>
-        </div>
+      <main className="lg:ml-72 min-h-screen pt-28 px-6">
+        {children}
       </main>
+
     </div>
   );
 };
