@@ -3,7 +3,14 @@ import { useLeads } from '../context/LeadContext';
 import {
   Search,
   MoreHorizontal,
+  Globe,
+  Star,
+  MapPin,
+  ExternalLink,
   Send,
+  CheckCircle2,
+  AlertCircle,
+  XCircle,
   Edit3,
 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -21,6 +28,17 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const statusColors: Record<LeadStatus, string> = {
+    New: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+    'Demo Created': 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+    'Email Sent': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
+    'Pending Reply': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+    Interested: 'bg-indigo-500/10 text-indigo-500 border-indigo-500/20',
+    Negotiating: 'bg-pink-500/10 text-pink-500 border-pink-500/20',
+    Rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
+    'Deal Closed': 'bg-green-500/10 text-green-500 border-green-500/20',
+  };
 
   const priorityColors: Record<LeadPriority, string> = {
     Low: 'text-gray-400',
@@ -53,7 +71,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     <div className="mb-6 relative">
       <div className="relative neo-card p-5">
 
-        {/* ✅ Top action row */}
+        {/* ✅ FIXED ACTION AREA (no overlap now) */}
         <div className="flex justify-end gap-2 mb-3">
           <button
             className="w-10 h-10 flex items-center justify-center rounded-2xl neo-button"
@@ -105,7 +123,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
 
                 <button
                   onClick={() => setConfirmDeleteOpen(true)}
-                  className="w-full text-left px-4 py-3 rounded-xl text-red-500"
+                  className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
                 >
                   Delete Lead
                 </button>
@@ -162,47 +180,3 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     </div>
   );
 };
-
-const Leads = () => {
-  const { leads } = useLeads();
-  const [searchParams] = useSearchParams();
-  const initialQuery = searchParams.get('q') || '';
-
-  const [searchTerm, setSearchTerm] = useState(initialQuery);
-
-  useEffect(() => {
-    setSearchTerm(searchParams.get('q') || '');
-  }, [searchParams]);
-
-  const filteredLeads = useMemo(() => {
-    return leads.filter((lead) =>
-      lead.businessName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [leads, searchTerm]);
-
-  return (
-    <div className="space-y-6">
-      <div className="relative">
-        <Search
-          className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-          size={18}
-        />
-        <input
-          type="text"
-          placeholder="Search businesses..."
-          className="w-full pl-12 pr-4 py-3 rounded-2xl neo-in"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-      </div>
-
-      <div>
-        {filteredLeads.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} />
-        ))}
-      </div>
-    </div>
-  );
-};
-
-export default Leads;
