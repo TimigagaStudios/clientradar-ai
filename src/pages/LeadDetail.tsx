@@ -45,23 +45,8 @@ const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
-const {
-  leads,
-  loading,
-  updateLeadStatus,
-  addDemoLink,
-  deleteLead,
-  updateDemoStatus,
-} = useLeads();
-
-const lead = useMemo(
-  () => leads.find((l) => String(l.id) === String(id)),
-  [leads, id]
-);
-
-const leadLookupPending =
-  !lead &&
-  (!!id && (loading || leads.length === 0));
+  const { leads, updateLeadStatus, addDemoLink, deleteLead, updateDemoStatus } = useLeads();
+  const [lead, setLead] = useState(leads.find((l) => l.id === id));
   const [demoUrl, setDemoUrl] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -70,6 +55,9 @@ const leadLookupPending =
   const [outreachLogs, setOutreachLogs] = useState<OutreachLog[]>([]);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    setLead(leads.find((l) => l.id === id));
+  }, [leads, id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -111,27 +99,19 @@ const leadLookupPending =
     fetchOutreachLogs();
   }, [id]);
 
-if (loading || leadLookupPending) {
-  return (
-    <div className="flex items-center justify-center h-full text-[var(--text-secondary)]">
-      Loading lead details...
-    </div>
-  );
-}
-
-if (!lead && !leadLookupPending) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)]">
-      <p>Lead not found</p>
-      <button
-        onClick={() => navigate('/leads')}
-        className="mt-4 text-[var(--accent)] hover:underline"
-      >
-        Back to Leads
-      </button>
-    </div>
-  );
-}
+  if (!lead) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)]">
+        <p>Lead not found</p>
+        <button
+          onClick={() => navigate('/leads')}
+          className="mt-4 text-[var(--accent)] hover:underline"
+        >
+          Back to Leads
+        </button>
+      </div>
+    );
+  }
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     updateLeadStatus(lead.id, e.target.value as LeadStatus);
@@ -368,11 +348,11 @@ if (!lead && !leadLookupPending) {
           Back to Leads
         </button>
 
-<div className="flex items-center gap-5 shrink-0">
-<div className="relative flex-shrink-0" ref={menuRef}>
+        <div className="flex items-center gap-3">
+          <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((prev) => !prev)}
-className="w-12 h-12 min-w-[48px] min-h-[48px] flex items-center justify-center rounded-2xl neo-button text-[var(--text-secondary)] hover:text-[var(--accent)] shrink-0 touch-manipulation"
+              className="p-2.5 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
             >
               <MoreVertical size={18} />
             </button>
