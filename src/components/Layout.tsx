@@ -9,7 +9,6 @@ import {
   BarChart3,
   Settings as SettingsIcon,
   Menu,
-  Zap,
   PlusCircle,
   FileDown,
   Download,
@@ -24,6 +23,7 @@ import { cn } from '../utils/cn';
 import Button from './Button';
 import AddLeadModal from './AddLeadModal';
 import ImportLeadsModal from './ImportLeadsModal';
+import Logo from './Logo';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { useLeads } from '../context/LeadContext';
@@ -128,11 +128,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         }}
       >
         <div className="flex flex-col h-full p-6">
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center bg-[var(--accent)]">
-              <Zap className="text-white" size={22} />
-            </div>
-            <span className="text-xl font-bold">ClientRadar</span>
+          <div className="mb-10">
+            <Logo size={44} />
           </div>
 
           <nav className="flex-1 space-y-3">
