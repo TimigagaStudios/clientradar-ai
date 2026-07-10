@@ -22,13 +22,11 @@ import { cn } from '../utils/cn';
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { leads, updateLeadStatus, addDemoLink } = useLeads();
-  const [lead, setLead] = useState(leads.find((l) => l.id === id));
-  const [demoUrl, setDemoUrl] = useState('');
+  const { leads, loading, updateLeadStatus, addDemoLink } = useLeads();
 
-  useEffect(() => {
-    setLead(leads.find((l) => l.id === id));
-  }, [leads, id]);
+const lead = useMemo(() => {
+  return leads.find((l) => l.id === id);
+}, [leads, id]);
 
   if (!lead) {
     return (
