@@ -279,7 +279,6 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               ref={fileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={onFilePicked}
             />
@@ -292,6 +291,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               {ocrRunning ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
               {ocrRunning ? `Reading... ${ocrProgress}%` : 'Import from Screenshot'}
             </button>
+            <span className="text-xs text-[var(--text-secondary)]">Camera or Photo Library</span>
             {ocrPreviewUrl && (
               <img src={ocrPreviewUrl} alt="import preview" className="h-12 rounded-lg border border-black/10 dark:border-white/10 object-cover" />
             )}
