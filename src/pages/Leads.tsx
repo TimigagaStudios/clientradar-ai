@@ -14,16 +14,23 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/useToast';
 import EditLeadModal from '../components/EditLeadModal';
 
-// --- AI score fallback (same logic as LeadDetail, no paid LLM) ---
+// --- AI helpers (same as LeadDetail, no paid LLM) ---
 const computeAiLeadScore = (lead: Lead): number => {
   const hasWebsite = !!lead.website;
   const rating = Number((lead as any).rating) || 0;
   let score = 0;
-  score += hasWebsite ? 15 : 35; // Website Status / 35
-  score += Math.min(25, Math.round((rating || 3.5) * 5)); // Rating / 25
-  score += lead.category ? 15 : 5; // Business Activity / 20
-  score += ((lead as any).phone ? 10 : 0) + (hasWebsite ? 5 : 0) + 5; // Contact / 20
+  score += hasWebsite ? 15 : 35;
+  score += Math.min(25, Math.round((rating || 3.5) * 5));
+  score += lead.category ? 15 : 5;
+  score += ((lead as any).phone ? 10 : 0) + (hasWebsite ? 5 : 0) + 5;
   return Math.min(100, score);
+};
+
+const getAiRating = (lead: Lead, score: number): { value: string; isAi: boolean } => {
+  const realRating = Number((lead as any).rating);
+  if (realRating > 0) return { value: realRating.toFixed(1), isAi: false };
+  const aiRating = score > 75 ? 4.7 : score > 55 ? 4.3 : score > 35 ? 4.0 : 3.8;
+  return { value: aiRating.toFixed(1), isAi: true };
 };
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
@@ -52,23 +59,16 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     High: 'text-red-500',
   };
 
+  // Close menu on ESC
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, []);
+    if (!menuOpen) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('keydown', onEsc);
+    return () => document.removeEventListener('keydown', onEsc);
+  }, [menuOpen]);
 
   const displayScore = lead.leadScore && lead.leadScore > 0 ? lead.leadScore : computeAiLeadScore(lead);
-  const ratingVal = Number((lead as any).rating) || 0;
+  const aiRating = getAiRating(lead, displayScore);
   const reviewCount = Number((lead as any).reviewCount) || 0;
 
   const handleMarkInterested = async (e: React.MouseEvent) => {
@@ -116,16 +116,17 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
     <div className="group break-inside-avoid mb-6 relative">
       <Link to={`/leads/${lead.id}`} className="block">
         <div className="neo-card p-5 hover:-translate-y-1 transition-all duration-300">
-          {/* Header - with right padding reserved for action buttons */}
+          {/* Header - reserve right padding for action buttons */}
           <div className="mb-3 pr-20 sm:pr-24">
             <h3 className="font-bold text-lg text-[var(--text-primary)] leading-tight">
               {lead.businessName}
             </h3>
             <p className="text-sm text-[var(--text-secondary)] mt-1.5 flex items-center gap-1 flex-wrap">
               <MapPin size={12} className="flex-shrink-0" />
-              <span>{lead.city} â€¢ {lead.category}</span>
+              {/* ASCII separator only - no unicode bullet */}
+              <span>{lead.city} - {lead.category}</span>
             </p>
-            {/* Status chip moved here - no longer collides with action buttons */}
+            {/* Status chip - left aligned, no collision with action buttons */}
             <div className="mt-2.5">
               <span className={cn('inline-block px-2.5 py-1 rounded-full text-xs font-medium border', statusColors[lead.status])}>
                 {lead.status}
@@ -138,7 +139,8 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
               <div className="flex items-center text-yellow-500">
                 <Star size={14} fill="currentColor" />
                 <span className="ml-1 text-[var(--text-primary)]">
-                  {ratingVal > 0 ? ratingVal : 'N/A'}
+                  {aiRating.value}
+                  {aiRating.isAi && <span className="text-[10px] opacity-70 ml-1">AI</span>}
                 </span>
               </div>
               {reviewCount > 0 && <span>({reviewCount} reviews)</span>}
@@ -169,8 +171,8 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
       </Link>
 
-      {/* Action buttons - top right, now with clear space */}
-      <div className="absolute top-3 right-3 flex gap-1.5 z-10">
+      {/* Action buttons - top right, clear space */}
+      <div className="absolute top-3 right-3 flex gap-1.5 z-30">
         <button
           className="p-2 rounded-xl neo-button text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
           onClick={handleSendOutreach}
@@ -185,7 +187,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setMenuOpen((prev) => !prev);
+              setMenuOpen(v => !v);
             }}
             aria-label="Lead actions"
             aria-expanded={menuOpen}
@@ -194,10 +196,16 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
           </button>
           {menuOpen && (
             <>
-              {/* mobile scrim */}
-              <div className="fixed inset-0 z-40 sm:hidden" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+              {/* Click-outside scrim - closes menu reliably on mobile */}
+              <button
+                aria-hidden
+                tabIndex={-1}
+                className="fixed inset-0 z-40 cursor-default"
+                style={{ background: 'transparent' }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(false); }}
+              />
               <div 
-                className="absolute right-0 top-10 w-52 max-w-[calc(100vw-2rem)] neo-card p-2 z-50 shadow-2xl"
+                className="absolute right-0 top-10 w-52 max-w-[calc(100vw-2rem)] z-[99] rounded-2xl border border-black/10 dark:border-white/10 bg-[var(--bg-secondary)] shadow-2xl p-2 text-sm"
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
               >
                 <button
@@ -207,19 +215,19 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
                     setEditOpen(true);
                     setMenuOpen(false);
                   }}
-                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[var(--text-primary)] flex items-center gap-2"
                 >
-                  <Edit3 size={14} /> Edit Lead
+                  Edit Lead
                 </button>
                 <button
                   onClick={handleMarkInterested}
-                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm"
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[var(--text-primary)]"
                 >
                   Mark Interested
                 </button>
                 <button
                   onClick={handleMarkRejected}
-                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm"
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.04] dark:hover:bg-white/[0.06] text-[var(--text-primary)]"
                 >
                   Mark Rejected
                 </button>
@@ -230,7 +238,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
                     e.stopPropagation();
                     setConfirmDeleteOpen(true);
                   }}
-                  className="w-full text-left px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-500/10 text-sm"
+                  className="w-full text-left px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-500/10"
                 >
                   Delete Lead
                 </button>
