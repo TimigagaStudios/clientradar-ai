@@ -23,8 +23,6 @@ import {
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority, DemoStatus } from '../types';
 import { cn } from '../utils/cn';
-import ConfirmDialog from '../components/ui/ConfirmDialog';
-import { useToast } from '../components/ui/useToast';
 
 type LeadNote = {
   id: string;
@@ -44,12 +42,10 @@ type OutreachLog = {
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { showToast } = useToast();
   const { leads, updateLeadStatus, addDemoLink, deleteLead, updateDemoStatus } = useLeads();
   const [lead, setLead] = useState(leads.find((l) => l.id === id));
   const [demoUrl, setDemoUrl] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [noteInput, setNoteInput] = useState('');
   const [notes, setNotes] = useState<LeadNote[]>([]);
   const [outreachLogs, setOutreachLogs] = useState<OutreachLog[]>([]);
@@ -126,11 +122,6 @@ const LeadDetail = () => {
     if (demoUrl) {
       addDemoLink(lead.id, demoUrl);
       setDemoUrl('');
-      showToast({
-        type: 'success',
-        title: 'Demo link saved',
-        message: 'The demo link has been attached to this lead.',
-      });
     }
   };
 
@@ -149,19 +140,9 @@ const LeadDetail = () => {
       if (response.ok) {
         setNotes((prev) => [result.data, ...prev]);
         setNoteInput('');
-        showToast({
-          type: 'success',
-          title: 'Note saved',
-          message: 'Your note was added successfully.',
-        });
       }
     } catch (error) {
       console.error('Failed to save note', error);
-      showToast({
-        type: 'error',
-        title: 'Note failed',
-        message: 'Could not save note.',
-      });
     }
   };
 
@@ -172,31 +153,18 @@ const LeadDetail = () => {
   const handleMarkInterested = async () => {
     await updateLeadStatus(lead.id, 'Interested');
     setMenuOpen(false);
-    showToast({
-      type: 'success',
-      title: 'Lead updated',
-      message: `${lead.businessName} marked as Interested.`,
-    });
   };
 
   const handleMarkRejected = async () => {
     await updateLeadStatus(lead.id, 'Rejected');
     setMenuOpen(false);
-    showToast({
-      type: 'success',
-      title: 'Lead updated',
-      message: `${lead.businessName} marked as Rejected.`,
-    });
   };
 
   const handleDeleteLead = async () => {
+    const confirmed = window.confirm('Delete this lead permanently?');
+    if (!confirmed) return;
+
     await deleteLead(lead.id);
-    setConfirmDeleteOpen(false);
-    showToast({
-      type: 'success',
-      title: 'Lead deleted',
-      message: `${lead.businessName} was removed from your pipeline.`,
-    });
     navigate('/leads');
   };
 
@@ -372,7 +340,7 @@ const LeadDetail = () => {
                   Mark Rejected
                 </button>
                 <button
-                  onClick={() => setConfirmDeleteOpen(true)}
+                  onClick={handleDeleteLead}
                   className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors"
                 >
                   Delete Lead
@@ -393,6 +361,7 @@ const LeadDetail = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
+          {/* AI Lead Summary */}
           <div className={cardClasses}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 neo-in rounded-xl">
@@ -420,6 +389,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* AI Scoring Assistant */}
           <div className={cardClasses}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 neo-in rounded-xl">
@@ -474,6 +444,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Existing cards remain below */}
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
@@ -590,6 +561,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Demo Workflow */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4 flex items-center gap-2">
               <MonitorPlay size={18} className="text-[var(--accent)]" />
@@ -661,6 +633,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Notes */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
 
@@ -702,6 +675,7 @@ const LeadDetail = () => {
             </div>
           </div>
 
+          {/* Outreach History */}
           <div className={cardClasses}>
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">
               Outreach History
@@ -800,17 +774,6 @@ const LeadDetail = () => {
           </div>
         </div>
       </div>
-
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        title="Delete Lead"
-        description={`Are you sure you want to permanently delete ${lead.businessName}? This action cannot be undone.`}
-        confirmText="Delete"
-        cancelText="Cancel"
-        destructive
-        onConfirm={handleDeleteLead}
-        onCancel={() => setConfirmDeleteOpen(false)}
-      />
     </div>
   );
 };
