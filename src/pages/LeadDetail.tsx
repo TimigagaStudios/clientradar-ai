@@ -98,7 +98,7 @@ if (!lead) {
         </button>
 
         <div className="flex items-center gap-3">
-          <button className="p-2.5 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]">
+<button className="w-11 h-11 flex items-center justify-center rounded-2xl neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]">
             <MoreVertical size={18} />
           </button>
 
