@@ -3,15 +3,9 @@ import { useLeads } from '../context/LeadContext';
 import {
   Search,
   MoreHorizontal,
-  Globe,
   Star,
   MapPin,
-  ExternalLink,
   Send,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Edit3,
 } from 'lucide-react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Lead, LeadPriority, LeadStatus } from '../types';
@@ -19,6 +13,18 @@ import { cn } from '../utils/cn';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/useToast';
 import EditLeadModal from '../components/EditLeadModal';
+
+// --- AI score fallback (same logic as LeadDetail, no paid LLM) ---
+const computeAiLeadScore = (lead: Lead): number => {
+  const hasWebsite = !!lead.website;
+  const rating = Number((lead as any).rating) || 0;
+  let score = 0;
+  score += hasWebsite ? 15 : 35; // Website Status / 35
+  score += Math.min(25, Math.round((rating || 3.5) * 5)); // Rating / 25
+  score += lead.category ? 15 : 5; // Business Activity / 20
+  score += ((lead as any).phone ? 10 : 0) + (hasWebsite ? 5 : 0) + 5; // Contact / 20
+  return Math.min(100, score);
+};
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const { updateLeadStatus, deleteLead } = useLeads();
@@ -52,9 +58,18 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         setMenuOpen(false);
       }
     };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
   }, []);
+
+  const displayScore = lead.leadScore && lead.leadScore > 0 ? lead.leadScore : computeAiLeadScore(lead);
+  const ratingVal = Number((lead as any).rating) || 0;
+  const reviewCount = Number((lead as any).reviewCount) || 0;
 
   const handleMarkInterested = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -94,36 +109,39 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   const handleSendOutreach = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate('/outreach');
+    navigate(`/outreach?leadId=${encodeURIComponent(lead.id)}`);
   };
 
   return (
     <div className="group break-inside-avoid mb-6 relative">
       <Link to={`/leads/${lead.id}`} className="block">
         <div className="neo-card p-5 hover:-translate-y-1 transition-all duration-300">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="font-bold text-lg text-[var(--text-primary)] leading-tight">
-                {lead.businessName}
-              </h3>
-              <p className="text-sm text-[var(--text-secondary)] mt-1 flex items-center gap-1">
-                <MapPin size={12} />
-                {lead.city} • {lead.category}
-              </p>
-            </div>
-
-            <div className={cn('px-2 py-1 rounded-full text-xs font-medium border', statusColors[lead.status])}>
-              {lead.status}
+          {/* Header - with right padding reserved for action buttons */}
+          <div className="mb-3 pr-20 sm:pr-24">
+            <h3 className="font-bold text-lg text-[var(--text-primary)] leading-tight">
+              {lead.businessName}
+            </h3>
+            <p className="text-sm text-[var(--text-secondary)] mt-1.5 flex items-center gap-1 flex-wrap">
+              <MapPin size={12} className="flex-shrink-0" />
+              <span>{lead.city} â€¢ {lead.category}</span>
+            </p>
+            {/* Status chip moved here - no longer collides with action buttons */}
+            <div className="mt-2.5">
+              <span className={cn('inline-block px-2.5 py-1 rounded-full text-xs font-medium border', statusColors[lead.status])}>
+                {lead.status}
+              </span>
             </div>
           </div>
 
-          <div className="space-y-3 mb-4">
+          <div className="space-y-3 mb-1">
             <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
               <div className="flex items-center text-yellow-500">
                 <Star size={14} fill="currentColor" />
-                <span className="ml-1 text-[var(--text-primary)]">{lead.rating}</span>
+                <span className="ml-1 text-[var(--text-primary)]">
+                  {ratingVal > 0 ? ratingVal : 'N/A'}
+                </span>
               </div>
-              <span>({lead.reviewCount} reviews)</span>
+              {reviewCount > 0 && <span>({reviewCount} reviews)</span>}
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-black/8 dark:border-white/8">
@@ -131,9 +149,13 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
                   Lead Score
                 </span>
-                <span className="font-bold text-lg">{lead.leadScore}</span>
+                <span className={cn(
+                  "font-bold text-lg",
+                  displayScore > 70 ? "text-green-500" : displayScore > 40 ? "text-yellow-500" : "text-gray-400"
+                )}>
+                  {displayScore}
+                </span>
               </div>
-
               <div className="flex flex-col items-end">
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">
                   Priority
@@ -147,67 +169,73 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         </div>
       </Link>
 
-      {/* ✅ FIXED: visible on ALL screen sizes */}
-      <div className="absolute top-3 right-3 flex gap-2">
+      {/* Action buttons - top right, now with clear space */}
+      <div className="absolute top-3 right-3 flex gap-1.5 z-10">
         <button
-          className="p-2 neo-button"
+          className="p-2 rounded-xl neo-button text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
           onClick={handleSendOutreach}
+          aria-label="Send outreach"
+          title="Send outreach"
         >
           <Send size={14} />
         </button>
-
         <div className="relative" ref={menuRef}>
           <button
-            className="p-2 neo-button"
+            className="p-2 rounded-xl neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               setMenuOpen((prev) => !prev);
             }}
+            aria-label="Lead actions"
+            aria-expanded={menuOpen}
           >
             <MoreHorizontal size={14} />
           </button>
-
           {menuOpen && (
-            <div className="absolute right-0 mt-2 w-52 neo-card p-2 z-50">
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setEditOpen(true);
-                  setMenuOpen(false);
-                }}
-                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+            <>
+              {/* mobile scrim */}
+              <div className="fixed inset-0 z-40 sm:hidden" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); }} />
+              <div 
+                className="absolute right-0 top-10 w-52 max-w-[calc(100vw-2rem)] neo-card p-2 z-50 shadow-2xl"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
               >
-                <Edit3 size={14} className="inline mr-2" />
-                Edit Lead
-              </button>
-
-              <button
-                onClick={handleMarkInterested}
-                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-              >
-                Mark Interested
-              </button>
-
-              <button
-                onClick={handleMarkRejected}
-                className="w-full text-left px-4 py-3 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-              >
-                Mark Rejected
-              </button>
-
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setConfirmDeleteOpen(true);
-                }}
-                className="w-full text-left px-4 py-3 rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
-              >
-                Delete Lead
-              </button>
-            </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditOpen(true);
+                    setMenuOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm flex items-center gap-2"
+                >
+                  <Edit3 size={14} /> Edit Lead
+                </button>
+                <button
+                  onClick={handleMarkInterested}
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm"
+                >
+                  Mark Interested
+                </button>
+                <button
+                  onClick={handleMarkRejected}
+                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] text-sm"
+                >
+                  Mark Rejected
+                </button>
+                <div className="my-1 border-t border-black/8 dark:border-white/8" />
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmDeleteOpen(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 rounded-xl text-red-500 hover:bg-red-500/10 text-sm"
+                >
+                  Delete Lead
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -217,7 +245,6 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
         onClose={() => setEditOpen(false)}
         lead={lead}
       />
-
       <ConfirmDialog
         open={confirmDeleteOpen}
         title="Delete Lead"
@@ -236,7 +263,6 @@ const Leads = () => {
   const { leads } = useLeads();
   const [searchParams] = useSearchParams();
   const initialQuery = searchParams.get('q') || '';
-
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [activeFilter, setActiveFilter] = useState<string>('All');
 
@@ -267,7 +293,7 @@ const Leads = () => {
         case 'No Website':
           return !lead.website;
         case 'Outdated Website':
-          return lead.outdatedWebsite;
+          return (lead as any).outdatedWebsite;
         case 'High Priority':
           return lead.priority === 'High';
         case 'Demo Ready':
@@ -293,12 +319,11 @@ const Leads = () => {
           <input
             type="text"
             placeholder="Search businesses..."
-            className="w-full pl-12 pr-4 py-3 rounded-2xl neo-in"
+            className="w-full pl-12 pr-4 py-3 rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {filters.map((filter) => (
             <button
@@ -308,7 +333,7 @@ const Leads = () => {
                 'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all',
                 activeFilter === filter
                   ? 'bg-[var(--accent)] text-white'
-                  : 'neo-button'
+                  : 'neo-button text-[var(--text-secondary)]'
               )}
             >
               {filter}
@@ -323,6 +348,11 @@ const Leads = () => {
             <LeadCard lead={lead} />
           </div>
         ))}
+        {filteredLeads.length === 0 && (
+          <div className="text-center py-12 text-[var(--text-secondary)] col-span-full">
+            No leads match your filter.
+          </div>
+        )}
       </div>
     </div>
   );
