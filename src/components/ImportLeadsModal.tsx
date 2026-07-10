@@ -1,424 +1,419 @@
-import React, { useMemo, useState } from 'react';
-import { X, FileSpreadsheet, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
-import Button from './Button';
-import { useLeads } from '../context/LeadContext';
+import React, { useState, useEffect, useRef } from 'react';
 import { Lead } from '../types';
+import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
+import { Camera, Upload, Loader2, X, Check, Wand2 } from 'lucide-react';
 
-interface ImportLeadsModalProps {
+// npm install tesseract.js
+// Screenshot Import AI - V2.5 Revenue Mode - client-side OCR, $0
+import Tesseract from 'tesseract.js';
+
+interface Props {
   open: boolean;
   onClose: () => void;
+  lead: Lead | null;
 }
 
-type ParsedRow = Lead & {
-  validationErrors?: string[];
-  duplicate?: boolean;
+type ExtractedFields = {
+  businessName?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  city?: string;
+  category?: string;
 };
 
-const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
-  const { importLeads, leads } = useLeads();
+const extractFieldsFromText = (text: string): ExtractedFields => {
+  const out: ExtractedFields = {};
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  
+  // Email
+  const emailMatch = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
+  if (emailMatch) out.email = emailMatch[0];
+
+  // Phone - US / international loose
+  const phoneMatch = text.match(/(\+?\d{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
+  if (phoneMatch) out.phone = phoneMatch[0];
+
+  // Website
+  const webMatch = text.match(/(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/[^\s]*)?/gi);
+  if (webMatch) {
+    // filter out email domains
+    const filtered = webMatch.find(w => !w.includes('@') && !w.match(/\.(png|jpg|jpeg|gif)$/i));
+    if (filtered) out.website = filtered.replace(/^https?:\/\//, '');
+  }
+
+  // Business name - first substantial line, not containing phone/email/url
+  for (const ln of lines.slice(0, 5)) {
+    if (ln.length < 3 || ln.length > 80) continue;
+    if (/[@\d]{3,}/.test(ln) && !/^[A-Za-z]/.test(ln)) continue;
+    if (ln.includes('@') || ln.includes('http') || /^\+\d/.test(ln)) continue;
+    if (!/[a-zA-Z]/.test(ln)) continue;
+    out.businessName = ln;
+    break;
+  }
+
+  // City - look for ", ST 12345" or common city patterns
+  const cityMatch = text.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)*),\s*([A-Z]{2})\s*(\d{5})?/);
+  if (cityMatch) out.city = cityMatch[1];
+
+  // Category - naive keyword scan
+  const cats = ['restaurant','real estate','dental','clinic','law','salon','gym','auto','plumbing','electric','roofing','education','academy','school','cafe','bakery','barber','spa','hotel'];
+  const lower = text.toLowerCase();
+  const foundCat = cats.find(c => lower.includes(c));
+  if (foundCat) out.category = foundCat.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  return out;
+};
+
+const EditLeadModal: React.FC<Props> = ({ open, onClose, lead }) => {
+  const { updateLead } = useLeads() as any;
   const { showToast } = useToast();
 
-  const [csvText, setCsvText] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [fileName, setFileName] = useState('');
-  const [hasPreviewed, setHasPreviewed] = useState(false);
+  const [form, setForm] = useState<any>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const existingNames = new Set(
-    leads.map((lead) => lead.businessName.toLowerCase().trim())
-  );
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrText, setOcrText] = useState('');
+  const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
+  const [extracted, setExtracted] = useState<ExtractedFields | null>(null);
 
-  const existingEmails = new Set(
-    leads
-      .map((lead) => lead.email?.toLowerCase().trim())
-      .filter(Boolean) as string[]
-  );
-
-  const isValidEmail = (email: string) => {
-    if (!email) return true;
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
-
-  const parseCSVText = (text: string): ParsedRow[] => {
-    const lines = text
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (lines.length === 0) return [];
-
-    const firstLine = lines[0].toLowerCase();
-    const hasHeader = firstLine.includes('businessname');
-
-    const dataLines = hasHeader ? lines.slice(1) : lines;
-
-    return dataLines.map((line) => {
-      const [
-        businessName = '',
-        category = '',
-        city = '',
-        phone = '',
-        email = '',
-        instagram = '',
-        website = '',
-        leadScore = '0',
-        priority = 'Medium',
-        status = 'New',
-        notes = '',
-        dealValue = '',
-      ] = line.split(',').map((item) => item.trim());
-
-      const validationErrors: string[] = [];
-
-      if (!businessName) validationErrors.push('Missing business name');
-      if (!category) validationErrors.push('Missing category');
-      if (!city) validationErrors.push('Missing city');
-      if (email && !isValidEmail(email)) validationErrors.push('Invalid email format');
-
-      const duplicate =
-        existingNames.has(businessName.toLowerCase()) ||
-        (!!email && existingEmails.has(email.toLowerCase()));
-
-      return {
-        id: crypto.randomUUID(),
-        businessName,
-        category,
-        city,
-        rating: 0,
-        reviewCount: 0,
-        phone: phone || undefined,
-        email: email || undefined,
-        instagram: instagram || undefined,
-        website: website || undefined,
-        outdatedWebsite: false,
-        leadScore: Number(leadScore) || 0,
-        priority: (priority as Lead['priority']) || 'Medium',
-        status: (status as Lead['status']) || 'New',
-        demoStatus: 'Not Started',
-        notes,
-        demoLink: undefined,
-        dealValue: dealValue ? Number(dealValue) : undefined,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        timeline: [
-          {
-            id: crypto.randomUUID(),
-            type: 'Lead Imported',
-            description: 'Imported via CSV',
-            date: new Date().toISOString(),
-          },
-        ],
-        outreachHistory: [],
-        validationErrors,
-        duplicate,
-      };
-    });
-  };
-
-  const previewRows = useMemo(() => parseCSVText(csvText), [csvText, leads]);
-
-  const validRows = useMemo(
-    () =>
-      previewRows.filter(
-        (row) => (!row.validationErrors || row.validationErrors.length === 0) && !row.duplicate
-      ),
-    [previewRows]
-  );
-
-  const invalidRows = useMemo(
-    () =>
-      previewRows.filter(
-        (row) => row.validationErrors && row.validationErrors.length > 0
-      ),
-    [previewRows]
-  );
-
-  const duplicateRows = useMemo(
-    () => previewRows.filter((row) => row.duplicate),
-    [previewRows]
-  );
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFileName(file.name);
-
-    try {
-      const text = await file.text();
-      setCsvText(text);
-      setHasPreviewed(false);
-
-      showToast({
-        type: 'info',
-        title: 'CSV file loaded',
-        message: `${file.name} is ready for preview.`,
+  useEffect(() => {
+    if (lead) {
+      setForm({
+        businessName: lead.businessName || '',
+        city: (lead as any).city || '',
+        category: lead.category || '',
+        phone: (lead as any).phone || '',
+        website: (lead as any).website || '',
+        email: (lead as any).email || '',
+        rating: (lead as any).rating || '',
+        reviewCount: (lead as any).reviewCount || 0,
+        leadScore: (lead as any).leadScore || 0,
+        priority: (lead as any).priority || 'Medium',
+        dealValue: (lead as any).dealValue || '',
       });
-    } catch (error) {
-      console.error(error);
-      showToast({
-        type: 'error',
-        title: 'File load failed',
-        message: 'Could not read the selected CSV file.',
-      });
+      // reset import state when switching leads
+      setOcrText('');
+      setOcrPreviewUrl(null);
+      setExtracted(null);
     }
+  }, [lead]);
+
+  if (!open || !lead) return null;
+
+  const handleChange = (key: string, value: any) => {
+    setForm((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handlePreview = () => {
-    setHasPreviewed(true);
-
+  const handleSave = async () => {
+    await updateLead(lead.id, {
+      ...form,
+      rating: Number(form.rating) || 0,
+      reviewCount: Number(form.reviewCount) || 0,
+      leadScore: Number(form.leadScore) || 0,
+      dealValue: form.dealValue ? Number(form.dealValue) : null,
+    });
     showToast({
-      type: 'info',
-      title: 'Preview ready',
-      message: `${previewRows.length} row(s) parsed. Review before importing.`,
+      type: 'success',
+      title: 'Lead updated',
+      message: `${form.businessName || 'Lead'} updated successfully.`,
     });
-  };
-
-  const handleImport = async () => {
-    try {
-      setImporting(true);
-
-      if (validRows.length === 0) {
-        showToast({
-          type: 'error',
-          title: 'Import failed',
-          message: 'There are no valid rows available to import.',
-        });
-        return;
-      }
-
-      await importLeads(validRows);
-
-      setCsvText('');
-      setFileName('');
-      setHasPreviewed(false);
-      onClose();
-
-      showToast({
-        type: 'success',
-        title: 'Import successful',
-        message: `${validRows.length} lead(s) imported successfully.`,
-      });
-    } catch (error) {
-      console.error(error);
-      showToast({
-        type: 'error',
-        title: 'Import failed',
-        message: 'Could not import leads. Please review your data and try again.',
-      });
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const resetState = () => {
-    setCsvText('');
-    setFileName('');
-    setHasPreviewed(false);
     onClose();
   };
 
-  if (!open) return null;
+  const runOcr = async (file: File) => {
+    setOcrRunning(true);
+    setOcrProgress(0);
+    setOcrText('');
+    setExtracted(null);
+    setOcrPreviewUrl(URL.createObjectURL(file));
+
+    try {
+      const { data } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text' && m.progress) {
+            setOcrProgress(Math.round(m.progress * 100));
+          }
+        },
+      });
+      const text = data.text || '';
+      setOcrText(text);
+      const fields = extractFieldsFromText(text);
+      setExtracted(fields);
+
+      // Auto-fill empty form fields only - do not overwrite existing data without user consent
+      setForm((prev: any) => ({
+        ...prev,
+        businessName: prev.businessName || fields.businessName || prev.businessName,
+        phone: prev.phone || fields.phone || prev.phone,
+        email: prev.email || fields.email || prev.email,
+        website: prev.website || fields.website || prev.website,
+        city: prev.city || fields.city || prev.city,
+        category: prev.category || fields.category || prev.category,
+      }));
+
+      showToast({
+        type: 'success',
+        title: 'Screenshot imported',
+        message: 'Fields prefilled - review and save.',
+      });
+    } catch (e) {
+      console.error(e);
+      showToast({ type: 'error', title: 'OCR failed', message: 'Could not read that image. Try a clearer screenshot.' });
+    } finally {
+      setOcrRunning(false);
+    }
+  };
+
+  const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) runOcr(file);
+    // reset input so same file can be picked again
+    e.target.value = '';
+  };
+
+  const applyExtracted = () => {
+    if (!extracted) return;
+    setForm((prev: any) => ({ ...prev, ...Object.fromEntries(Object.entries(extracted).filter(([,v]) => !!v)) }));
+    showToast({ type: 'success', title: 'Fields applied', message: 'Imported values copied to form.' });
+  };
+
+  const clearImport = () => {
+    setOcrText('');
+    setOcrPreviewUrl(null);
+    setExtracted(null);
+    setOcrProgress(0);
+    if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+  };
+
+  const inputCls = "w-full neo-in px-4 py-3 rounded-xl outline-none text-[var(--text-primary)] bg-transparent placeholder-[var(--text-secondary)]";
+  const labelCls = "text-[11px] uppercase tracking-wider text-[var(--text-secondary)] font-semibold mb-1 block";
 
   return (
-    <div className="fixed inset-0 z-[999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl neo-card p-6 md:p-8 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-3">
-              <FileSpreadsheet size={24} className="text-[var(--accent)]" />
-              Import Leads
-            </h2>
-            <p className="text-[var(--text-secondary)] mt-1">
-              Upload a CSV file or paste CSV text using this order:
-            </p>
-            <p className="text-xs text-[var(--text-secondary)] mt-2 break-all">
-              businessName, category, city, phone, email, instagram, website, leadScore, priority, status, notes, dealValue
-            </p>
-          </div>
-
-          <button
-            onClick={resetState}
-            className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          >
-            <X size={18} />
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="neo-card w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h2 className="text-xl font-bold text-[var(--text-primary)]">
+            Edit Lead
+          </h2>
+          <button onClick={onClose} className="p-2 rounded-xl neo-button text-[var(--text-secondary)]" aria-label="Close">
+            <X size={16} />
           </button>
         </div>
 
-        <div className="space-y-5">
-          <div className="neo-in rounded-2xl p-5">
-            <label className="flex flex-col items-center justify-center gap-3 cursor-pointer text-center">
-              <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/10 flex items-center justify-center">
-                <Upload size={22} className="text-[var(--accent)]" />
-              </div>
-              <div>
-                <p className="font-semibold text-[var(--text-primary)]">
-                  Upload CSV file
-                </p>
-                <p className="text-sm text-[var(--text-secondary)] mt-1">
-                  Choose a .csv file from your device
-                </p>
-                {fileName && (
-                  <p className="text-xs text-[var(--accent)] mt-2">
-                    Selected: {fileName}
-                  </p>
-                )}
-              </div>
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-            </label>
-          </div>
-
-          <div className="neo-in rounded-2xl p-4">
-            <p className="text-sm text-[var(--text-secondary)] leading-7">
-              Example CSV:
+        {/* Screenshot Import AI */}
+        <div className="neo-in rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <Wand2 size={15} className="text-[var(--accent)]" />
+              Screenshot Import AI
             </p>
-            <pre className="text-xs text-[var(--text-primary)] mt-2 whitespace-pre-wrap overflow-x-auto">
-{`businessName,category,city,phone,email,instagram,website,leadScore,priority,status,notes,dealValue
-TradeCore Academy,Education,Lagos,+2349069584853,hello@tradecore.com,@tradecore,,85,High,New,Potential website redesign client,500
-Nova Homes,Real Estate,Abuja,+2348000000000,contact@novahomes.com,@novahomes,https://novahomes.com,60,Medium,Interested,Needs a better modern website,2000`}
-            </pre>
+            {ocrPreviewUrl && !ocrRunning && (
+              <button onClick={clearImport} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Clear</button>
+            )}
+          </div>
+          <p className="text-xs text-[var(--text-secondary)] mb-3">
+            Upload a business listing screenshot, business card, or social bio. Text is extracted in-browser - $0 cost.
+          </p>
+
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onFilePicked}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={ocrRunning}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl neo-button text-sm font-medium text-[var(--text-primary)] disabled:opacity-50"
+            >
+              {ocrRunning ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+              {ocrRunning ? `Reading... ${ocrProgress}%` : 'Import from Screenshot'}
+            </button>
+            <span className="text-xs text-[var(--text-secondary)]">Camera or Photo Library</span>
+            {ocrPreviewUrl && (
+              <img src={ocrPreviewUrl} alt="import preview" className="h-12 rounded-lg border border-black/10 dark:border-white/10 object-cover" />
+            )}
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-[var(--text-primary)]">
-              Or paste CSV text
-            </label>
-            <textarea
-              value={csvText}
-              onChange={(e) => {
-                setCsvText(e.target.value);
-                setHasPreviewed(false);
-              }}
-              placeholder="Paste your CSV rows here..."
-              className="w-full min-h-[220px] rounded-2xl neo-in p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
+          {extracted && (
+            <div className="mt-3 neo-in rounded-xl p-3 text-xs text-[var(--text-secondary)]">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-[var(--text-primary)]">Extracted fields</span>
+                <button onClick={applyExtracted} className="text-[var(--accent)] hover:underline inline-flex items-center gap-1">
+                  <Check size={12} /> Apply all
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                {Object.entries(extracted).map(([k,v]) => v ? (
+                  <div key={k}><span className="opacity-70">{k}:</span> <span className="text-[var(--text-primary)]">{String(v)}</span></div>
+                ) : null)}
+                {!Object.values(extracted).some(Boolean) && <span>No fields detected - try a clearer image.</span>}
+              </div>
+              {ocrText && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[var(--text-secondary)]">View OCR text</summary>
+                  <pre className="whitespace-pre-wrap text-[11px] mt-1 max-h-32 overflow-auto opacity-80">{ocrText}</pre>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Form */}
+        <div className="space-y-4">
+          <div>
+            <label className={labelCls}>Business Name</label>
+            <input
+              value={form.businessName || ''}
+              onChange={(e) => handleChange('businessName', e.target.value)}
+              placeholder="Business Name"
+              className={inputCls}
             />
           </div>
 
-          <div className="flex justify-between items-center gap-4 flex-wrap">
-            <div className="text-sm text-[var(--text-secondary)]">
-              {hasPreviewed ? (
-                <span className="inline-flex items-center gap-2 text-green-500">
-                  <CheckCircle2 size={16} />
-                  {validRows.length} valid row(s), {invalidRows.length} invalid, {duplicateRows.length} duplicate(s)
-                </span>
-              ) : (
-                <span>Preview your rows before importing</span>
-              )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Phone</label>
+              <input
+                value={form.phone || ''}
+                onChange={(e) => handleChange('phone', e.target.value)}
+                placeholder="+1 (555) 000-0000"
+                className={inputCls}
+              />
             </div>
-
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={resetState}>
-                Cancel
-              </Button>
-
-              <Button
-                variant="secondary"
-                onClick={handlePreview}
-                disabled={!csvText.trim()}
-              >
-                Preview
-              </Button>
-
-              <Button
-                onClick={handleImport}
-                disabled={importing || !hasPreviewed || validRows.length === 0}
-              >
-                {importing ? 'Importing...' : 'Confirm Import'}
-              </Button>
+            <div>
+              <label className={labelCls}>Email</label>
+              <input
+                type="email"
+                value={form.email || ''}
+                onChange={(e) => handleChange('email', e.target.value)}
+                placeholder="hello@business.com"
+                className={inputCls}
+              />
             </div>
           </div>
 
-          {hasPreviewed && (
-            <div className="space-y-4">
-              {invalidRows.length > 0 && (
-                <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/10 px-4 py-4 text-sm text-yellow-200">
-                  <div className="flex items-center gap-2 font-semibold mb-2">
-                    <AlertTriangle size={16} />
-                    Invalid rows detected
-                  </div>
-                  <p>Rows missing required fields or using invalid email formats will not be imported.</p>
-                </div>
-              )}
+          <div>
+            <label className={labelCls}>Website</label>
+            <input
+              value={form.website || ''}
+              onChange={(e) => handleChange('website', e.target.value)}
+              placeholder="example.com"
+              className={inputCls}
+            />
+          </div>
 
-              {duplicateRows.length > 0 && (
-                <div className="rounded-2xl border border-orange-500/20 bg-orange-500/10 px-4 py-4 text-sm text-orange-200">
-                  <div className="flex items-center gap-2 font-semibold mb-2">
-                    <AlertTriangle size={16} />
-                    Duplicate rows detected
-                  </div>
-                  <p>Rows matching existing business names or emails will be skipped.</p>
-                </div>
-              )}
-
-              <div className="neo-card p-4 overflow-x-auto">
-                <h3 className="text-lg font-bold text-[var(--text-primary)] mb-4">
-                  Import Preview
-                </h3>
-
-                {previewRows.length === 0 ? (
-                  <p className="text-[var(--text-secondary)] text-sm">
-                    No valid rows detected. Make sure each row contains at least businessName, category, and city.
-                  </p>
-                ) : (
-                  <table className="w-full min-w-[1000px] text-left border-collapse">
-                    <thead>
-                      <tr className="border-b border-black/8 dark:border-white/8">
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Business</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Category</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">City</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Email</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Phone</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Priority</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Status</th>
-                        <th className="p-3 text-xs uppercase tracking-[0.16em] text-[var(--text-secondary)]">Validation</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewRows.map((row) => {
-                        const isInvalid = row.validationErrors && row.validationErrors.length > 0;
-                        const isDuplicate = row.duplicate;
-
-                        return (
-                          <tr
-                            key={row.id}
-                            className="border-b border-black/6 dark:border-white/6 hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-                          >
-                            <td className="p-3 text-[var(--text-primary)] font-medium">{row.businessName}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.category}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.city}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.email || '—'}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.phone || '—'}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.priority}</td>
-                            <td className="p-3 text-[var(--text-secondary)]">{row.status}</td>
-                            <td className="p-3">
-                              {isInvalid ? (
-                                <span className="text-red-400 text-xs">
-                                  {row.validationErrors?.join(', ')}
-                                </span>
-                              ) : isDuplicate ? (
-                                <span className="text-orange-400 text-xs">Duplicate</span>
-                              ) : (
-                                <span className="text-green-500 text-xs">Valid</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>City</label>
+              <input
+                value={form.city || ''}
+                onChange={(e) => handleChange('city', e.target.value)}
+                placeholder="City"
+                className={inputCls}
+              />
             </div>
-          )}
+            <div>
+              <label className={labelCls}>Category</label>
+              <input
+                value={form.category || ''}
+                onChange={(e) => handleChange('category', e.target.value)}
+                placeholder="Category"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Rating</label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.rating || ''}
+                onChange={(e) => handleChange('rating', e.target.value)}
+                placeholder="4.5"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Reviews</label>
+              <input
+                type="number"
+                value={form.reviewCount || ''}
+                onChange={(e) => handleChange('reviewCount', e.target.value)}
+                placeholder="23"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Lead Score <span className="normal-case opacity-60">AI</span></label>
+              <input
+                type="number"
+                value={form.leadScore || ''}
+                onChange={(e) => handleChange('leadScore', e.target.value)}
+                placeholder="0-100"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Deal Value ($)</label>
+              <input
+                type="number"
+                value={form.dealValue || ''}
+                onChange={(e) => handleChange('dealValue', e.target.value)}
+                placeholder="750"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>Priority</label>
+            <select
+              value={form.priority || 'Medium'}
+              onChange={(e) => handleChange('priority', e.target.value)}
+              className={inputCls}
+            >
+              <option value="Low">Low Priority</option>
+              <option value="Medium">Medium Priority</option>
+              <option value="High">High Priority</option>
+            </select>
+            <p className="text-[11px] text-[var(--text-secondary)] mt-1 opacity-80">
+              Rating / Score / Priority are AI-computed by default â€“ override manually here if needed.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2 border-t border-black/8 dark:border-white/8">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white font-medium btn-neumorph-primary"
+          >
+            Save Changes
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-export default ImportLeadsModal;
+export default EditLeadModal;
