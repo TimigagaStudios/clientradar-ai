@@ -18,6 +18,7 @@ import {
   Sun,
   MonitorPlay,
   Sparkles,
+  User,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -35,12 +36,30 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
   const { leads } = useLeads();
+
+  // Get current user for avatar initials
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const userInitials = (userEmail || 'A')
+    .split('@')[0]
+    .replace(/[^a-zA-Z]/g, '')
+    .slice(0, 2)
+    .toUpperCase() || 'A';
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -212,17 +231,39 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shrink-0"
+                className="flex items-center gap-2 rounded-full p-[3px] transition-all hover:scale-105 active:scale-95 shrink-0"
                 aria-expanded={isAdminMenuOpen}
                 aria-label="Account menu"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(255,138,43,0.35), rgba(255,138,43,0.1))'
+                }}
               >
-                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
-                  A
+                <div className="w-10 h-10 rounded-full backdrop-blur-xl bg-white/[0.08] dark:bg-white/[0.06] border border-white/[0.18] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_4px_20px_rgba(0,0,0,0.12)] flex items-center justify-center text-[var(--text-primary)] font-black text-[13px] tracking-wider relative overflow-hidden">
+                  {/* glass highlight */}
+                  <div className="absolute top-0 left-1 right-1 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                  {userInitials ? userInitials : <User size={16} className="opacity-80" />}
                 </div>
               </button>
 
               {isAdminMenuOpen && (
                 <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-[60] shadow-2xl max-w-[calc(100vw-2rem)]">
+                  {/* Profile header */}
+                  <div className="px-3 py-3 mb-1 neo-in rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 border border-[var(--accent)]/20 flex items-center justify-center text-[var(--accent)] font-black text-xs">
+                        {userInitials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-[var(--text-primary)] truncate">
+                          {userEmail ? userEmail.split('@')[0] : 'Founder'}
+                        </div>
+                        <div className="text-[11px] text-[var(--text-secondary)] truncate">
+                          {userEmail || 'founder@timigaga.com'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Mobile quick actions */}
                   <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
