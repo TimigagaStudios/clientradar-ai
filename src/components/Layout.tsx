@@ -14,7 +14,6 @@ import {
   FileDown,
   Download,
   Globe,
-  ChevronDown,
   LogOut,
   Moon,
   Sun,
@@ -63,18 +62,24 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Globe, label: 'Demo' },
   ];
 
+  // Close admin menu on outside click / ESC
   useEffect(() => {
+    if (!isAdminMenuOpen) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        adminMenuRef.current &&
-        !adminMenuRef.current.contains(event.target as Node)
-      ) {
+      if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
         setIsAdminMenuOpen(false);
       }
     };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsAdminMenuOpen(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [isAdminMenuOpen]);
 
   const handleQuickAction = (label: string) => {
     setIsAdminMenuOpen(false);
@@ -86,6 +91,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const handleLogout = async () => {
+    setIsAdminMenuOpen(false);
     await supabase.auth.signOut();
     window.location.href = '/login';
   };
@@ -98,7 +104,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
-
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
       <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
 
@@ -154,7 +159,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
-      {/* ✅ FIXED HEADER */}
+      {/* Header */}
       <header
         className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
         style={{
@@ -166,15 +171,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         }}
       >
         <div className="flex items-center gap-3 w-full">
-
           <button
             className="lg:hidden rounded-xl bg-white/5 border border-white/8 p-2.5"
             onClick={() => setIsSidebarOpen(true)}
+            aria-label="Open menu"
           >
             <Menu size={22} />
           </button>
 
-          {/* ✅ Critical Fix: min-w-0 allows flex shrink */}
           <form
             onSubmit={handleGlobalSearchSubmit}
             className="flex-1 min-w-0 relative"
@@ -188,28 +192,32 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               value={globalSearch}
               onChange={(e) => setGlobalSearch(e.target.value)}
               placeholder="Search leads, outreach, demos..."
-              className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none text-sm sm:text-base"
+              className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none text-sm sm:text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)]"
             />
           </form>
 
           <div className="flex items-center gap-3 shrink-0">
-
+            {/* Desktop quick actions */}
             <div className="hidden md:flex gap-2">
               {quickActions.map((action) => (
                 <Button
                   key={action.label}
                   variant="icon"
                   onClick={() => handleQuickAction(action.label)}
+                  aria-label={action.label}
                 >
                   <action.icon size={18} />
                 </Button>
               ))}
             </div>
 
+            {/* Profile / Admin menu */}
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
                 className="flex items-center gap-2 rounded-2xl bg-black/[0.025] dark:bg-white/[0.02] border border-black/6 dark:border-white/6 px-3 py-2 shrink-0"
+                aria-expanded={isAdminMenuOpen}
+                aria-label="Account menu"
               >
                 <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[var(--accent)] to-orange-300 flex items-center justify-center text-white font-bold">
                   A
@@ -217,43 +225,46 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               </button>
 
               {isAdminMenuOpen && (
-                <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-50">
+                <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-[60] shadow-2xl max-w-[calc(100vw-2rem)]">
+                  {/* Mobile quick actions */}
                   <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
                       <button
                         key={action.label}
                         onClick={() => handleQuickAction(action.label)}
-                        className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
+                        className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
                       >
+                        <action.icon size={16} className="text-[var(--text-secondary)]" />
                         {action.label}
                       </button>
                     ))}
                   </div>
 
                   <button
-                    onClick={() => navigate('/settings')}
-                    className="w-full px-4 py-3 text-left rounded-xl"
+                    onClick={() => { setIsAdminMenuOpen(false); navigate('/settings'); }}
+                    className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
                   >
+                    <SettingsIcon size={16} className="text-[var(--text-secondary)]" />
                     Settings
                   </button>
-
                   <button
-                    onClick={toggleTheme}
-                    className="w-full px-4 py-3 text-left rounded-xl"
+                    onClick={() => { setIsAdminMenuOpen(false); toggleTheme(); }}
+                    className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
                   >
+                    {theme === 'dark' ? <Sun size={16} className="text-[var(--text-secondary)]" /> : <Moon size={16} className="text-[var(--text-secondary)]" />}
                     Toggle Theme
                   </button>
-
+                  <div className="my-1 border-t border-black/5 dark:border-white/5" />
                   <button
                     onClick={handleLogout}
-                    className="w-full px-4 py-3 text-left rounded-xl text-red-500"
+                    className="w-full px-4 py-3 text-left rounded-xl hover:bg-red-500/10 text-red-500 flex items-center gap-3"
                   >
+                    <LogOut size={16} />
                     Logout
                   </button>
                 </div>
               )}
             </div>
-
           </div>
         </div>
       </header>
@@ -263,7 +274,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <div className="max-w-[1600px] mx-auto">{children}</div>
         </div>
       </main>
-
     </div>
   );
 };
