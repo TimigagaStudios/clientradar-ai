@@ -39,7 +39,7 @@ const LeadDetail = () => {
     loading: leadsLoading, 
     updateLeadStatus, 
     addDemoLink,
-    // These may not exist in your current LeadContext yet â€“ see note below
+    // These may not exist in your current LeadContext yet
     updateLead,
     deleteLead,
   } = useLeads() as any;
@@ -107,13 +107,13 @@ const LeadDetail = () => {
         label: 'Website Status',
         value: lead.website ? 15 : 35,
         max: 35,
-        reason: lead.website ? 'Has website â€“ upgrade play' : 'No website â€“ high urgency',
+        reason: lead.website ? 'Has website - upgrade play' : 'No website - high urgency',
       },
       {
         label: 'Rating / Reputation',
         value: Math.min(25, Math.round((Number(lead.rating) || 3.5) * 5)),
         max: 25,
-        reason: lead.rating ? `${lead.rating}â˜… rating` : 'AI-estimated reputation',
+        reason: lead.rating ? `${lead.rating} star rating` : 'AI-estimated reputation',
       },
       {
         label: 'Business Activity',
@@ -140,7 +140,7 @@ const LeadDetail = () => {
     if (!lead) return null;
     const realRating = Number(lead.rating);
     if (realRating > 0) return { value: realRating.toFixed(1), isAi: false };
-    // AI-estimated: 3.8 â€“ 4.8 based on score
+    // AI-estimated: 3.8 - 4.8 based on score
     const score = computedLeadScore;
     const aiRating = score > 75 ? 4.7 : score > 55 ? 4.3 : score > 35 ? 4.0 : 3.8;
     return { value: aiRating.toFixed(1), isAi: true };
@@ -172,12 +172,12 @@ const LeadDetail = () => {
     const pitchAngle: string[] = [];
 
     if (Number(ratingStr) >= 4.3) {
-      strengths.push(`Strong reputation (${ratingStr}â˜…${aiDisplayRating?.isAi ? ' AI est.' : ''})`);
+      strengths.push(`Strong reputation (${ratingStr} star${aiDisplayRating?.isAi ? ' AI est.' : ''})`);
       pitchAngle.push('leverage their strong reviews with a modern site');
     }
 
     if (!hasWebsite) {
-      opportunities.push('No website â€“ first-mover advantage');
+      opportunities.push('No website - first-mover advantage');
       pitchAngle.push('be the first to get them online professionally');
     } else {
       opportunities.push('Existing website can likely be modernized');
@@ -185,22 +185,22 @@ const LeadDetail = () => {
     }
 
     if (score > 70) {
-      strengths.push('High AI lead score â€“ strong buyer intent');
+      strengths.push('High AI lead score - strong buyer intent');
     } else if (score > 40) {
-      opportunities.push('Medium score â€“ warm nurture candidate');
+      opportunities.push('Medium score - warm nurture candidate');
     }
 
     if (lead.category) strengths.push(`Active in ${lead.category}`);
 
     const summaryText = hasWebsite
-      ? `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'} with a ${ratingStr}â˜… rating. Great candidate for a modern 24â€“48hr redesign that converts better on mobile.`
-      : `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'}${aiDisplayRating ? ` ~${ratingStr}â˜…` : ''}, currently operating without a strong web presence. High-impact, fast-close opportunity.`;
+      ? `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'} with a ${ratingStr} star rating. Great candidate for a modern 24-48hr redesign that converts better on mobile.`
+      : `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'}${aiDisplayRating ? ` ~${ratingStr} star` : ''}, currently operating without a strong web presence. High-impact, fast-close opportunity.`;
 
     return {
       summaryText,
       strengths: strengths.slice(0, 3),
       opportunities: opportunities.slice(0, 3),
-      pitchAngle: pitchAngle[0] || 'offer a fast, revenue-focused website in 24â€“48hrs',
+      pitchAngle: pitchAngle[0] || 'offer a fast, revenue-focused website in 24-48hrs',
       confidence: score > 70 ? 'High' : score > 40 ? 'Medium' : 'Low',
     };
   }, [lead, aiDisplayRating, computedLeadScore]);
@@ -244,7 +244,6 @@ const LeadDetail = () => {
         await updateLead(lead.id, { dealValue: val });
       } else {
         console.warn('updateLead not found in LeadContext â€“ add updateLead(id, patch) to persist dealValue');
-        // Optimistic local update for the UI
         if (fetchedLead) setFetchedLead({ ...fetchedLead, dealValue: val });
       }
     } finally {
@@ -271,8 +270,6 @@ const LeadDetail = () => {
 
   const handleEditLead = () => {
     setMenuOpen(false);
-    // Navigate to leads page with edit flag, or open an edit modal
-    // For now: go to leads with state â€“ wire up your Edit modal in Leads.tsx
     navigate('/leads', { state: { editLeadId: lead.id } });
   };
 
@@ -343,8 +340,8 @@ const LeadDetail = () => {
           <ArrowLeft size={20} />
           Back to Leads
         </button>
-        <div className="flex items-center gap-3">
-          {/* 3-dot menu */}
+        <div className="flex items-center gap-3 relative">
+          {/* 3-dot menu - mobile-safe positioning */}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(v => !v)}
@@ -355,21 +352,29 @@ const LeadDetail = () => {
               <MoreVertical size={18} />
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-12 z-50 w-52 neo-card p-2 text-sm">
-                <button onClick={handleEditLead} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
-                  <Edit3 size={15} /> Edit Lead
-                </button>
-                <button onClick={handleCopyLink} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
-                  <LinkIcon size={15} /> Copy Link
-                </button>
-                <button onClick={() => { setMenuOpen(false); window.location.reload(); }} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
-                  <RefreshCw size={15} /> Refresh AI Score
-                </button>
-                <div className="my-1 border-t border-black/8 dark:border-white/8" />
-                <button onClick={handleDeleteLead} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-red-500/10 text-red-500">
-                  <Trash2 size={15} /> Delete Lead
-                </button>
-              </div>
+              <>
+                {/* mobile scrim */}
+                <div className="fixed inset-0 z-40 sm:hidden" onClick={() => setMenuOpen(false)} />
+                <div className="
+                  absolute z-50 w-56 max-w-[calc(100vw-1.5rem)]
+                  neo-card p-2 text-sm shadow-2xl
+                  left-0 sm:left-auto sm:right-0 top-12
+                ">
+                  <button onClick={handleEditLead} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
+                    <Edit3 size={15} /> Edit Lead
+                  </button>
+                  <button onClick={handleCopyLink} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
+                    <LinkIcon size={15} /> Copy Link
+                  </button>
+                  <button onClick={() => { setMenuOpen(false); window.location.reload(); }} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 text-[var(--text-primary)]">
+                    <RefreshCw size={15} /> Refresh AI Score
+                  </button>
+                  <div className="my-1 border-t border-black/8 dark:border-white/8" />
+                  <button onClick={handleDeleteLead} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-red-500/10 text-red-500">
+                    <Trash2 size={15} /> Delete Lead
+                  </button>
+                </div>
+              </>
             )}
           </div>
 
@@ -397,7 +402,7 @@ const LeadDetail = () => {
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-[var(--text-secondary)]">
                   <span className="flex items-center gap-1">
                     <MapPin size={16} />
-                    {lead.city || 'â€”'}
+                    {lead.city || 'N/A'}
                   </span>
                   <span className="w-1 h-1 bg-[var(--text-secondary)] rounded-full" />
                   <span>{lead.category || 'Business'}</span>
@@ -515,7 +520,7 @@ const LeadDetail = () => {
                         <CheckCircle2 size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
                         <span>{s}</span>
                       </li>
-                    )) : <li className="text-[var(--text-secondary)]">â€”</li>}
+                    )) : <li className="text-[var(--text-secondary)]">-</li>}
                   </ul>
                 </div>
                 <div className="neo-in rounded-2xl p-4">
@@ -526,7 +531,7 @@ const LeadDetail = () => {
                         <TrendingUp size={14} className="text-[var(--accent)] mt-0.5 flex-shrink-0" />
                         <span>{s}</span>
                       </li>
-                    )) : <li className="text-[var(--text-secondary)]">â€”</li>}
+                    )) : <li className="text-[var(--text-secondary)]">-</li>}
                   </ul>
                 </div>
               </div>
@@ -574,7 +579,7 @@ const LeadDetail = () => {
               ))}
             </div>
             <p className="text-[11px] text-[var(--text-secondary)] mt-4 opacity-80">
-              Rule-based scoring â€“ auto-calculated, no manual input. V3 will use LLM + vector memory.
+              Rule-based scoring - auto-calculated, no manual input. V3 will use LLM + vector memory.
             </p>
           </div>
 
@@ -583,7 +588,7 @@ const LeadDetail = () => {
             <div className={cardClasses + ' border border-green-500/20'}>
               <h3 className="font-bold text-lg text-[var(--text-primary)] mb-3 flex items-center gap-2">
                 <DollarSign size={18} className="text-green-500" />
-                Close Deal â€“ Final Amount
+                Close Deal - Final Amount
               </h3>
               <p className="text-sm text-[var(--text-secondary)] mb-4">
                 Deal marked as closed. Enter the actual amount accepted from the client. This feeds the future Revenue Agent / invoice builder.
@@ -606,7 +611,7 @@ const LeadDetail = () => {
                   disabled={savingDeal || !dealAmount}
                   className="btn-neumorph-primary px-5 py-3.5 text-sm font-semibold disabled:opacity-50"
                 >
-                  {savingDeal ? 'Savingâ€¦' : 'Save'}
+                  {savingDeal ? 'Saving...' : 'Save'}
                 </button>
               </div>
             </div>
@@ -674,7 +679,7 @@ const LeadDetail = () => {
                         <span className="capitalize">{item.type} Email</span>
                       </div>
                       <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                        {item.sentAt ? format(new Date(item.sentAt), 'MMM d, yyyy h:mm a') : 'â€”'}
+                        {item.sentAt ? format(new Date(item.sentAt), 'MMM d, yyyy h:mm a') : '-'}
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">{item.subject}</p>
@@ -705,7 +710,7 @@ const LeadDetail = () => {
                       <p className="text-xs text-[var(--text-secondary)] mt-0.5">{event.description}</p>
                       <p className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-center gap-1 opacity-70">
                         <Clock size={10} />
-                        {event.date ? format(new Date(event.date), 'MMM d, yyyy h:mm a') : 'â€”'}
+                        {event.date ? format(new Date(event.date), 'MMM d, yyyy h:mm a') : '-'}
                       </p>
                     </div>
                   </div>
@@ -725,7 +730,7 @@ const LeadDetail = () => {
               <span className="text-[var(--text-secondary)] text-sm">potential</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-2">
-              {isDealClosed ? 'Closed deal amount â€“ editable above.' : `AI-estimated â€¢ Revenue Mode $500â€“$1000`}
+              {isDealClosed ? 'Closed deal amount - editable above.' : `AI-estimated - Revenue Mode $500-$1000`}
             </p>
           </div>
 
