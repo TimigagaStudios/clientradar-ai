@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Camera, Loader2, Check, Wand2 } from 'lucide-react';
+import { X, Camera, Loader2, Check, Wand2, Upload } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
@@ -21,40 +21,111 @@ type ExtractedFields = {
   category?: string;
 };
 
+// --- Improved OCR field extractor ---
 const extractFieldsFromText = (text: string): ExtractedFields => {
   const out: ExtractedFields = {};
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lowerFull = text.toLowerCase();
 
+  // Email
   const emailMatch = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
   if (emailMatch) out.email = emailMatch[0];
 
+  // Phone
   const phoneMatch = text.match(/(\+?\d{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
   if (phoneMatch) out.phone = phoneMatch[0];
 
+  // Website
   const webMatch = text.match(/(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/[^\s]*)?/gi);
   if (webMatch) {
-    const filtered = webMatch.find(w => !w.includes('@') && !w.match(/\.(png|jpg|jpeg|gif)$/i));
-    if (filtered) out.website = filtered.replace(/^https?:\/\//, '');
+    const filtered = webMatch.find(w => !w.includes('@') && !w.match(/\.(png|jpg|jpeg|gif|svg)$/i));
+    if (filtered) out.website = filtered.replace(/^https?:\/\//, '').replace(/\/$/, '');
   }
 
-  for (const ln of lines.slice(0, 5)) {
-    if (ln.length < 3 || ln.length > 80) continue;
-    if (/[@\d]{3,}/.test(ln) && !/^[A-Za-z]/.test(ln)) continue;
-    if (ln.includes('@') || ln.includes('http') || /^\+\d/.test(ln)) continue;
-    if (!/[a-zA-Z]/.test(ln)) continue;
-    out.businessName = ln;
-    break;
-  }
+  // Business name - score each line
+  let bestName = '';
+  let bestScore = -99;
+  lines.slice(0, 12).forEach((ln, idx) => {
+    let score = 0;
+    const wordCount = ln.split(/\s+/).length;
+    const hasDigit = /\d/.test(ln);
+    const hasEmail = ln.includes('@');
+    const hasUrl = /https?:|\.com|\.net|\.org|www\./i.test(ln);
+    const isAllCaps = ln === ln.toUpperCase() && /[A-Z]/.test(ln);
+    const isTitleCase = ln.split(/\s+/).every(w => !w || /^[A-Z]/.test(w));
+    const isAllLower = ln === ln.toLowerCase();
 
+    // position bonus - earlier lines more likely to be the name
+    score += Math.max(0, 5 - idx);
+    // word count sweet spot
+    if (wordCount >= 2 && wordCount <= 5) score += 3;
+    if (wordCount === 1) score -= 1;
+    // casing
+    if (isAllCaps && ln.length >= 4 && ln.length <= 50) score += 4;
+    if (isTitleCase) score += 3;
+    if (isAllLower) score -= 2;
+    // length
+    if (ln.length < 3 || ln.length > 60) score -= 5;
+    // penalize contact-like lines
+    if (hasEmail || hasUrl) score -= 10;
+    if (hasDigit) score -= 4;
+    if (/[|Â©â€¢Â·]/.test(ln)) score -= 3;
+
+    if (score > bestScore && /[a-zA-Z]/.test(ln)) {
+      bestScore = score;
+      bestName = ln;
+    }
+  });
+  if (bestName) out.businessName = bestName;
+
+  // City - "City, ST 12345"
   const cityMatch = text.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)*),\s*([A-Z]{2})\s*(\d{5})?/);
   if (cityMatch) out.city = cityMatch[1];
 
-  const cats = ['restaurant','real estate','dental','clinic','law','salon','gym','auto','plumbing','electric','roofing','education','academy','school','cafe','bakery','barber','spa','hotel'];
-  const lower = text.toLowerCase();
-  const foundCat = cats.find(c => lower.includes(c));
-  if (foundCat) out.category = foundCat.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  // Category - expanded keyword map
+  const categoryMap: Record<string, string[]> = {
+    'Real Estate': ['real estate', 'realtor', 'broker', 'property', 'homes', 'realty'],
+    'Restaurant': ['restaurant', 'grill', 'kitchen', 'diner', 'cafe', 'bistro', 'pizzeria', 'tacos'],
+    'Dental': ['dental', 'dentist', 'orthodont', 'teeth'],
+    'Law Firm': ['law', 'attorney', 'lawyer', 'legal', 'firm llp'],
+    'Salon': ['salon', 'hair', 'barber', 'beauty', 'nails'],
+    'Gym / Fitness': ['gym', 'fitness', 'yoga', 'crossfit', 'pilates'],
+    'Auto Repair': ['auto', 'mechanic', 'tire', 'oil change', 'car wash'],
+    'Plumbing': ['plumbing', 'plumber', 'drain'],
+    'Electrician': ['electric', 'electrician'],
+    'Roofing': ['roof', 'roofing'],
+    'Education': ['school', 'academy', 'education', 'tutor', 'college', 'university', 'training'],
+    'Medical': ['clinic', 'medical', 'doctor', 'health', 'urgent care'],
+    'Spa': ['spa', 'massage', 'wellness'],
+    'Hotel': ['hotel', 'motel', 'inn', 'lodging'],
+    'Retail': ['shop', 'store', 'boutique', 'retail'],
+    'Construction': ['construction', 'contractor', 'remodel'],
+    'Photography': ['photo', 'photographer', 'studio photo'],
+    'Marketing': ['marketing', 'agency', 'seo', 'digital'],
+  };
+  const searchText = (out.businessName + ' ' + lowerFull).toLowerCase();
+  for (const [cat, kws] of Object.entries(categoryMap)) {
+    if (kws.some(k => searchText.includes(k))) { out.category = cat; break; }
+  }
 
   return out;
+};
+
+const mergeExtracted = (a: ExtractedFields, b: ExtractedFields): ExtractedFields => {
+  const pick = (x?: string, y?: string) => {
+    if (!x) return y;
+    if (!y) return x;
+    // prefer longer business name, otherwise first seen
+    return y.length > x.length ? y : x;
+  };
+  return {
+    businessName: pick(a.businessName, b.businessName),
+    phone: a.phone || b.phone,
+    email: a.email || b.email,
+    website: a.website || b.website,
+    city: a.city || b.city,
+    category: a.category || b.category,
+  };
 };
 
 const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
@@ -84,8 +155,9 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [ocrStep, setOcrStep] = useState('');
   const [ocrText, setOcrText] = useState('');
-  const [ocrPreviewUrl, setOcrPreviewUrl] = useState<string | null>(null);
+  const [ocrPreviewUrls, setOcrPreviewUrls] = useState<string[]>([]);
   const [extracted, setExtracted] = useState<ExtractedFields | null>(null);
 
   if (!open) return null;
@@ -102,53 +174,71 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const runOcr = async (file: File) => {
+  const runOcrFiles = async (files: File[]) => {
+    const take = files.slice(0, 5);
     setOcrRunning(true);
     setOcrProgress(0);
     setOcrText('');
     setExtracted(null);
-    setOcrPreviewUrl(URL.createObjectURL(file));
+
+    // preview urls
+    ocrPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+    const previews = take.map(f => URL.createObjectURL(f));
+    setOcrPreviewUrls(previews);
+
+    let merged: ExtractedFields = {};
+    let allText = '';
 
     try {
-      const { data } = await Tesseract.recognize(file, 'eng', {
-        logger: m => {
-          if (m.status === 'recognizing text' && m.progress) {
-            setOcrProgress(Math.round(m.progress * 100));
-          }
-        },
-      });
-      const text = data.text || '';
-      setOcrText(text);
-      const fields = extractFieldsFromText(text);
-      setExtracted(fields);
+      for (let i = 0; i < take.length; i++) {
+        const file = take[i];
+        setOcrStep(`Reading ${i + 1}/${take.length}...`);
+        const { data } = await Tesseract.recognize(file, 'eng', {
+          logger: m => {
+            if (m.status === 'recognizing text' && m.progress) {
+              const base = i / take.length;
+              const part = (m.progress as number) / take.length;
+              setOcrProgress(Math.round((base + part) * 100));
+            }
+          },
+        });
+        const text = data.text || '';
+        allText += (allText ? '\n\n---\n\n' : '') + text;
+        const fields = extractFieldsFromText(text);
+        merged = mergeExtracted(merged, fields);
+      }
+      setOcrText(allText);
+      setExtracted(merged);
 
-      // Prefill empty fields only
+      // Prefill empty form fields only
       setFormData(prev => ({
         ...prev,
-        businessName: prev.businessName || fields.businessName || prev.businessName,
-        phone: prev.phone || fields.phone || prev.phone,
-        email: prev.email || fields.email || prev.email,
-        website: prev.website || fields.website || prev.website,
-        city: prev.city || fields.city || prev.city,
-        category: prev.category || fields.category || prev.category,
+        businessName: prev.businessName || merged.businessName || prev.businessName,
+        phone: prev.phone || merged.phone || prev.phone,
+        email: prev.email || merged.email || prev.email,
+        website: prev.website || merged.website || prev.website,
+        city: prev.city || merged.city || prev.city,
+        category: prev.category || merged.category || prev.category,
       }));
 
       showToast({
         type: 'success',
         title: 'Screenshot imported',
-        message: 'Fields prefilled - review and save.',
+        message: `${take.length} image${take.length > 1 ? 's' : ''} processed - review fields and save.`,
       });
     } catch (e) {
       console.error(e);
       showToast({ type: 'error', title: 'OCR failed', message: 'Could not read that image. Try a clearer screenshot.' });
     } finally {
       setOcrRunning(false);
+      setOcrStep('');
+      setOcrProgress(100);
     }
   };
 
   const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) runOcr(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length) runOcrFiles(files);
     e.target.value = '';
   };
 
@@ -168,10 +258,11 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
 
   const clearImport = () => {
     setOcrText('');
-    setOcrPreviewUrl(null);
+    ocrPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+    setOcrPreviewUrls([]);
     setExtracted(null);
     setOcrProgress(0);
-    if (ocrPreviewUrl) URL.revokeObjectURL(ocrPreviewUrl);
+    setOcrStep('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -266,12 +357,12 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               <Wand2 size={15} className="text-[var(--accent)]" />
               Screenshot Import AI
             </p>
-            {ocrPreviewUrl && !ocrRunning && (
+            {ocrPreviewUrls.length > 0 && !ocrRunning && (
               <button type="button" onClick={clearImport} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Clear</button>
             )}
           </div>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
-            Snap a business listing, business card, or social bio. Extracts name, phone, email, website, city, category â€“ in-browser, $0.
+            Snap a business listing, business card, or social bio. Extracts name, phone, email, website, city, category - in-browser, $0.
           </p>
 
           <div className="flex gap-2 flex-wrap items-center">
@@ -279,6 +370,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={onFilePicked}
             />
@@ -289,11 +381,15 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl neo-button text-sm font-medium text-[var(--text-primary)] disabled:opacity-50"
             >
               {ocrRunning ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-              {ocrRunning ? `Reading... ${ocrProgress}%` : 'Import from Screenshot'}
+              {ocrRunning ? (ocrStep || `Reading... ${ocrProgress}%`) : 'Import from Screenshot'}
             </button>
-            <span className="text-xs text-[var(--text-secondary)]">Camera or Photo Library</span>
-            {ocrPreviewUrl && (
-              <img src={ocrPreviewUrl} alt="import preview" className="h-12 rounded-lg border border-black/10 dark:border-white/10 object-cover" />
+            <span className="text-xs text-[var(--text-secondary)]">Camera or Photo Library - up to 5 images</span>
+            {ocrPreviewUrls.length > 0 && (
+              <div className="flex gap-1 flex-wrap w-full mt-1">
+                {ocrPreviewUrls.map((url, i) => (
+                  <img key={i} src={url} alt={`import ${i+1}`} className="h-12 rounded-lg border border-black/10 dark:border-white/10 object-cover" />
+                ))}
+              </div>
             )}
           </div>
 
@@ -425,7 +521,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
             Mark website as outdated
           </label>
           <p className="md:col-span-2 text-[11px] text-[var(--text-secondary)] opacity-80">
-            Lead Score / Priority are AI-computed by default in ClientRadar â€“ override manually here if needed.
+            Lead Score / Priority are AI-computed by default in ClientRadar - override manually here if needed.
           </p>
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
