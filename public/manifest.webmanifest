@@ -1,0 +1,52 @@
+{
+  "name": "ClientRadar AI",
+  "short_name": "ClientRadar",
+  "description": "AI-powered agency operating system for Timigaga Studios â€“ leads, outreach, demos, deals.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1026",
+  "theme_color": "#ff8a2b",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Add Lead",
+      "short_name": "Add",
+      "url": "/leads?action=new",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Outreach",
+      "short_name": "Outreach",
+      "url": "/outreach",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
