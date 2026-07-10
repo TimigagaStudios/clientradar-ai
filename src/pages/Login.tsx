@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Zap, Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import Button from '../components/Button';
+import Logo from '../components/Logo';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
 
@@ -18,22 +19,18 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
-
     if (error) {
       setError(error.message);
       setIsLoading(false);
       return;
     }
-
     if (data.session) {
       navigate('/');
     }
-
     setIsLoading(false);
   };
 
@@ -41,18 +38,15 @@ const Login = () => {
     <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center px-4 py-8 md:px-6 transition-colors duration-500 overflow-hidden relative">
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
-
       <div className="w-full max-w-md animate-in fade-in zoom-in duration-700">
         {/* Logo / Title */}
         <div className="text-center mb-8 md:mb-10">
-          <div className="inline-flex items-center justify-center w-16 h-16 md:w-20 md:h-20 bg-[var(--accent)] rounded-[28%] shadow-[0_14px_30px_rgba(255,122,0,0.28)] mb-5 md:mb-6">
-            <Zap className="text-white" size={34} />
+          <div className="flex justify-center mb-5 md:mb-6">
+            <Logo size={80} showText={false} />
           </div>
-
           <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2 text-[var(--text-primary)]">
             ClientRadar
           </h1>
-
           <p className="text-[var(--text-secondary)] font-bold tracking-[0.22em] uppercase text-[10px] md:text-xs">
             Internal Lead Engine Access
           </p>
@@ -68,7 +62,6 @@ const Login = () => {
               <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Work Email
               </label>
-
               <div className="relative group">
                 <Mail
                   className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
@@ -89,7 +82,6 @@ const Login = () => {
               <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Password
               </label>
-
               <div className="relative group">
                 <Lock
                   className="absolute left-4 md:left-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] group-focus-within:text-[var(--accent)] transition-colors"
@@ -100,7 +92,7 @@ const Login = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-[var(--bg)] neo-in rounded-2xl py-3.5 md:py-4 pl-12 md:pl-14 pr-12 md:pr-14 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
-                  placeholder="••••••••"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                   required
                 />
                 <button
