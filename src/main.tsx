@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import "./pwa-register";
 import App from "./App";
 
 console.log("App is running version: Futuristic Neumorphism - Build Verified");
