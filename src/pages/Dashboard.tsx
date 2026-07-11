@@ -1,3 +1,5 @@
+import React, { useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 import {
   Users,
@@ -15,52 +17,57 @@ import {
   Sparkles,
   Clock3,
 } from 'lucide-react';
+import { cn } from '../utils/cn';
 
 const Dashboard = () => {
   const { leads } = useLeads();
+  const navigate = useNavigate();
 
   const totalLeads = leads.length;
-  const noWebsite = leads.filter((l) => !l.website).length;
-  const outdatedWebsite = leads.filter((l) => l.outdatedWebsite).length;
-  const demosTracked = leads.filter((l) => l.demoLink || l.demoStatus).length;
-  const readyDemos = leads.filter((l) => l.demoStatus === 'Ready').length;
-  const sentDemos = leads.filter((l) => l.demoStatus === 'Sent').length;
+  const noWebsite = leads.filter((l: any) => !l.website).length;
+  const outdatedWebsite = leads.filter((l: any) => l.outdatedWebsite).length;
+  const demosTracked = leads.filter((l: any) => l.demoLink || l.demoStatus).length;
+  const readyDemos = leads.filter((l: any) => l.demoStatus === 'Ready').length;
+  const sentDemos = leads.filter((l: any) => l.demoStatus === 'Sent').length;
+
   const emailsSent = leads.filter(
-    (l) => l.status === 'Email Sent' || l.status === 'Pending Reply'
+    (l: any) => l.status === 'Email Sent' || l.status === 'Pending Reply'
   ).length;
-  const dealsClosed = leads.filter((l) => l.status === 'Deal Closed').length;
-  const totalRevenue = leads.reduce((acc, lead) => acc + (lead.dealValue || 0), 0);
+
+  const dealsClosed = leads.filter((l: any) => l.status === 'Deal Closed').length;
+  const totalRevenue = leads.reduce((acc: number, lead: any) => acc + (Number(lead.dealValue) || 0), 0);
 
   const needsOutreach = leads.filter(
-    (lead) =>
+    (lead: any) =>
       lead.status === 'New' &&
       (!lead.outreachHistory || lead.outreachHistory.length === 0)
   );
 
   const demoReadyToSend = leads.filter(
-    (lead) => lead.demoStatus === 'Ready'
+    (lead: any) => lead.demoStatus === 'Ready'
   );
 
   const awaitingReply = leads.filter(
-    (lead) => lead.status === 'Pending Reply'
+    (lead: any) => lead.status === 'Pending Reply'
   );
 
   const warmOpportunities = leads.filter(
-    (lead) => lead.status === 'Interested' || lead.status === 'Negotiating'
+    (lead: any) => lead.status === 'Interested' || lead.status === 'Negotiating'
   );
 
   const stats = [
-    { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true },
-    { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true },
-    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false },
-    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true },
-    { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true },
-    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true },
+    { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true, filter: 'All' },
+    { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true, filter: 'No Website' },
+    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false, filter: 'Outdated Website' },
+    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true, filter: 'Demo Ready' },
+    { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true, filter: 'Pending Reply' },
+    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true, filter: 'Closed Deals' },
   ];
 
-  const demoLeads = leads
-    .filter((lead) => lead.demoLink || lead.demoStatus)
-    .slice(0, 4);
+  const demoLeads = useMemo(() =>
+    leads.filter((lead: any) => lead.demoLink || lead.demoStatus).slice(0, 4),
+    [leads]
+  );
 
   const reminderGroups = [
     {
@@ -101,29 +108,32 @@ const Dashboard = () => {
     <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Command Center</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-2 text-[var(--text-primary)]">Command Center</h1>
           <p className="text-[var(--text-secondary)] font-medium">
             Internal real-time analytics for Lead Engine
           </p>
         </div>
-
-        <div className="flex items-center gap-3 p-3 neo-in rounded-2xl">
+        <button
+          onClick={() => navigate('/deals')}
+          className="flex items-center gap-3 px-4 py-3 neo-in rounded-2xl hover:opacity-90 transition-opacity text-left"
+        >
           <TrendingUp className="text-[var(--accent)]" size={20} />
-          <span className="font-bold text-lg">
+          <span className="font-bold text-lg text-[var(--text-primary)]">
             ${totalRevenue.toLocaleString()}{' '}
             <span className="text-xs font-medium text-[var(--text-secondary)]">
               Revenue
             </span>
           </span>
-        </div>
+        </button>
       </header>
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
         {stats.map((stat, i) => (
-          <div
+          <button
             key={i}
-            className="neo-card p-6 flex flex-col justify-between group hover:-translate-y-1 transition-transform duration-300"
+            onClick={() => navigate(`/leads?filter=${encodeURIComponent(stat.filter)}`)}
+            className="neo-card p-6 flex flex-col justify-between group hover:-translate-y-1 transition-all duration-300 text-left w-full"
           >
             <div className="flex items-start justify-between mb-4">
               <div className="p-2.5 neo-in rounded-xl group-hover:scale-110 transition-transform">
@@ -137,17 +147,17 @@ const Dashboard = () => {
               </div>
             </div>
             <div>
-              <p className="text-2xl font-black">{stat.value}</p>
+              <p className="text-2xl font-black text-[var(--text-primary)]">{stat.value}</p>
               <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
                 {stat.label}
               </p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
       {/* Follow-up Organizer */}
-      <section className="neo-card p-8">
+      <section className="neo-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <div className="p-2.5 neo-in rounded-xl">
             <Sparkles size={18} className="text-[var(--accent)]" />
@@ -163,51 +173,52 @@ const Dashboard = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          {reminderGroups.map((group) => (
-            <div key={group.title} className="neo-in p-5 rounded-2xl">
-              <div className="flex items-center gap-3 mb-3">
-                <group.icon size={18} className={group.color} />
-                <span className="text-sm font-semibold text-[var(--text-primary)]">
-                  {group.title}
-                </span>
+          {reminderGroups.map((group) => {
+            const Icon = group.icon;
+            return (
+              <div key={group.title} className="neo-in p-5 rounded-2xl">
+                <div className="flex items-center gap-3 mb-3">
+                  <Icon size={18} className={group.color} />
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">
+                    {group.title}
+                  </span>
+                </div>
+                <p className="text-2xl font-black text-[var(--text-primary)] mb-2">
+                  {group.count}
+                </p>
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  {group.helper}
+                </p>
+                <div className="space-y-2">
+                  {group.leads.length > 0 ? (
+                    group.leads.map((lead: any) => (
+                      <Link
+                        key={lead.id}
+                        to={`/leads/${lead.id}`}
+                        className="block rounded-xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-3 hover:bg-black/[0.05] dark:hover:bg-white/[0.05] transition-colors"
+                      >
+                        <p className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                          {lead.businessName}
+                        </p>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          {lead.city || 'N/A'} - {lead.category || 'Business'}
+                        </p>
+                      </Link>
+                    ))
+                  ) : (
+                    <p className="text-sm text-[var(--text-secondary)]">
+                      Nothing urgent here.
+                    </p>
+                  )}
+                </div>
               </div>
-
-              <p className="text-2xl font-black text-[var(--text-primary)] mb-2">
-                {group.count}
-              </p>
-
-              <p className="text-sm text-[var(--text-secondary)] mb-4">
-                {group.helper}
-              </p>
-
-              <div className="space-y-2">
-                {group.leads.length > 0 ? (
-                  group.leads.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="rounded-xl bg-black/[0.03] dark:bg-white/[0.02] border border-black/8 dark:border-white/6 px-3 py-3"
-                    >
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">
-                        {lead.businessName}
-                      </p>
-                      <p className="text-xs text-[var(--text-secondary)] mt-1">
-                        {lead.city} • {lead.category}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">
-                    Nothing urgent here.
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       {/* Demo Overview */}
-      <section className="neo-card p-8">
+      <section className="neo-card p-6 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h3 className="text-xl font-bold text-[var(--text-primary)]">
@@ -231,7 +242,6 @@ const Dashboard = () => {
               {demosTracked}
             </p>
           </div>
-
           <div className="neo-in p-5 rounded-2xl">
             <div className="flex items-center gap-3 mb-3">
               <CheckCircle2 size={18} className="text-green-500" />
@@ -243,7 +253,6 @@ const Dashboard = () => {
               {readyDemos}
             </p>
           </div>
-
           <div className="neo-in p-5 rounded-2xl">
             <div className="flex items-center gap-3 mb-3">
               <Send size={18} className="text-blue-500" />
@@ -259,10 +268,10 @@ const Dashboard = () => {
       </section>
 
       {/* Recent Demo Assets */}
-      <section className="neo-card p-8">
+      <section className="neo-card p-6 md:p-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-xl font-bold">Recent Demo Assets</h3>
+            <h3 className="text-xl font-bold text-[var(--text-primary)]">Recent Demo Assets</h3>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               Latest leads with attached demo links
             </p>
@@ -275,20 +284,21 @@ const Dashboard = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {demoLeads.map((lead) => (
-              <div key={lead.id} className="neo-in p-5 rounded-2xl">
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
-                    <p className="font-bold text-[var(--text-primary)]">
-                      {lead.businessName}
-                    </p>
-                    <p className="text-sm text-[var(--text-secondary)] mt-1">
-                      {lead.city} • {lead.category}
-                    </p>
+            {demoLeads.map((lead: any) => (
+              <div key={lead.id} className="neo-in p-5 rounded-2xl hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
+                <Link to={`/leads/${lead.id}`} className="block">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-[var(--text-primary)] truncate">
+                        {lead.businessName}
+                      </p>
+                      <p className="text-sm text-[var(--text-secondary)] mt-1">
+                        {lead.city || 'N/A'} - {lead.category || 'Business'}
+                      </p>
+                    </div>
+                    <MonitorPlay size={18} className="text-[var(--accent)] flex-shrink-0" />
                   </div>
-                  <MonitorPlay size={18} className="text-[var(--accent)]" />
-                </div>
-
+                </Link>
                 <div className="mb-3">
                   <span
                     className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.16em] ${
@@ -304,12 +314,12 @@ const Dashboard = () => {
                     {lead.demoStatus || 'Not Started'}
                   </span>
                 </div>
-
                 {lead.demoLink ? (
                   <a
                     href={lead.demoLink}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
                     className="text-sm text-[var(--accent)] hover:underline break-all inline-flex items-center gap-2"
                   >
                     Open demo
