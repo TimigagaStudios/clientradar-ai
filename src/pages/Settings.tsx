@@ -53,7 +53,7 @@ const Settings = () => {
             </div>
             <Button onClick={toggleTheme} variant="secondary" size="sm" className="px-4 py-2 text-xs md:text-sm font-semibold whitespace-nowrap">
               {theme === 'light' ? 'Switch to Dark' : 'Switch to Light'}
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -141,7 +141,7 @@ const Settings = () => {
               className="bg-red-500 text-white hover:bg-red-600 px-5 py-2.5 whitespace-nowrap"
             >
               Reset Database
-            </button>
+            </Button>
           </div>
         </section>
       </div>
