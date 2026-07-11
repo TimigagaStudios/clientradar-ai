@@ -19,15 +19,18 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
+
     if (error) {
       setError(error.message);
       setIsLoading(false);
       return;
     }
+
     if (data.session) {
       navigate('/');
     }
@@ -36,8 +39,10 @@ const Login = () => {
 
   return (
     <div className="min-h-screen bg-[var(--bg)] flex items-center justify-center px-4 py-8 md:px-6 transition-colors duration-500 overflow-hidden relative">
+      {/* Background glows */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-[var(--accent)] opacity-5 blur-[120px] rounded-full" />
+
       <div className="w-full max-w-md animate-in fade-in zoom-in duration-700">
         {/* Logo / Title */}
         <div className="text-center mb-8 md:mb-10">
@@ -58,6 +63,7 @@ const Login = () => {
           className="neo-card px-6 py-7 md:px-8 md:py-9 space-y-6 md:space-y-7 relative overflow-hidden"
         >
           <div className="space-y-4 md:space-y-5">
+            {/* Email Field */}
             <div className="space-y-2">
               <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Work Email
@@ -78,6 +84,7 @@ const Login = () => {
               </div>
             </div>
 
+            {/* Password Field - FIXED EYE TOGGLE */}
             <div className="space-y-2">
               <label className="text-[10px] md:text-xs font-black text-[var(--text-secondary)] uppercase tracking-[0.22em] ml-1">
                 Password
@@ -91,27 +98,34 @@ const Login = () => {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-3.5 md:py-4 pl-12 md:pl-14 pr-12 md:pr-14 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
-                  placeholder="â˘â˘â˘â˘â˘â˘â˘â˘"
+                  className="w-full bg-[var(--bg)] neo-in rounded-2xl py-3.5 md:py-4 pl-12 md:pl-14 pr-14 outline-none border-none focus:ring-2 focus:ring-[var(--accent)]/35 transition-all font-medium text-[var(--text-primary)]"
+                  placeholder="••••••••"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 md:right-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                  className="absolute right-4 md:right-5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--accent)] active:text-[var(--accent)] transition-all p-1 rounded-lg hover:bg-white/5"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? (
+                    <EyeOff size={18} />
+                  ) : (
+                    <Eye size={18} />
+                  )}
                 </button>
               </div>
             </div>
           </div>
 
+          {/* Error Message */}
           {error && (
             <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
 
+          {/* Submit Button */}
           <div className="pt-1 flex justify-center">
             <Button
               type="submit"
