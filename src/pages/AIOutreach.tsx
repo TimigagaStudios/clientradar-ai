@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Sparkles, Wand2, Mail, MessageSquare, Send } from 'lucide-react';
+import { Sparkles, Wand2, Mail, MessageSquare, RefreshCw } from 'lucide-react';
 import { useToast } from '../components/ui/useToast';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,6 +9,8 @@ type OutreachType = 'Intro Email' | 'Follow-up Email' | 'Short DM' | 'AI Follow-
 type Tone = 'Professional' | 'Friendly' | 'Bold' | 'Premium';
 type FocusKey = 'No website' | 'Outdated website' | 'Better branding' | 'Demo offer' | 'More clients';
 type CtaKey = 'Reply if interested' | 'Book a call' | 'Review the demo';
+
+const STORAGE_KEY = 'cr-ai-outreach-v2';
 
 const AIOutreach = () => {
   const { leads } = useLeads();
@@ -21,6 +23,35 @@ const AIOutreach = () => {
   const [tone, setTone] = useState<Tone>('Professional');
   const [focus, setFocus] = useState<FocusKey>('No website');
   const [cta, setCta] = useState<CtaKey>('Reply if interested');
+
+  // manual regenerate trigger + auto-regenerate flash
+  const [genTick, setGenTick] = useState(0);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [lastGenAt, setLastGenAt] = useState<number | null>(null);
+
+  // Restore saved controls
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw);
+      if (s.selectedLeadId) setSelectedLeadId(s.selectedLeadId);
+      if (s.channel) setChannel(s.channel);
+      if (s.outreachType) setOutreachType(s.outreachType);
+      if (s.tone) setTone(s.tone);
+      if (s.focus) setFocus(s.focus);
+      if (s.cta) setCta(s.cta);
+    } catch {}
+  }, []);
+
+  // Persist controls
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        selectedLeadId, channel, outreachType, tone, focus, cta
+      }));
+    } catch {}
+  }, [selectedLeadId, channel, outreachType, tone, focus, cta]);
 
   const selectedLead = useMemo(
     () => leads.find((lead: any) => String(lead.id) === String(selectedLeadId)) || null,
@@ -49,6 +80,8 @@ const AIOutreach = () => {
   }, [channel, availableChannels]);
 
   const generated = useMemo(() => {
+    // genTick forces a manual re-run
+    void genTick;
     if (!selectedLead) {
       return { subject: '', body: '', short: '', chars: 0 };
     }
@@ -56,10 +89,8 @@ const AIOutreach = () => {
     const business = l.businessName || 'your business';
     const demo = l.demoLink || '';
     const hasDemo = !!l.demoLink;
-    const hasWebsite = !!l.website;
 
     const isFollowUp = outreachType === 'Follow-up Email' || outreachType === 'AI Follow-up';
-    const isDM = effectiveChannel === 'Instagram' || outreachType === 'Short DM';
 
     // Email-style openings
     const toneOpeningsEmail: Record<Tone, string> = {
@@ -117,15 +148,15 @@ const AIOutreach = () => {
       'Reply if interested': `Reply YES if interested`,
     };
 
-    // --- Email (full) ---
+    // --- Email ---
     if (effectiveChannel === 'Email') {
-      let subject = '';
-      let body = '';
-      let short = '';
-
       const opening = toneOpeningsEmail[tone];
       const focusTxt = focusLines[focus];
       const ctaTxt = ctaLines[cta];
+
+      let subject = '';
+      let body = '';
+      let short = '';
 
       if (outreachType === 'Intro Email') {
         subject = `Quick idea for ${business}`;
@@ -154,9 +185,8 @@ Best,
 Timigaga Studios`;
         short = `Hi ${business}, just following up on my earlier message. ${ctaTxt}`;
       } else {
-        // Short DM, but via Email channel – keep it short
         subject = `${business} quick idea`;
-        body = `${toneOpeningsEmail[tone]}
+        body = `${opening}
 
 ${focusTxt}
 
@@ -165,7 +195,6 @@ ${ctaTxt}
 - Timigaga Studios`;
         short = `Hi ${business}, I noticed an opportunity around your online presence. ${ctaTxt}`;
       }
-
       return { subject, body, short, chars: body.length };
     }
 
@@ -177,54 +206,46 @@ ${ctaTxt}
       const isWA = effectiveChannel === 'WhatsApp';
 
       let body = `${opening} ${f}. ${c}`;
-      if (isWA && hasDemo) {
-        body += ` Demo: ${demo}`;
-      }
+      if (isWA && hasDemo) body += ` Demo: ${demo}`;
       body += `\n\n- Timigaga Studios`;
-      if (effectiveChannel === 'SMS') {
-        body += `\nReply STOP to opt out`;
-      }
+      if (effectiveChannel === 'SMS') body += `\nReply STOP to opt out`;
 
-      // keep under ~300 chars for SMS, trim if needed
       if (effectiveChannel === 'SMS' && body.length > 320) {
         body = `${opening} ${f}. ${c} - Timigaga\nReply STOP to opt out`;
       }
-
-      return {
-        subject: '',
-        body,
-        short: body,
-        chars: body.length,
-      };
+      return { subject: '', body, short: body, chars: body.length };
     }
 
     // --- Instagram DM ---
-    // Instagram
     const igOpening = tone === 'Friendly' || tone === 'Bold'
-      ? `Hey ${business}! 👋 Found you on Instagram`
+      ? `Hey ${business}! Found you on Instagram`
       : `Hi ${business}, came across your page`;
-    const igFocus = {
-      'No website': `noticed you don't have a proper site linked – you're leaving bookings on the table`,
+    const igFocus: Record<FocusKey, string> = {
+      'No website': `noticed you don't have a proper site linked - you're leaving bookings on the table`,
       'Outdated website': `your site could use a glow-up to match your brand here`,
-      'Better branding': `your IG looks great – your website could match that energy`,
-      'Demo offer': hasDemo ? `I mocked up a quick site concept for ${business} – want the link?` : `want me to mock up a quick site concept?`,
+      'Better branding': `your IG looks great - your website could match that energy`,
+      'Demo offer': hasDemo ? `I mocked up a quick site concept for ${business} - want the link?` : `want me to mock up a quick site concept?`,
       'More clients': `a sharper site would turn these IG views into actual clients`,
-    }[focus];
-
-    const igCta = {
+    };
+    const igCta: Record<CtaKey, string> = {
       'Book a call': `open to a quick chat?`,
       'Review the demo': hasDemo ? `demo: ${demo}` : `want me to send a demo?`,
       'Reply if interested': `DM me YES if you want to see it`,
-    }[cta];
-
-    const igBody = `${igOpening}. ${igFocus}. ${igCta} – Timigaga Studios`;
-    return {
-      subject: '',
-      body: igBody,
-      short: igBody,
-      chars: igBody.length,
     };
-  }, [selectedLead, outreachType, tone, focus, cta, effectiveChannel]);
+    const igBody = `${igOpening}. ${igFocus[focus]} ${igCta[cta]} - Timigaga Studios`;
+    return { subject: '', body: igBody, short: igBody, chars: igBody.length };
+  }, [selectedLead, outreachType, tone, focus, cta, effectiveChannel, genTick]);
+
+  // Auto-regenerate flash + timestamp
+  useEffect(() => {
+    if (!selectedLead) return;
+    setIsRegenerating(true);
+    const t = setTimeout(() => {
+      setIsRegenerating(false);
+      setLastGenAt(Date.now());
+    }, 180);
+    return () => clearTimeout(t);
+  }, [selectedLeadId, channel, outreachType, tone, focus, cta, genTick, selectedLead]);
 
   const copyText = async (text: string, label: string) => {
     try {
@@ -263,18 +284,34 @@ ${ctaTxt}
     navigate('/outreach');
   };
 
+  const handleRegenerate = () => {
+    if (!selectedLead) {
+      showToast({ type: 'error', title: 'No lead selected', message: 'Select a lead first.' });
+      return;
+    }
+    setGenTick(t => t + 1);
+    showToast({ type: 'success', title: 'Regenerated', message: `${effectiveChannel} outreach refreshed for ${(selectedLead as any).businessName}.` });
+  };
+
   const channelOptions: { value: Channel; label: string; available: boolean }[] = [
     { value: 'Auto', label: 'Auto - best available', available: true },
-    { value: 'Email', label: `Email${selectedLead ? (availableChannels.Email ? '' : ' - no email') : ''}`, available: !selectedLead || availableChannels.Email },
-    { value: 'SMS', label: `SMS${selectedLead ? (availableChannels.SMS ? '' : ' - no phone') : ''}`, available: !selectedLead || availableChannels.SMS },
-    { value: 'WhatsApp', label: `WhatsApp${selectedLead ? (availableChannels.WhatsApp ? '' : ' - no phone') : ''}`, available: !selectedLead || availableChannels.WhatsApp },
-    { value: 'Instagram', label: `Instagram DM${selectedLead ? (availableChannels.Instagram ? '' : ' - no IG') : ''}`, available: !selectedLead || availableChannels.Instagram },
+    { value: 'Email', label: `Email${selectedLead && !availableChannels.Email ? ' - no email' : ''}`, available: !selectedLead || availableChannels.Email },
+    { value: 'SMS', label: `SMS${selectedLead && !availableChannels.SMS ? ' - no phone' : ''}`, available: !selectedLead || availableChannels.SMS },
+    { value: 'WhatsApp', label: `WhatsApp${selectedLead && !availableChannels.WhatsApp ? ' - no phone' : ''}`, available: !selectedLead || availableChannels.WhatsApp },
+    { value: 'Instagram', label: `Instagram DM${selectedLead && !availableChannels.Instagram ? ' - no IG' : ''}`, available: !selectedLead || availableChannels.Instagram },
   ];
 
   const inputCls = "w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] outline-none bg-transparent";
   const isEmailChannel = effectiveChannel === 'Email';
   const charLimit = effectiveChannel === 'SMS' ? 320 : effectiveChannel === 'Instagram' ? 500 : 2000;
   const charColor = generated.chars > charLimit ? 'text-red-400' : generated.chars > charLimit * 0.85 ? 'text-yellow-500' : 'text-[var(--text-secondary)]';
+
+  const availableChannels = {
+    Email: !!(selectedLead as any)?.email,
+    SMS: !!(selectedLead as any)?.phone,
+    WhatsApp: !!(selectedLead as any)?.phone,
+    Instagram: !!(selectedLead as any)?.instagram,
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -302,13 +339,26 @@ ${ctaTxt}
 
       <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
         <section className="neo-card p-6 md:p-8 space-y-5">
-          <div>
-            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
-              Generator Controls
-            </h2>
-            <p className="text-sm text-[var(--text-secondary)]">
-              Select a lead and customize the message direction.
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+                Generator Controls
+              </h2>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Select a lead and customize the message direction.
+              </p>
+            </div>
+            {selectedLead && (
+              <button
+                onClick={handleRegenerate}
+                disabled={isRegenerating}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl neo-button text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--accent)] disabled:opacity-50"
+                title="Regenerate"
+              >
+                <RefreshCw size={14} className={isRegenerating ? 'animate-spin' : ''} />
+                Regenerate
+              </button>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -325,9 +375,11 @@ ${ctaTxt}
               ))}
             </select>
 
-            {/* Channel selector – NEW */}
+            {/* Channel selector */}
             <div>
-              <label className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] font-bold ml-1 mb-1 block">Channel</label>
+              <label className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] font-bold ml-1 mb-1 block">
+                Channel
+              </label>
               <select
                 value={channel}
                 onChange={(e) => setChannel(e.target.value as Channel)}
@@ -346,7 +398,7 @@ ${ctaTxt}
                     availableChannels.SMS && 'SMS',
                     availableChannels.WhatsApp && 'WhatsApp',
                     availableChannels.Instagram && 'Instagram'
-                  ].filter(Boolean).join(' • ') || 'No contact info – add phone/email in Lead Detail'}
+                  ].filter(Boolean).join(' • ') || 'No contact info - add phone/email in Lead Detail'}
                   {channel === 'Auto' && ` – using ${effectiveChannel}`}
                 </p>
               )}
@@ -403,16 +455,25 @@ ${ctaTxt}
         </section>
 
         <section className="neo-card p-6 md:p-8 space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
-              Generated Outreach
-            </h2>
-            <p className="text-sm text-[var(--text-secondary)]">
-              Copy this content or push it into the Outreach workspace.
-              {!isEmailChannel && (
-                <span className="ml-2 text-[var(--accent)] font-semibold">{effectiveChannel}</span>
-              )}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+                Generated Outreach
+              </h2>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Copy this content or push it into the Outreach workspace.
+                {!isEmailChannel && (
+                  <span className="ml-2 text-[var(--accent)] font-semibold">{effectiveChannel}</span>
+                )}
+              </p>
+            </div>
+            <div className="text-right min-w-[110px]">
+              {isRegenerating ? (
+                <span className="text-xs text-[var(--accent)] font-bold animate-pulse">Updating…</span>
+              ) : lastGenAt ? (
+                <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Updated just now</span>
+              ) : null}
+            </div>
           </div>
 
           {!selectedLead ? (
@@ -434,7 +495,7 @@ ${ctaTxt}
                       Copy
                     </button>
                   </div>
-                  <div className="neo-in rounded-2xl p-4 text-[var(--text-primary)] text-sm font-medium">
+                  <div className="neo-in rounded-2xl p-4 text-[var(--text-primary)] text-sm font-medium min-h-[48px]">
                     {generated.subject || '-'}
                   </div>
                 </div>
@@ -459,7 +520,7 @@ ${ctaTxt}
                     </button>
                   </div>
                 </div>
-                <div className={`neo-in rounded-2xl p-5 text-[var(--text-primary)] text-sm whitespace-pre-wrap leading-7 ${!isEmailChannel ? '' : 'font-mono'}`}>
+                <div className={`neo-in rounded-2xl p-5 text-[var(--text-primary)] text-sm whitespace-pre-wrap leading-7 min-h-[120px] transition-opacity ${isRegenerating ? 'opacity-60' : 'opacity-100'}`}>
                   {generated.body || '-'}
                 </div>
               </div>
@@ -477,16 +538,19 @@ ${ctaTxt}
                       Copy
                     </button>
                   </div>
-                  <div className="neo-in rounded-2xl p-4 text-[var(--text-primary)] text-sm leading-7">
+                  <div className="neo-in rounded-2xl p-4 text-[var(--text-secondary)] text-sm leading-7">
                     {generated.short || '-'}
                   </div>
                 </div>
               )}
 
               <div className="flex flex-wrap gap-3 pt-2">
-                <button className="btn-neumorph px-4 py-2 text-sm gap-2 inline-flex items-center">
-                  <Wand2 size={14} />
-                  Refine Later
+                <button
+                  onClick={handleRegenerate}
+                  className="btn-neumorph px-4 py-2 text-sm gap-2 inline-flex items-center"
+                >
+                  <RefreshCw size={14} className={isRegenerating ? 'animate-spin' : ''} />
+                  Regenerate
                 </button>
                 <button
                   onClick={handleUseInOutreach}
@@ -498,7 +562,7 @@ ${ctaTxt}
                 </button>
               </div>
               <p className="text-[11px] text-[var(--text-secondary)] opacity-80">
-                Rule-based v2.1 – channel-aware. V3 will use LLM + memory.
+                Rule-based v2.2 – auto-regenerates on change, channel-aware. Selections saved locally. V3 will use LLM + memory.
               </p>
             </>
           )}
