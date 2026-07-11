@@ -306,13 +306,6 @@ ${ctaTxt}
   const charLimit = effectiveChannel === 'SMS' ? 320 : effectiveChannel === 'Instagram' ? 500 : 2000;
   const charColor = generated.chars > charLimit ? 'text-red-400' : generated.chars > charLimit * 0.85 ? 'text-yellow-500' : 'text-[var(--text-secondary)]';
 
-  const availableChannels = {
-    Email: !!(selectedLead as any)?.email,
-    SMS: !!(selectedLead as any)?.phone,
-    WhatsApp: !!(selectedLead as any)?.phone,
-    Instagram: !!(selectedLead as any)?.instagram,
-  };
-
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
