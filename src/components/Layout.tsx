@@ -18,7 +18,6 @@ import {
   Sun,
   MonitorPlay,
   Sparkles,
-  User,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -44,7 +43,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const { theme, toggleTheme } = useTheme();
   const { leads } = useLeads();
 
-  // Get current user for avatar initials
+  // Get current user
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? null);
@@ -55,11 +54,21 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const userInitials = (userEmail || 'A')
-    .split('@')[0]
-    .replace(/[^a-zA-Z]/g, '')
-    .slice(0, 2)
-    .toUpperCase() || 'A';
+  const displayName = 'Timigaga Studios';
+  const maskEmail = (email: string | null) => {
+    if (!email || !email.includes('@')) return 'contact@timigaga.com';
+    const [local, domain] = email.split('@');
+    const VISIBLE_START = 2;
+    const VISIBLE_END = 1;
+    if (local.length <= VISIBLE_START + VISIBLE_END) {
+      return local[0] + '***@' + domain;
+    }
+    const start = local.slice(0, VISIBLE_START);
+    const end = local.slice(-VISIBLE_END);
+    return `${start}***${end}@${domain}`;
+  };
+  const maskedEmail = maskEmail(userEmail);
+  const avatarUrl = '/avatar-founder.jpg';
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
@@ -231,34 +240,40 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <div className="relative" ref={adminMenuRef}>
               <button
                 onClick={() => setIsAdminMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-full p-[3px] transition-all hover:scale-105 active:scale-95 shrink-0"
+                className="relative rounded-full p-[2px] transition-all hover:scale-105 active:scale-95 shrink-0"
                 aria-expanded={isAdminMenuOpen}
                 aria-label="Account menu"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(255,138,43,0.35), rgba(255,138,43,0.1))'
+                  background: 'linear-gradient(135deg, rgba(255,138,43,0.5), rgba(255,138,43,0.15))'
                 }}
               >
-                <div className="w-10 h-10 rounded-full backdrop-blur-xl bg-white/[0.08] dark:bg-white/[0.06] border border-white/[0.18] shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_4px_20px_rgba(0,0,0,0.12)] flex items-center justify-center text-[var(--text-primary)] font-black text-[13px] tracking-wider relative overflow-hidden">
-                  {/* glass highlight */}
-                  <div className="absolute top-0 left-1 right-1 h-[1px] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                  {userInitials ? userInitials : <User size={16} className="opacity-80" />}
-                </div>
+                <img
+                  src={avatarUrl}
+                  alt="Profile"
+                  className="w-10 h-10 rounded-full object-cover bg-white ring-1 ring-white/15"
+                  width={40}
+                  height={40}
+                />
               </button>
 
               {isAdminMenuOpen && (
-                <div className="absolute right-0 mt-3 w-64 neo-card p-2 z-[60] shadow-2xl max-w-[calc(100vw-2rem)]">
+                <div className="absolute right-0 mt-3 w-72 neo-card p-2 z-[60] shadow-2xl max-w-[calc(100vw-2rem)]">
                   {/* Profile header */}
-                  <div className="px-3 py-3 mb-1 neo-in rounded-xl">
+                  <div className="px-3 py-3 mb-2 neo-in rounded-xl">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 border border-[var(--accent)]/20 flex items-center justify-center text-[var(--accent)] font-black text-xs">
-                        {userInitials}
-                      </div>
+                      <img
+                        src={avatarUrl}
+                        alt="Profile"
+                        className="w-11 h-11 rounded-full object-cover ring-1 ring-[var(--accent)]/20 flex-shrink-0"
+                        width={44}
+                        height={44}
+                      />
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-bold text-[var(--text-primary)] truncate">
-                          {userEmail ? userEmail.split('@')[0] : 'Founder'}
+                        <div className="text-sm font-black text-[var(--text-primary)] truncate">
+                          {displayName}
                         </div>
                         <div className="text-[11px] text-[var(--text-secondary)] truncate">
-                          {userEmail || 'founder@timigaga.com'}
+                          {maskedEmail}
                         </div>
                       </div>
                     </div>
