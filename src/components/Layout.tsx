@@ -18,6 +18,7 @@ import {
   Sun,
   MonitorPlay,
   Sparkles,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -36,7 +37,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [userEmail, setUserEmail] = useState<string | null>(null);
-
   const location = useLocation();
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
@@ -48,13 +48,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? null);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
+
     return () => subscription.unsubscribe();
   }, []);
 
   const displayName = 'Timigaga Studios';
+
   const maskEmail = (email: string | null) => {
     if (!email || !email.includes('@')) return 'contact@timigaga.com';
     const [local, domain] = email.split('@');
@@ -67,6 +70,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     const end = local.slice(-VISIBLE_END);
     return `${start}***${end}@${domain}`;
   };
+
   const maskedEmail = maskEmail(userEmail);
   const avatarUrl = '/avatar-founder.jpg';
 
@@ -79,6 +83,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+    { icon: FileText, label: 'Invoices', path: '/invoices' }, // âœ… NEW
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
   ];
 
@@ -93,16 +98,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   // Close admin menu on outside click / ESC
   useEffect(() => {
     if (!isAdminMenuOpen) return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
         setIsAdminMenuOpen(false);
       }
     };
+
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsAdminMenuOpen(false);
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEsc);
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEsc);
@@ -204,14 +213,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
             <Menu size={22} />
           </button>
 
-          <form
-            onSubmit={handleGlobalSearchSubmit}
-            className="flex-1 min-w-0 relative"
-          >
-            <Search
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]"
-              size={18}
-            />
+          <form onSubmit={handleGlobalSearchSubmit} className="flex-1 min-w-0 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
             <input
               type="text"
               value={globalSearch}
@@ -300,6 +303,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <SettingsIcon size={16} className="text-[var(--text-secondary)]" />
                     Settings
                   </button>
+
                   <button
                     onClick={() => { setIsAdminMenuOpen(false); toggleTheme(); }}
                     className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
@@ -307,7 +311,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     {theme === 'dark' ? <Sun size={16} className="text-[var(--text-secondary)]" /> : <Moon size={16} className="text-[var(--text-secondary)]" />}
                     Toggle Theme
                   </button>
+
                   <div className="my-1 border-t border-black/5 dark:border-white/5" />
+
                   <button
                     onClick={handleLogout}
                     className="w-full px-4 py-3 text-left rounded-xl hover:bg-red-500/10 text-red-500 flex items-center gap-3"
