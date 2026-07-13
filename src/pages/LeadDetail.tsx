@@ -44,7 +44,7 @@ const LeadDetail = () => {
   const [demoUrl, setDemoUrl] = useState('');
   const [fetchedLead, setFetchedLead] = useState<any | null>(null);
   const [fetchingSingle, setFetchingSingle] = useState(false);
-  
+
   // 3-dot menu
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -53,10 +53,11 @@ const LeadDetail = () => {
   const [dealAmount, setDealAmount] = useState<string>('');
   const [savingDeal, setSavingDeal] = useState(false);
 
-  // === NEW: Client Reply State (Item A) ===
+  // === NEW: Client Reply State ===
   const [replyStatus, setReplyStatus] = useState('');
   const [replyNote, setReplyNote] = useState('');
   const [savingReply, setSavingReply] = useState(false);
+  const [replySaved, setReplySaved] = useState(false);
 
   // Find lead in context first
   const contextLead = useMemo(() => {
@@ -73,7 +74,6 @@ const LeadDetail = () => {
       setFetchingSingle(true);
       try {
         // const { data } = await supabase.from('leads').select('*').eq('id', id).single();
-        // if (data) setFetchedLead(data);
       } catch (e) {
         console.error('Single lead fetch failed:', e);
       } finally {
@@ -83,7 +83,7 @@ const LeadDetail = () => {
     fetchSingleLead();
   }, [id, contextLead, leadsLoading]);
 
-  // Close 3-dot on outside click / ESC
+  // Close 3-dot menu
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -101,7 +101,7 @@ const LeadDetail = () => {
 
   const isLoading = leadsLoading || fetchingSingle;
 
-  // AI Scoring (kept from original)
+  // === ORIGINAL AI SCORING (kept exactly as sent) ===
   const aiScoreBreakdown = useMemo(() => {
     if (!lead) return { items: [], total: 0 };
     const items = [
@@ -158,6 +158,7 @@ const LeadDetail = () => {
     return Math.min(1000, Math.max(500, Math.round(base / 50) * 50));
   }, [lead, computedLeadScore]);
 
+  // === ORIGINAL AI SUMMARY (kept exactly) ===
   const aiSummary = useMemo(() => {
     if (!lead) return null;
     const hasWebsite = !!lead.website;
@@ -235,16 +236,15 @@ const LeadDetail = () => {
     try {
       if (typeof updateLead === 'function') {
         await updateLead(lead.id, { dealValue: val });
-      } else {
-        console.warn('updateLead not found in LeadContext');
-        if (fetchedLead) setFetchedLead({ ...fetchedLead, dealValue: val });
+      } else if (fetchedLead) {
+        setFetchedLead({ ...fetchedLead, dealValue: val });
       }
     } finally {
       setSavingDeal(false);
     }
   };
 
-  // === NEW: Handle Client Reply (Item A) ===
+  // === NEW: Client Reply Feature (Added without removing anything) ===
   const handleSaveClientReply = async () => {
     if (!lead || !replyStatus) return;
 
@@ -264,21 +264,16 @@ const LeadDetail = () => {
       if (typeof updateLead === 'function') {
         await updateLead(lead.id, { 
           clientReplies: updatedReplies,
-          // Auto-update status if useful
           ...(replyStatus === 'Interested' && { status: 'Interested' }),
           ...(replyStatus === 'Not Interested' && { status: 'Rejected' }),
         });
-      } else {
-        // Fallback for local state
-        if (fetchedLead) {
-          setFetchedLead({ 
-            ...fetchedLead, 
-            clientReplies: updatedReplies 
-          });
-        }
+      } else if (fetchedLead) {
+        setFetchedLead({ ...fetchedLead, clientReplies: updatedReplies });
       }
 
-      // Reset form
+      setReplySaved(true);
+      setTimeout(() => setReplySaved(false), 2000);
+
       setReplyStatus('');
       setReplyNote('');
     } catch (error) {
@@ -346,12 +341,8 @@ const LeadDetail = () => {
   ];
 
   const replyOptions = [
-    'Interested',
-    'Not Interested',
-    'Need More Info',
-    'Requested Demo',
-    'Follow-up Scheduled',
-    'Other'
+    'Interested', 'Not Interested', 'Need More Info', 'Requested Demo', 
+    'Follow-up Scheduled', 'Other'
   ];
 
   const cardClasses = 'neo-card p-6 md:p-8';
@@ -416,9 +407,10 @@ const LeadDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content */}
+        {/* Main Content - All original sections preserved + new features added */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Profile Section (unchanged) */}
+
+          {/* Profile Section (Original) */}
           <div className={cardClasses}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
               <div>
@@ -452,7 +444,6 @@ const LeadDetail = () => {
               </div>
             </div>
 
-            {/* Contact Info + Metrics (kept original) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-black/8 dark:border-white/8">
               <div>
                 <h3 className={`${labelClasses} mb-3`}>Contact Info</h3>
@@ -502,10 +493,9 @@ const LeadDetail = () => {
             </div>
           </div>
 
-          {/* AI Sections (kept original) */}
+          {/* AI LEAD SUMMARY (Original - fully preserved) */}
           {aiSummary && (
             <div className={cardClasses}>
-              {/* ... AI Summary content unchanged ... */}
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-2">
                   <Sparkles size={18} className="text-[var(--accent)]" /> AI Lead Summary
@@ -518,13 +508,71 @@ const LeadDetail = () => {
                 </span>
               </div>
               <p className="text-[var(--text-primary)] leading-relaxed mb-5">{aiSummary.summaryText}</p>
-              {/* Strengths & Opportunities kept from original */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div className="neo-in rounded-2xl p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-2">Strengths</p>
+                  <ul className="space-y-1.5 text-sm text-[var(--text-primary)]">
+                    {aiSummary.strengths.length ? aiSummary.strengths.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <CheckCircle2 size={14} className="text-green-500 mt-0.5 flex-shrink-0" /> <span>{s}</span>
+                      </li>
+                    )) : <li className="text-[var(--text-secondary)]">-</li>}
+                  </ul>
+                </div>
+                <div className="neo-in rounded-2xl p-4">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-2">Opportunities</p>
+                  <ul className="space-y-1.5 text-sm text-[var(--text-primary)]">
+                    {aiSummary.opportunities.length ? aiSummary.opportunities.map((s, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <TrendingUp size={14} className="text-[var(--accent)] mt-0.5 flex-shrink-0" /> <span>{s}</span>
+                      </li>
+                    )) : <li className="text-[var(--text-secondary)]">-</li>}
+                  </ul>
+                </div>
+              </div>
+              <div className="neo-in rounded-2xl p-4 bg-[var(--accent)]/5 border border-[var(--accent)]/10">
+                <p className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-1">Recommended pitch angle</p>
+                <p className="text-sm text-[var(--text-primary)]">{aiSummary.pitchAngle}</p>
+              </div>
             </div>
           )}
 
-          {/* AI Scoring kept from original */}
+          {/* AI LEAD SCORING (Original - fully preserved) */}
+          <div className={cardClasses}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-2">
+                <Target size={18} className="text-[var(--accent)]" /> AI Lead Scoring
+              </h3>
+              <div className="text-right">
+                <div className={cn(
+                  "text-2xl font-black",
+                  computedLeadScore > 70 ? 'text-green-500' : computedLeadScore > 40 ? 'text-yellow-500' : 'text-gray-400'
+                )}>
+                  {computedLeadScore}
+                  <span className="text-sm text-[var(--text-secondary)] font-normal"> /100</span>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {aiScoreBreakdown.items.map((item) => (
+                <div key={item.label}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-[var(--text-secondary)]">{item.label}</span>
+                    <span className="text-[var(--text-primary)] font-semibold">{item.value}/{item.max}</span>
+                  </div>
+                  <div className="h-2 rounded-full neo-in overflow-hidden">
+                    <div className="h-full bg-[var(--accent)] rounded-full transition-all" style={{ width: `${(item.value / item.max) * 100}%` }} />
+                  </div>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-1">{item.reason}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-[var(--text-secondary)] mt-4 opacity-80">
+              Rule-based scoring - auto-calculated, no manual input. V3 will use LLM + vector memory.
+            </p>
+          </div>
 
-          {/* === NEW: CLIENT REPLY SECTION (Item A) === */}
+          {/* === NEW: CLIENT REPLY SECTION (Added) === */}
           <div className={cardClasses}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 neo-in rounded-xl">
@@ -537,7 +585,6 @@ const LeadDetail = () => {
               Log what the client said when they replied to your outreach.
             </p>
 
-            {/* Quick Reply Buttons */}
             <div className="flex flex-wrap gap-2 mb-4">
               {replyOptions.map((option) => (
                 <button
@@ -555,7 +602,6 @@ const LeadDetail = () => {
               ))}
             </div>
 
-            {/* Reply Note */}
             <textarea
               value={replyNote}
               onChange={(e) => setReplyNote(e.target.value)}
@@ -563,31 +609,32 @@ const LeadDetail = () => {
               className="w-full h-24 neo-in rounded-2xl p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none mb-4"
             />
 
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-3 items-center">
+              {replySaved && <span className="text-green-500 text-sm font-medium">Reply saved!</span>}
               <button
                 onClick={handleSaveClientReply}
                 disabled={!replyStatus || savingReply}
-                className="btn-neumorph-primary px-6 py-3 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="btn-neumorph-primary px-6 py-3 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingReply ? 'Saving...' : 'Save Client Reply'}
               </button>
             </div>
 
-            {/* Display Logged Replies */}
+            {/* Logged Replies */}
             {clientReplies.length > 0 && (
               <div className="mt-6 pt-6 border-t border-black/8 dark:border-white/8">
-                <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-3">Logged Replies</p>
+                <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-3">Previous Replies</p>
                 <div className="space-y-3">
                   {clientReplies.slice().reverse().map((reply: any, index: number) => (
                     <div key={index} className="neo-in p-4 rounded-2xl">
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <span className="font-semibold text-[var(--text-primary)]">{reply.status}</span>
                         <span className="text-xs text-[var(--text-secondary)]">
                           {format(new Date(reply.date), 'MMM d, yyyy')}
                         </span>
                       </div>
                       {reply.note && (
-                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{reply.note}</p>
+                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed mt-1">{reply.note}</p>
                       )}
                     </div>
                   ))}
@@ -596,27 +643,170 @@ const LeadDetail = () => {
             )}
           </div>
 
-          {/* Deal Closed Section (kept original) */}
+          {/* Deal Closed Section (Original - fully preserved) */}
           {isDealClosed && (
             <div className={cardClasses + ' border border-green-500/20'}>
-              {/* ... original deal amount content ... */}
+              <h3 className="font-bold text-lg text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                <DollarSign size={18} className="text-green-500" /> Close Deal - Final Amount
+              </h3>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">
+                Deal marked as closed. Enter the actual amount accepted from the client.
+              </p>
+              <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                  <label className={`${labelClasses} mb-2 block`}>Closed Amount (USD)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={dealAmount}
+                    onChange={(e) => setDealAmount(e.target.value)}
+                    className={inputClasses}
+                    placeholder="750"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveDealValue}
+                  disabled={savingDeal || !dealAmount}
+                  className="btn-neumorph-primary px-5 py-3.5 text-sm font-semibold disabled:opacity-50"
+                >
+                  {savingDeal ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           )}
 
-          {/* Demo Website (kept original) */}
+          {/* Demo Website (Original - fully preserved) */}
           <div className={cardClasses}>
-            {/* ... original demo section ... */}
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Demo Website</h3>
+            {lead.demoLink ? (
+              <div className="flex items-center justify-between p-4 bg-purple-500/10 border border-purple-500/20 rounded-2xl">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="bg-purple-500 text-white p-2 rounded-xl flex-shrink-0">
+                    <Globe size={20} />
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-sm text-purple-300 font-medium">Demo Available</p>
+                    <a href={lead.demoLink} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline truncate block">
+                      {lead.demoLink}
+                    </a>
+                  </div>
+                </div>
+                <a href={lead.demoLink} target="_blank" rel="noopener noreferrer" className="p-2 hover:bg-purple-500/20 rounded-xl transition-colors text-purple-400 flex-shrink-0">
+                  <ExternalLink size={20} />
+                </a>
+              </div>
+            ) : (
+              <form onSubmit={handleDemoSubmit} className="flex gap-3">
+                <input 
+                  type="url" 
+                  placeholder="Paste demo website link here..." 
+                  className={`${inputClasses} flex-1`} 
+                  value={demoUrl} 
+                  onChange={(e) => setDemoUrl(e.target.value)} 
+                />
+                <button 
+                  type="submit" 
+                  disabled={!demoUrl} 
+                  className="btn-neumorph-primary px-5 py-3 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </form>
+            )}
           </div>
 
-          {/* Notes & Outreach History (kept original) */}
+          {/* Notes (Original) */}
           <div className={cardClasses}>
-            {/* ... original notes and outreach history ... */}
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Notes</h3>
+            <textarea
+              className="w-full h-32 neo-in rounded-2xl p-4 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none resize-none"
+              placeholder="Add notes about this lead..."
+              defaultValue={lead.notes || ''}
+            />
+            <div className="flex justify-end mt-3">
+              <button className="inline-flex items-center gap-2 px-4 py-2 neo-button text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-xl text-sm font-medium transition-colors">
+                <Save size={16} /> Save Notes
+              </button>
+            </div>
+          </div>
+
+          {/* Outreach History (Original - fully preserved) */}
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Outreach History</h3>
+            {lead.outreachHistory && lead.outreachHistory.length > 0 ? (
+              <div className="space-y-4">
+                {lead.outreachHistory.map((item: any) => (
+                  <div key={item.id} className="neo-in p-4 rounded-2xl">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold">
+                        <Mail size={16} className="text-[var(--accent)]" />
+                        <span className="capitalize">{item.type} Email</span>
+                      </div>
+                      <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
+                        {item.sentAt ? format(new Date(item.sentAt), 'MMM d, yyyy h:mm a') : '-'}
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">{item.subject}</p>
+                    <p className="text-sm text-[var(--text-secondary)] leading-7 whitespace-pre-wrap">{item.body}</p>
+                    <div className="mt-3 text-xs text-[var(--text-secondary)] uppercase tracking-[0.14em]">Channel: {item.channel}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="neo-in p-6 rounded-2xl text-[var(--text-secondary)] text-sm">
+                No outreach history yet for this lead.
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Sidebar (kept original) */}
+        {/* Right Sidebar (Original - fully preserved) */}
         <div className="space-y-6">
-          {/* Activity Journal, Lead Value, Priority - kept from original */}
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Activity Journal</h3>
+            <div className="relative pl-4 space-y-6 before:absolute before:top-2 before:bottom-2 before:left-[11px] before:w-0.5 before:bg-black/10 dark:before:bg-white/10">
+              {lead.timeline && lead.timeline.length > 0 ? (
+                lead.timeline.map((event: any, idx: number) => (
+                  <div key={event.id || idx} className="relative pl-6">
+                    <div className="absolute left-[-5px] top-1.5 w-3 h-3 rounded-full bg-[var(--bg-secondary)] border-2 border-[var(--accent)] z-10" />
+                    <div>
+                      <p className="text-sm font-medium text-[var(--text-primary)]">{event.type}</p>
+                      <p className="text-xs text-[var(--text-secondary)] mt-0.5">{event.description}</p>
+                      <p className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-center gap-1 opacity-70">
+                        <Clock size={10} /> {event.date ? format(new Date(event.date), 'MMM d, yyyy h:mm a') : '-'}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-[var(--text-secondary)] pl-6">No activity yet.</p>
+              )}
+            </div>
+          </div>
+
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Lead Value</h3>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-black text-[var(--text-primary)]">
+                ${Number(lead.dealValue || aiLeadValue).toLocaleString()}
+              </span>
+              <span className="text-[var(--text-secondary)] text-sm">potential</span>
+            </div>
+            <p className="text-xs text-[var(--text-secondary)] mt-2">
+              {isDealClosed ? 'Closed deal amount - editable above.' : `AI-estimated - Revenue Mode $500-$1000`}
+            </p>
+          </div>
+
+          <div className={cardClasses}>
+            <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Priority Signal</h3>
+            <p className={cn('text-lg font-semibold', 'text-yellow-500')}>
+              {lead.priority || 'Medium'} Priority
+            </p>
+            <p className="text-sm text-[var(--text-secondary)] mt-2">
+              Based on website status, reviews, rating, and AI lead score.
+            </p>
+          </div>
         </div>
       </div>
     </div>
