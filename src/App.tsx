@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import LeadFinder from './pages/LeadFinder';
@@ -12,6 +13,8 @@ import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
 import Demos from './pages/Demos';
 import AIOutreach from './pages/AIOutreach';
+import Invoices from './pages/Invoices'; // ✅ NEW
+
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { supabase } from './lib/supabase';
@@ -24,25 +27,18 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
 
   React.useEffect(() => {
     const checkSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
+      const { data: { session } } = await supabase.auth.getSession();
       setIsAuthenticated(!!session);
       setLoading(false);
     };
 
     checkSession();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   if (loading) {
@@ -69,115 +65,19 @@ const App = () => {
             <Routes>
               <Route path="/login" element={<Login />} />
 
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Dashboard />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
+              <Route path="/" element={<RequireAuth><Layout><Dashboard /></Layout></RequireAuth>} />
+              <Route path="/finder" element={<RequireAuth><Layout><LeadFinder /></Layout></RequireAuth>} />
+              <Route path="/leads" element={<RequireAuth><Layout><Leads /></Layout></RequireAuth>} />
+              <Route path="/leads/:id" element={<RequireAuth><Layout><LeadDetail /></Layout></RequireAuth>} />
+              <Route path="/outreach" element={<RequireAuth><Layout><Outreach /></Layout></RequireAuth>} />
+              <Route path="/analytics" element={<RequireAuth><Layout><Analytics /></Layout></RequireAuth>} />
+              <Route path="/deals" element={<RequireAuth><Layout><Deals /></Layout></RequireAuth>} />
+              <Route path="/demos" element={<RequireAuth><Layout><Demos /></Layout></RequireAuth>} />
+              <Route path="/ai-outreach" element={<RequireAuth><Layout><AIOutreach /></Layout></RequireAuth>} />
+              <Route path="/settings" element={<RequireAuth><Layout><Settings /></Layout></RequireAuth>} />
 
-              <Route
-                path="/finder"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <LeadFinder />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/leads"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Leads />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/leads/:id"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <LeadDetail />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/outreach"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Outreach />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/analytics"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Analytics />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/deals"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Deals />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/demos"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Demos />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/ai-outreach"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <AIOutreach />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="/settings"
-                element={
-                  <RequireAuth>
-                    <Layout>
-                      <Settings />
-                    </Layout>
-                  </RequireAuth>
-                }
-              />
+              {/* ✅ NEW INVOICES ROUTE */}
+              <Route path="/invoices" element={<RequireAuth><Layout><Invoices /></Layout></RequireAuth>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
