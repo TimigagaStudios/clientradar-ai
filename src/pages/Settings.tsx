@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { Moon, Sun, Trash2, Shield, LogOut, Monitor, Download } from 'lucide-react';
 import Button from '../components/Button';
@@ -9,10 +9,18 @@ import Logo from '../components/Logo';
 const Settings = () => {
   const { theme, toggleTheme } = useTheme();
   const { resetData } = useLeads() as any;
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     window.location.href = '/login';
+  };
+
+  const handleResetData = () => {
+    if (resetData) {
+      resetData();
+    }
+    setShowResetConfirm(false);
   };
 
   const isPWAInstalled = typeof window !== 'undefined' && (
@@ -92,6 +100,7 @@ const Settings = () => {
             </div>
             <h2 className="text-xl font-semibold text-[var(--text-primary)]">App Install</h2>
           </div>
+
           <div className="neo-in rounded-2xl p-4">
             <p className="font-medium text-[var(--text-primary)]">
               {isPWAInstalled ? 'ClientRadar is installed' : 'Install ClientRadar'}
@@ -114,8 +123,7 @@ const Settings = () => {
             </div>
           </div>
           <p className="text-sm text-[var(--text-secondary)] leading-7">
-            AI-powered agency operating system – leads, outreach, demos, deals.
-            Revenue first, automation later.
+            AI-powered agency operating system – leads, outreach, demos, deals. Revenue first, automation later.
           </p>
         </section>
 
@@ -136,7 +144,7 @@ const Settings = () => {
               </p>
             </div>
             <Button
-              onClick={() => resetData && resetData()}
+              onClick={() => setShowResetConfirm(true)}
               variant="secondary"
               className="bg-red-500 text-white hover:bg-red-600 px-5 py-2.5 whitespace-nowrap"
             >
@@ -145,6 +153,43 @@ const Settings = () => {
           </div>
         </section>
       </div>
+
+      {/* ==================== CONFIRMATION MODAL ==================== */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="neo-card max-w-md w-full p-6 md:p-8 space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-red-500/10 rounded-xl">
+                <Trash2 size={24} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">Reset All Data?</h3>
+                <p className="text-sm text-[var(--text-secondary)]">This cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-4 text-sm text-red-300">
+              All leads, notes, outreach history, demo status, and deals will be permanently deleted.
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button
+                onClick={() => setShowResetConfirm(false)}
+                variant="secondary"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleResetData}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+              >
+                Yes, Reset Everything
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
