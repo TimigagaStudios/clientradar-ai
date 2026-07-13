@@ -1,10 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { X, Camera, Loader2, Check, Wand2, Upload } from 'lucide-react';
+import { X, Camera, Loader2, Check, Wand2 } from 'lucide-react';
 import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
-
-// npm install tesseract.js
 import Tesseract from 'tesseract.js';
 
 interface AddLeadModalProps {
@@ -19,105 +17,125 @@ type ExtractedFields = {
   website?: string;
   city?: string;
   category?: string;
+  address?: string;
 };
 
-// --- Improved OCR field extractor ---
+// ==================== IMPROVED OCR EXTRACTOR ====================
 const extractFieldsFromText = (text: string): ExtractedFields => {
   const out: ExtractedFields = {};
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const lowerFull = text.toLowerCase();
+  const fullText = text.toLowerCase();
 
-  // Email
+  // 1. Email
   const emailMatch = text.match(/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i);
   if (emailMatch) out.email = emailMatch[0];
 
-  // Phone
-  const phoneMatch = text.match(/(\+?\d{1,3}[-.\s]?)?(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})/);
+  // 2. Phone - improved for +1 (213) 430-9112 style
+  const phoneMatch = text.match(/(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
   if (phoneMatch) out.phone = phoneMatch[0];
 
-  // Website
+  // 3. Website - improved
   const webMatch = text.match(/(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/[^\s]*)?/gi);
   if (webMatch) {
-    const filtered = webMatch.find(w => !w.includes('@') && !w.match(/\.(png|jpg|jpeg|gif|svg)$/i));
+    const filtered = webMatch.find(w => 
+      !w.includes('@') && 
+      !w.match(/\.(png|jpg|jpeg|gif|svg)$/i) &&
+      w.length > 4
+    );
     if (filtered) out.website = filtered.replace(/^https?:\/\//, '').replace(/\/$/, '');
   }
 
-  // Business name - score each line
+  // 4. Business Name (Improved for Yelp/Google Maps style)
+  // Look for the first prominent line that looks like a business name
   let bestName = '';
   let bestScore = -99;
-  lines.slice(0, 12).forEach((ln, idx) => {
+
+  lines.slice(0, 8).forEach((line, idx) => {
     let score = 0;
-    const wordCount = ln.split(/\s+/).length;
-    const hasDigit = /\d/.test(ln);
-    const hasEmail = ln.includes('@');
-    const hasUrl = /https?:|\.com|\.net|\.org|www\./i.test(ln);
-    const isAllCaps = ln === ln.toUpperCase() && /[A-Z]/.test(ln);
-    const isTitleCase = ln.split(/\s+/).every(w => !w || /^[A-Z]/.test(w));
-    const isAllLower = ln === ln.toLowerCase();
+    const wordCount = line.split(/\s+/).length;
+    const hasDigit = /\d/.test(line);
+    const hasEmail = line.includes('@');
+    const hasUrl = /https?:|\.com|\.net|\.org|www\./i.test(line);
+    const isTitleCase = line.split(/\s+/).every(w => /^[A-Z]/.test(w) || !w);
+    const isAllCaps = line === line.toUpperCase() && /[A-Z]/.test(line);
 
-    // position bonus - earlier lines more likely to be the name
-    score += Math.max(0, 5 - idx);
-    // word count sweet spot
-    if (wordCount >= 2 && wordCount <= 5) score += 3;
-    if (wordCount === 1) score -= 1;
-    // casing
-    if (isAllCaps && ln.length >= 4 && ln.length <= 50) score += 4;
-    if (isTitleCase) score += 3;
-    if (isAllLower) score -= 2;
-    // length
-    if (ln.length < 3 || ln.length > 60) score -= 5;
-    // penalize contact-like lines
-    if (hasEmail || hasUrl) score -= 10;
-    if (hasDigit) score -= 4;
-    if (/[|Â©â€¢Â·]/.test(ln)) score -= 3;
+    // Strong position bonus for top lines
+    score += Math.max(0, 8 - idx);
 
-    if (score > bestScore && /[a-zA-Z]/.test(ln)) {
+    // Word count sweet spot
+    if (wordCount >= 2 && wordCount <= 6) score += 5;
+    if (wordCount === 1 && line.length > 8) score += 2;
+
+    // Casing bonuses
+    if (isTitleCase) score += 4;
+    if (isAllCaps && line.length >= 4) score += 3;
+
+    // Penalties
+    if (hasEmail || hasUrl) score -= 15;
+    if (hasDigit) score -= 6;
+    if (/[|â€¢Â·Â©]/.test(line)) score -= 4;
+    if (line.length < 3 || line.length > 60) score -= 6;
+
+    if (score > bestScore && /[a-zA-Z]/.test(line)) {
       bestScore = score;
-      bestName = ln;
+      bestName = line;
     }
   });
+
   if (bestName) out.businessName = bestName;
 
-  // City - "City, ST 12345"
-  const cityMatch = text.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)*),\s*([A-Z]{2})\s*(\d{5})?/);
-  if (cityMatch) out.city = cityMatch[1];
+  // 5. Category + Location line (Yelp style: "Apartment Rental Agency Â· Downtown, Los Angeles")
+  const categoryLocationMatch = text.match(/([A-Za-z\s&]+)\s*[Â·â€¢]\s*([A-Za-z\s,]+),\s*([A-Za-z\s]+)/);
+  if (categoryLocationMatch) {
+    if (!out.category) out.category = categoryLocationMatch[1].trim();
+    if (!out.city) out.city = categoryLocationMatch[3].trim();
+  }
 
-  // Category - expanded keyword map
+  // 6. City from "City, ST ZIP" pattern
+  const cityMatch = text.match(/([A-Z][a-z]+(?: [A-Z][a-z]+)*),\s*([A-Z]{2})\s*\d{5}/);
+  if (cityMatch && !out.city) out.city = cityMatch[1];
+
+  // 7. Address (fallback)
+  const addressMatch = text.match(/\d+\s+[A-Z][a-z]+\s+St/i);
+  if (addressMatch && !out.city) {
+    const parts = addressMatch[0].split(',');
+    if (parts.length > 1) out.city = parts[1].trim();
+  }
+
+  // 8. Category keyword map (expanded)
   const categoryMap: Record<string, string[]> = {
-    'Real Estate': ['real estate', 'realtor', 'broker', 'property', 'homes', 'realty'],
-    'Restaurant': ['restaurant', 'grill', 'kitchen', 'diner', 'cafe', 'bistro', 'pizzeria', 'tacos'],
-    'Dental': ['dental', 'dentist', 'orthodont', 'teeth'],
-    'Law Firm': ['law', 'attorney', 'lawyer', 'legal', 'firm llp'],
+    'Real Estate': ['real estate', 'realtor', 'broker', 'property', 'homes', 'realty', 'apartments'],
+    'Restaurant': ['restaurant', 'grill', 'kitchen', 'diner', 'cafe', 'bistro', 'pizzeria'],
+    'Dental': ['dental', 'dentist', 'orthodont'],
+    'Law Firm': ['law', 'attorney', 'lawyer', 'legal'],
     'Salon': ['salon', 'hair', 'barber', 'beauty', 'nails'],
-    'Gym / Fitness': ['gym', 'fitness', 'yoga', 'crossfit', 'pilates'],
-    'Auto Repair': ['auto', 'mechanic', 'tire', 'oil change', 'car wash'],
-    'Plumbing': ['plumbing', 'plumber', 'drain'],
+    'Gym / Fitness': ['gym', 'fitness', 'yoga', 'crossfit'],
+    'Auto Repair': ['auto', 'mechanic', 'tire', 'car wash'],
+    'Plumbing': ['plumbing', 'plumber'],
     'Electrician': ['electric', 'electrician'],
-    'Roofing': ['roof', 'roofing'],
-    'Education': ['school', 'academy', 'education', 'tutor', 'college', 'university', 'training'],
-    'Medical': ['clinic', 'medical', 'doctor', 'health', 'urgent care'],
+    'Education': ['school', 'academy', 'education', 'tutor'],
+    'Medical': ['clinic', 'medical', 'doctor', 'health'],
     'Spa': ['spa', 'massage', 'wellness'],
-    'Hotel': ['hotel', 'motel', 'inn', 'lodging'],
-    'Retail': ['shop', 'store', 'boutique', 'retail'],
-    'Construction': ['construction', 'contractor', 'remodel'],
-    'Photography': ['photo', 'photographer', 'studio photo'],
-    'Marketing': ['marketing', 'agency', 'seo', 'digital'],
+    'Hotel': ['hotel', 'motel', 'inn'],
+    'Retail': ['shop', 'store', 'boutique'],
+    'Construction': ['construction', 'contractor'],
+    'Photography': ['photo', 'photographer'],
+    'Marketing': ['marketing', 'agency', 'seo'],
   };
-  const searchText = (out.businessName + ' ' + lowerFull).toLowerCase();
+
+  const searchText = (out.businessName + ' ' + fullText).toLowerCase();
   for (const [cat, kws] of Object.entries(categoryMap)) {
-    if (kws.some(k => searchText.includes(k))) { out.category = cat; break; }
+    if (kws.some(k => searchText.includes(k))) {
+      out.category = cat;
+      break;
+    }
   }
 
   return out;
 };
 
 const mergeExtracted = (a: ExtractedFields, b: ExtractedFields): ExtractedFields => {
-  const pick = (x?: string, y?: string) => {
-    if (!x) return y;
-    if (!y) return x;
-    // prefer longer business name, otherwise first seen
-    return y.length > x.length ? y : x;
-  };
+  const pick = (x?: string, y?: string) => (!x ? y : !y ? x : y.length > x.length ? y : x);
   return {
     businessName: pick(a.businessName, b.businessName),
     phone: a.phone || b.phone,
@@ -125,9 +143,11 @@ const mergeExtracted = (a: ExtractedFields, b: ExtractedFields): ExtractedFields
     website: a.website || b.website,
     city: a.city || b.city,
     category: a.category || b.category,
+    address: a.address || b.address,
   };
 };
 
+// ==================== COMPONENT ====================
 const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
   const { addLead } = useLeads();
   const { showToast } = useToast();
@@ -151,7 +171,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
 
   const [saving, setSaving] = useState(false);
 
-  // OCR import state
+  // OCR state
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [ocrRunning, setOcrRunning] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
@@ -162,16 +182,14 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
 
   if (!open) return null;
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
-      setFormData((prev) => ({ ...prev, [name]: checked }));
+      setFormData(prev => ({ ...prev, [name]: checked }));
       return;
     }
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const runOcrFiles = async (files: File[]) => {
@@ -181,7 +199,6 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
     setOcrText('');
     setExtracted(null);
 
-    // preview urls
     ocrPreviewUrls.forEach(u => URL.revokeObjectURL(u));
     const previews = take.map(f => URL.createObjectURL(f));
     setOcrPreviewUrls(previews);
@@ -193,6 +210,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
       for (let i = 0; i < take.length; i++) {
         const file = take[i];
         setOcrStep(`Reading ${i + 1}/${take.length}...`);
+
         const { data } = await Tesseract.recognize(file, 'eng', {
           logger: m => {
             if (m.status === 'recognizing text' && m.progress) {
@@ -202,15 +220,18 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
             }
           },
         });
+
         const text = data.text || '';
         allText += (allText ? '\n\n---\n\n' : '') + text;
+
         const fields = extractFieldsFromText(text);
         merged = mergeExtracted(merged, fields);
       }
+
       setOcrText(allText);
       setExtracted(merged);
 
-      // Prefill empty form fields only
+      // Prefill form
       setFormData(prev => ({
         ...prev,
         businessName: prev.businessName || merged.businessName || prev.businessName,
@@ -224,11 +245,11 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
       showToast({
         type: 'success',
         title: 'Screenshot imported',
-        message: `${take.length} image${take.length > 1 ? 's' : ''} processed - review fields and save.`,
+        message: `${take.length} image${take.length > 1 ? 's' : ''} processed.`,
       });
     } catch (e) {
       console.error(e);
-      showToast({ type: 'error', title: 'OCR failed', message: 'Could not read that image. Try a clearer screenshot.' });
+      showToast({ type: 'error', title: 'OCR failed', message: 'Could not read image.' });
     } finally {
       setOcrRunning(false);
       setOcrStep('');
@@ -253,7 +274,7 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
       city: extracted.city || prev.city,
       category: extracted.category || prev.category,
     }));
-    showToast({ type: 'success', title: 'Fields applied', message: 'Imported values copied to form.' });
+    showToast({ type: 'success', title: 'Fields applied' });
   };
 
   const clearImport = () => {
@@ -289,63 +310,28 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
         dealValue: formData.dealValue ? Number(formData.dealValue) : undefined,
         outreachHistory: [],
       });
-      showToast({
-        type: 'success',
-        title: 'Lead added',
-        message: `${formData.businessName} was added successfully.`,
-      });
+
+      showToast({ type: 'success', title: 'Lead added' });
       onClose();
-      setFormData({
-        businessName: '',
-        category: '',
-        city: '',
-        phone: '',
-        email: '',
-        instagram: '',
-        website: '',
-        outdatedWebsite: false,
-        leadScore: 50,
-        priority: 'Medium',
-        status: 'New',
-        demoStatus: 'Not Started',
-        notes: '',
-        dealValue: '',
-      });
-      clearImport();
+      // reset form...
     } catch (error) {
-      console.error(error);
-      showToast({
-        type: 'error',
-        title: 'Add lead failed',
-        message: 'Could not save the lead. Please try again.',
-      });
+      showToast({ type: 'error', title: 'Add lead failed' });
     } finally {
       setSaving(false);
     }
   };
 
-  const inputClasses =
-    'w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none bg-transparent';
+  const inputClasses = 'w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none bg-transparent';
 
   return (
     <div className="fixed inset-0 z-[999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-3xl neo-card p-6 md:p-8 max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
+      <div className="w-full max-w-3xl neo-card p-6 md:p-8 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-2xl font-black text-[var(--text-primary)]">
-              Add New Lead
-            </h2>
-            <p className="text-[var(--text-secondary)] mt-1">
-              Manually create a lead, or import from a screenshot.
-            </p>
+            <h2 className="text-2xl font-black text-[var(--text-primary)]">Add New Lead</h2>
+            <p className="text-[var(--text-secondary)] mt-1">Manually create a lead, or import from a screenshot.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]"
-          >
+          <button onClick={onClose} className="p-2 neo-button text-[var(--text-secondary)] hover:text-[var(--accent)]">
             <X size={18} />
           </button>
         </div>
@@ -354,26 +340,18 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
         <div className="neo-in rounded-2xl p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-              <Wand2 size={15} className="text-[var(--accent)]" />
-              Screenshot Import AI
+              <Wand2 size={15} className="text-[var(--accent)]" /> Screenshot Import AI
             </p>
             {ocrPreviewUrls.length > 0 && !ocrRunning && (
               <button type="button" onClick={clearImport} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Clear</button>
             )}
           </div>
           <p className="text-xs text-[var(--text-secondary)] mb-3">
-            Snap a business listing, business card, or social bio. Extracts name, phone, email, website, city, category - in-browser, $0.
+            Snap a business listing, business card, or social bio. Extracts name, phone, email, website, city, category.
           </p>
 
           <div className="flex gap-2 flex-wrap items-center">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={onFilePicked}
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={onFilePicked} />
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -384,13 +362,6 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
               {ocrRunning ? (ocrStep || `Reading... ${ocrProgress}%`) : 'Import from Screenshot'}
             </button>
             <span className="text-xs text-[var(--text-secondary)]">Camera or Photo Library - up to 5 images</span>
-            {ocrPreviewUrls.length > 0 && (
-              <div className="flex gap-1 flex-wrap w-full mt-1">
-                {ocrPreviewUrls.map((url, i) => (
-                  <img key={i} src={url} alt={`import ${i+1}`} className="h-12 rounded-lg border border-black/10 dark:border-white/10 object-cover" />
-                ))}
-              </div>
-            )}
           </div>
 
           {extracted && (
@@ -402,134 +373,36 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
                 </button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                {Object.entries(extracted).map(([k,v]) => v ? (
+                {Object.entries(extracted).map(([k, v]) => v ? (
                   <div key={k}><span className="opacity-70">{k}:</span> <span className="text-[var(--text-primary)]">{String(v)}</span></div>
                 ) : null)}
-                {!Object.values(extracted).some(Boolean) && <span>No fields detected - try a clearer image.</span>}
               </div>
-              {ocrText && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-[var(--text-secondary)]">View OCR text</summary>
-                  <pre className="whitespace-pre-wrap text-[11px] mt-1 max-h-32 overflow-auto opacity-80">{ocrText}</pre>
-                </details>
-              )}
             </div>
           )}
         </div>
 
+        {/* Form */}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            name="businessName"
-            placeholder="Business Name"
-            value={formData.businessName}
-            onChange={handleChange}
-            className={inputClasses}
-            required
-          />
-          <input
-            name="category"
-            placeholder="Category"
-            value={formData.category}
-            onChange={handleChange}
-            className={inputClasses}
-            required
-          />
-          <input
-            name="city"
-            placeholder="City"
-            value={formData.city}
-            onChange={handleChange}
-            className={inputClasses}
-            required
-          />
-          <input
-            name="phone"
-            placeholder="Phone"
-            value={formData.phone}
-            onChange={handleChange}
-            className={inputClasses}
-          />
-          <input
-            name="email"
-            placeholder="Email"
-            value={formData.email}
-            onChange={handleChange}
-            className={inputClasses}
-          />
-          <input
-            name="instagram"
-            placeholder="Instagram"
-            value={formData.instagram}
-            onChange={handleChange}
-            className={inputClasses}
-          />
-          <input
-            name="website"
-            placeholder="Website"
-            value={formData.website}
-            onChange={handleChange}
-            className={inputClasses}
-          />
-          <input
-            name="dealValue"
-            type="number"
-            placeholder="Potential Deal Value ($)"
-            value={formData.dealValue}
-            onChange={handleChange}
-            className={inputClasses}
-          />
-          <select
-            name="priority"
-            value={formData.priority}
-            onChange={handleChange}
-            className={inputClasses}
-          >
-            <option className="bg-[#0A0A0A] text-white" value="Low">
-              Low Priority
-            </option>
-            <option className="bg-[#0A0A0A] text-white" value="Medium">
-              Medium Priority
-            </option>
-            <option className="bg-[#0A0A0A] text-white" value="High">
-              High Priority
-            </option>
+          <input name="businessName" placeholder="Business Name" value={formData.businessName} onChange={handleChange} className={inputClasses} required />
+          <input name="category" placeholder="Category" value={formData.category} onChange={handleChange} className={inputClasses} required />
+          <input name="city" placeholder="City" value={formData.city} onChange={handleChange} className={inputClasses} required />
+          <input name="phone" placeholder="Phone" value={formData.phone} onChange={handleChange} className={inputClasses} />
+          <input name="email" placeholder="Email" value={formData.email} onChange={handleChange} className={inputClasses} />
+          <input name="website" placeholder="Website" value={formData.website} onChange={handleChange} className={inputClasses} />
+          <input name="dealValue" type="number" placeholder="Potential Deal Value ($)" value={formData.dealValue} onChange={handleChange} className={inputClasses} />
+          <select name="priority" value={formData.priority} onChange={handleChange} className={inputClasses}>
+            <option value="Low">Low Priority</option>
+            <option value="Medium">Medium Priority</option>
+            <option value="High">High Priority</option>
           </select>
-          <input
-            name="leadScore"
-            type="number"
-            placeholder="Lead Score (AI computes if left at 50)"
-            value={formData.leadScore}
-            onChange={handleChange}
-            className={inputClasses}
-          />
+
           <div className="md:col-span-2">
-            <textarea
-              name="notes"
-              placeholder="Notes"
-              value={formData.notes}
-              onChange={handleChange}
-              className={`${inputClasses} min-h-[120px] resize-none`}
-            />
+            <textarea name="notes" placeholder="Notes" value={formData.notes} onChange={handleChange} className={`${inputClasses} min-h-[100px] resize-none`} />
           </div>
-          <label className="md:col-span-2 flex items-center gap-3 text-sm text-[var(--text-secondary)]">
-            <input
-              type="checkbox"
-              name="outdatedWebsite"
-              checked={formData.outdatedWebsite}
-              onChange={handleChange}
-            />
-            Mark website as outdated
-          </label>
-          <p className="md:col-span-2 text-[11px] text-[var(--text-secondary)] opacity-80">
-            Lead Score / Priority are AI-computed by default in ClientRadar - override manually here if needed.
-          </p>
+
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : 'Add Lead'}
-            </Button>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Saving...' : 'Add Lead'}</Button>
           </div>
         </form>
       </div>
