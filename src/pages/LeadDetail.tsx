@@ -101,7 +101,7 @@ const LeadDetail = () => {
 
   const isLoading = leadsLoading || fetchingSingle;
 
-  // === ORIGINAL AI SCORING (kept exactly as sent) ===
+  // === ORIGINAL AI SCORING (kept exactly) ===
   const aiScoreBreakdown = useMemo(() => {
     if (!lead) return { items: [], total: 0 };
     const items = [
@@ -244,7 +244,7 @@ const LeadDetail = () => {
     }
   };
 
-  // === NEW: Client Reply Feature (Added without removing anything) ===
+  // === NEW: Client Reply Feature ===
   const handleSaveClientReply = async () => {
     if (!lead || !replyStatus) return;
 
@@ -272,7 +272,7 @@ const LeadDetail = () => {
       }
 
       setReplySaved(true);
-      setTimeout(() => setReplySaved(false), 2000);
+      setTimeout(() => setReplySaved(false), 2500);
 
       setReplyStatus('');
       setReplyNote('');
@@ -407,7 +407,7 @@ const LeadDetail = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Content - All original sections preserved + new features added */}
+        {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
 
           {/* Profile Section (Original) */}
@@ -572,7 +572,7 @@ const LeadDetail = () => {
             </p>
           </div>
 
-          {/* === NEW: CLIENT REPLY SECTION (Added) === */}
+          {/* === NEW: CLIENT REPLY SECTION (Always Visible) === */}
           <div className={cardClasses}>
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2.5 neo-in rounded-xl">
@@ -585,6 +585,7 @@ const LeadDetail = () => {
               Log what the client said when they replied to your outreach.
             </p>
 
+            {/* Reply Buttons */}
             <div className="flex flex-wrap gap-2 mb-4">
               {replyOptions.map((option) => (
                 <button
@@ -610,7 +611,11 @@ const LeadDetail = () => {
             />
 
             <div className="flex justify-end gap-3 items-center">
-              {replySaved && <span className="text-green-500 text-sm font-medium">Reply saved!</span>}
+              {replySaved && (
+                <span className="text-green-500 text-sm font-medium flex items-center gap-1">
+                  <CheckCircle2 size={14} /> Reply saved!
+                </span>
+              )}
               <button
                 onClick={handleSaveClientReply}
                 disabled={!replyStatus || savingReply}
@@ -620,10 +625,13 @@ const LeadDetail = () => {
               </button>
             </div>
 
-            {/* Logged Replies */}
-            {clientReplies.length > 0 && (
-              <div className="mt-6 pt-6 border-t border-black/8 dark:border-white/8">
-                <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-3">Previous Replies</p>
+            {/* === ALWAYS VISIBLE: Previous Replies Section === */}
+            <div className="mt-6 pt-6 border-t border-black/8 dark:border-white/8">
+              <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)] font-bold mb-3">
+                Previous Replies
+              </p>
+
+              {clientReplies.length > 0 ? (
                 <div className="space-y-3">
                   {clientReplies.slice().reverse().map((reply: any, index: number) => (
                     <div key={index} className="neo-in p-4 rounded-2xl">
@@ -634,13 +642,19 @@ const LeadDetail = () => {
                         </span>
                       </div>
                       {reply.note && (
-                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed mt-1">{reply.note}</p>
+                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed mt-1">
+                          {reply.note}
+                        </p>
                       )}
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="neo-in p-4 rounded-2xl text-center text-[var(--text-secondary)] text-sm">
+                  No replies logged yet. Use the buttons above to record client responses.
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Deal Closed Section (Original - fully preserved) */}
