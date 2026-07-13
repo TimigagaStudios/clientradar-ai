@@ -26,7 +26,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'PATCH') {
       const updates = req.body;
-
       const payload: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
       };
@@ -40,7 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if ('timeline' in updates) payload.timeline = updates.timeline;
       if ('outreachHistory' in updates) payload.outreach_history = updates.outreachHistory;
 
-      // ✅ NEW editable fields
+      // ✅ NEW: Client Replies (this was missing)
+      if ('clientReplies' in updates) payload.client_replies = updates.clientReplies;
+
+      // ✅ Other editable fields
       if ('businessName' in updates) payload.business_name = updates.businessName;
       if ('category' in updates) payload.category = updates.category;
       if ('city' in updates) payload.city = updates.city;
@@ -71,17 +73,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'DELETE') {
       const { error } = await supabase.from('leads').delete().eq('id', id);
-
       if (error) {
         return res.status(500).json({
           success: false,
           error: error.message,
         });
       }
-
-      return res.status(200).json({
-        success: true,
-      });
+      return res.status(200).json({ success: true });
     }
 
     return res.status(405).json({
