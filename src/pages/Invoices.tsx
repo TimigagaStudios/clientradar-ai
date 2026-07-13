@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { FileText, Plus, Download, Calendar, DollarSign } from 'lucide-react';
+import { FileText, Plus, Download, Trash2, Calendar, DollarSign } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 type Invoice = {
@@ -16,12 +16,23 @@ type Invoice = {
 
 const Invoices = () => {
   const { leads } = useLeads() as any;
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+
+  // Load from localStorage
+  const [invoices, setInvoices] = useState<Invoice[]>(() => {
+    const saved = localStorage.getItem('clientradar_invoices');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Save to localStorage whenever invoices change
+  useEffect(() => {
+    localStorage.setItem('clientradar_invoices', JSON.stringify(invoices));
+  }, [invoices]);
 
   const dealLeads = leads.filter((lead: any) =>
     ['Interested', 'Negotiating', 'Deal Closed'].includes(lead.status)
@@ -58,6 +69,12 @@ const Invoices = () => {
     ));
   };
 
+  const handleDeleteInvoice = (id: string) => {
+    if (!confirm('Delete this invoice?')) return;
+    setInvoices(invoices.filter(inv => inv.id !== id));
+  };
+
+  // ==================== IMPROVED PDF GENERATION ====================
   const generatePDF = (invoice: Invoice) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
@@ -67,55 +84,199 @@ const Invoices = () => {
         <head>
           <title>Invoice - ${invoice.businessName}</title>
           <style>
-            body { font-family: system-ui, sans-serif; padding: 40px; color: #111; }
-            .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-            .title { font-size: 28px; font-weight: 800; }
-            .info { text-align: right; }
-            .section { margin-bottom: 30px; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-            .total { font-size: 20px; font-weight: 700; }
-            .footer { margin-top: 60px; font-size: 12px; color: #666; }
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            
+            body {
+              font-family: 'Inter', system-ui, sans-serif;
+              padding: 40px;
+              color: #111;
+              background: #0F0F0F;
+            }
+            
+            .invoice-container {
+              max-width: 800px;
+              margin: 0 auto;
+              background: #111;
+              border-radius: 24px;
+              padding: 50px;
+              color: white;
+              position: relative;
+              overflow: hidden;
+            }
+            
+            .watermark {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%) rotate(-15deg);
+              opacity: 0.06;
+              pointer-events: none;
+              z-index: 1;
+            }
+            
+            .watermark img {
+              width: 420px;
+              height: 420px;
+            }
+            
+            .header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              margin-bottom: 50px;
+              position: relative;
+              z-index: 2;
+            }
+            
+            .logo {
+              width: 64px;
+              height: 64px;
+            }
+            
+            .invoice-title {
+              font-size: 42px;
+              font-weight: 800;
+              letter-spacing: -2px;
+              color: white;
+            }
+            
+            .invoice-number {
+              text-align: right;
+              color: #FF7A00;
+              font-weight: 600;
+            }
+            
+            .section {
+              margin-bottom: 40px;
+              position: relative;
+              z-index: 2;
+            }
+            
+            .grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr 1fr;
+              gap: 40px;
+            }
+            
+            .label {
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              color: #888;
+              margin-bottom: 6px;
+            }
+            
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 20px;
+              position: relative;
+              z-index: 2;
+            }
+            
+            th {
+              text-align: left;
+              padding: 14px 0;
+              border-bottom: 1px solid #333;
+              font-weight: 600;
+              color: #FF7A00;
+            }
+            
+            td {
+              padding: 16px 0;
+              border-bottom: 1px solid #222;
+            }
+            
+            .total-row {
+              font-weight: 700;
+              font-size: 18px;
+            }
+            
+            .orange {
+              color: #FF7A00;
+            }
+            
+            .footer {
+              margin-top: 60px;
+              font-size: 13px;
+              color: #666;
+              position: relative;
+              z-index: 2;
+            }
           </style>
         </head>
         <body>
-          <div class="header">
-            <div>
-              <div class="title">INVOICE</div>
-              <div>Timigaga Studios</div>
+          <div class="invoice-container">
+            
+            <!-- Watermark Logo -->
+            <div class="watermark">
+              <img src="https://your-project-url.com/icon-1024.png" alt="ClientRadar" />
             </div>
-            <div class="info">
-              <div><strong>Invoice #${invoice.id}</strong></div>
-              <div>Date: ${new Date(invoice.createdAt).toLocaleDateString()}</div>
+
+            <div class="header">
+              <div>
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px;">
+                  <div style="width:48px; height:48px; background:#FF7A00; border-radius:9999px; display:flex; align-items:center; justify-content:center;">
+                    <span style="color:white; font-weight:800; font-size:24px;">CR</span>
+                  </div>
+                  <div>
+                    <div style="font-weight:700; font-size:18px;">ClientRadar</div>
+                    <div style="color:#FF7A00; font-size:12px;">Timigaga Studios</div>
+                  </div>
+                </div>
+              </div>
+              <div class="invoice-number">
+                <div style="font-size:13px; color:#888;">INVOICE</div>
+                <div style="font-size:20px; font-weight:700;">#${invoice.id}</div>
+              </div>
             </div>
-          </div>
 
-          <div class="section">
-            <strong>Bill To:</strong><br>
-            ${invoice.businessName}<br>
-            ${invoice.notes || ''}
-          </div>
+            <div style="margin-bottom:40px; position:relative; z-index:2;">
+              <div class="grid">
+                <div>
+                  <div class="label">FROM</div>
+                  <div style="font-weight:600;">Timigaga Studios</div>
+                  <div style="color:#888; font-size:13px;">Lagos, Nigeria</div>
+                </div>
+                <div>
+                  <div class="label">BILL TO</div>
+                  <div style="font-weight:600;">${invoice.businessName}</div>
+                </div>
+                <div>
+                  <div class="label">ISSUED</div>
+                  <div>${new Date(invoice.createdAt).toLocaleDateString()}</div>
+                  <div class="label" style="margin-top:16px;">DUE DATE</div>
+                  <div>${new Date(invoice.dueDate).toLocaleDateString()}</div>
+                </div>
+              </div>
+            </div>
 
-          <table>
-            <tr>
-              <th>Description</th>
-              <th>Due Date</th>
-              <th>Amount</th>
-            </tr>
-            <tr>
-              <td>Website Project</td>
-              <td>${new Date(invoice.dueDate).toLocaleDateString()}</td>
-              <td>$${invoice.amount.toLocaleString()}</td>
-            </tr>
-          </table>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:60%">DESCRIPTION</th>
+                  <th style="text-align:right">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Website Project & Design</td>
+                  <td style="text-align:right">$${invoice.amount.toLocaleString()}</td>
+                </tr>
+              </tbody>
+            </table>
 
-          <div style="margin-top: 40px; text-align: right;">
-            <div class="total">Total Due: $${invoice.amount.toLocaleString()}</div>
-          </div>
+            <div style="margin-top:40px; text-align:right; position:relative; z-index:2;">
+              <div style="font-size:22px; font-weight:700;">
+                Total Due: <span class="orange">$${invoice.amount.toLocaleString()}</span>
+              </div>
+            </div>
 
-          <div class="footer">
-            Payment is due by the due date above.<br>
-            Thank you for your business.
+            <div class="footer">
+              <div style="margin-bottom:8px;">Payment Method: Bank Transfer</div>
+              <div>Thank you for your business.</div>
+            </div>
+
           </div>
         </body>
       </html>
@@ -125,7 +286,7 @@ const Invoices = () => {
     printWindow.document.close();
     setTimeout(() => {
       printWindow.print();
-    }, 300);
+    }, 400);
   };
 
   return (
@@ -259,6 +420,13 @@ const Invoices = () => {
                         Mark Paid
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleDeleteInvoice(invoice.id)}
+                      className="px-3 py-2 rounded-xl text-red-500 hover:bg-red-500/10"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
               </div>
