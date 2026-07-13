@@ -13,7 +13,7 @@ import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
 import Demos from './pages/Demos';
 import AIOutreach from './pages/AIOutreach';
-import Invoices from './pages/Invoices'; // ✅ NEW
+import Invoices from './pages/Invoices'; // âœ… NEW
 
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -76,7 +76,7 @@ const App = () => {
               <Route path="/ai-outreach" element={<RequireAuth><Layout><AIOutreach /></Layout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><Layout><Settings /></Layout></RequireAuth>} />
 
-              {/* ✅ NEW INVOICES ROUTE */}
+              {/* âœ… NEW INVOICES ROUTE */}
               <Route path="/invoices" element={<RequireAuth><Layout><Invoices /></Layout></RequireAuth>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
