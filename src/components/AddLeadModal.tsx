@@ -45,8 +45,7 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     if (filtered) out.website = filtered.replace(/^https?:\/\//, '').replace(/\/$/, '');
   }
 
-  // 4. Business Name (Improved for Yelp/Google Maps style)
-  // Look for the first prominent line that looks like a business name
+  // 4. Business Name (Strongly improved for Yelp/Google Maps screenshots)
   let bestName = '';
   let bestScore = -99;
 
@@ -59,22 +58,25 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     const isTitleCase = line.split(/\s+/).every(w => /^[A-Z]/.test(w) || !w);
     const isAllCaps = line === line.toUpperCase() && /[A-Z]/.test(line);
 
-    // Strong position bonus for top lines
+    // Strong position bonus
     score += Math.max(0, 8 - idx);
 
-    // Word count sweet spot
-    if (wordCount >= 2 && wordCount <= 6) score += 5;
-    if (wordCount === 1 && line.length > 8) score += 2;
+    // Word count preference
+    if (wordCount >= 2 && wordCount <= 6) score += 6;
+    if (wordCount === 1) score -= 3;
 
-    // Casing bonuses
-    if (isTitleCase) score += 4;
-    if (isAllCaps && line.length >= 4) score += 3;
+    // Casing
+    if (isTitleCase) score += 5;
+    if (isAllCaps && line.length >= 4) score += 2;
 
-    // Penalties
-    if (hasEmail || hasUrl) score -= 15;
-    if (hasDigit) score -= 6;
-    if (/[|â€¢Â·Â©]/.test(line)) score -= 4;
-    if (line.length < 3 || line.length > 60) score -= 6;
+    // Heavy penalties for noise
+    if (hasEmail || hasUrl) score -= 20;
+    if (hasDigit) score -= 8;
+    if (/[|â€¢Â·Â©Ã—X]/.test(line)) score -= 8;
+    if (line.length < 4 || line.length > 55) score -= 8;
+
+    // Bonus for looking like a real business name
+    if (/^[A-Z][a-z]+(\s+[A-Z][a-z]+)+$/.test(line)) score += 4;
 
     if (score > bestScore && /[a-zA-Z]/.test(line)) {
       bestScore = score;
@@ -82,7 +84,19 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     }
   });
 
-  if (bestName) out.businessName = bestName;
+  // Final cleanup: remove stray single letters and common UI noise
+  if (bestName) {
+    let cleaned = bestName
+      .replace(/^[A-Z]\s+/, '')           // remove leading single letter (e.g. "M Pegasus")
+      .replace(/\s+[A-Z]$/, '')           // remove trailing single letter (e.g. "Pegasus X")
+      .replace(/\s+[Ã—X]\s*$/, '')         // remove close button artifacts
+      .trim();
+
+    // Only accept if it's still a reasonable name
+    if (cleaned.length >= 4) {
+      out.businessName = cleaned;
+    }
+  }
 
   // 5. Category + Location line (Yelp style: "Apartment Rental Agency Â· Downtown, Los Angeles")
   const categoryLocationMatch = text.match(/([A-Za-z\s&]+)\s*[Â·â€¢]\s*([A-Za-z\s,]+),\s*([A-Za-z\s]+)/);
