@@ -6,7 +6,7 @@ interface LeadContextType {
   loading: boolean;
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt' | 'timeline'>) => Promise<void>;
   updateLeadStatus: (id: string, status: LeadStatus) => Promise<void>;
-  updateLead: (id: string, updates: Partial<Lead>) => Promise<void>; // ✅ NEW
+  updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
   addDemoLink: (id: string, link: string) => Promise<void>;
   addOutreachLog: (id: string, log: Omit<OutreachLog, 'id'>) => Promise<void>;
   updateDemoStatus: (id: string, demoStatus: DemoStatus) => Promise<void>;
@@ -39,6 +39,7 @@ function mapSupabaseLead(row: any): Lead {
     notes: row.notes || '',
     demoLink: row.demo_link || undefined,
     dealValue: row.deal_value || undefined,
+    clientReplies: row.client_replies || [],   // âœ… NEW
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     timeline: row.timeline || [],
@@ -157,7 +158,6 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         body: JSON.stringify(lead),
       });
     }
-
     await refreshLeads();
   };
 
@@ -179,7 +179,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         loading,
         addLead,
         updateLeadStatus,
-        updateLead, // ✅ NEW
+        updateLead,
         addDemoLink,
         addOutreachLog,
         updateDemoStatus,
