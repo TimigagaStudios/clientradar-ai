@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { FileText, Plus, Download, Trash2 } from 'lucide-react';
+import { FileText, Plus, Download, Trash2, Calendar } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 type Invoice = {
@@ -27,6 +27,7 @@ const Invoices = () => {
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('clientradar_invoices', JSON.stringify(invoices));
@@ -42,23 +43,28 @@ const Invoices = () => {
     const lead = leads.find((l: any) => l.id === selectedLeadId);
     if (!lead) return;
 
-    const newInvoice: Invoice = {
-      id: Date.now().toString(),
-      leadId: selectedLeadId,
-      businessName: lead.businessName,
-      amount: Number(amount),
-      status: 'Pending',
-      dueDate,
-      createdAt: new Date().toISOString(),
-      notes: notes.trim() || undefined,
-    };
+    setIsCreating(true);
 
-    setInvoices([newInvoice, ...invoices]);
-    setShowCreateForm(false);
-    setSelectedLeadId('');
-    setAmount('');
-    setDueDate('');
-    setNotes('');
+    setTimeout(() => {
+      const newInvoice: Invoice = {
+        id: Date.now().toString(),
+        leadId: selectedLeadId,
+        businessName: lead.businessName,
+        amount: Number(amount),
+        status: 'Pending',
+        dueDate,
+        createdAt: new Date().toISOString(),
+        notes: notes.trim() || undefined,
+      };
+
+      setInvoices([newInvoice, ...invoices]);
+      setShowCreateForm(false);
+      setSelectedLeadId('');
+      setAmount('');
+      setDueDate('');
+      setNotes('');
+      setIsCreating(false);
+    }, 600);
   };
 
   const handleMarkPaid = (id: string) => {
@@ -143,12 +149,6 @@ const Invoices = () => {
               font-size: 22px;
             }
             
-            .invoice-title {
-              font-size: 36px;
-              font-weight: 800;
-              letter-spacing: -1.5px;
-            }
-            
             table {
               width: 100%;
               border-collapse: collapse;
@@ -160,11 +160,6 @@ const Invoices = () => {
               border-bottom: 1px solid #333;
               color: #FF7A00;
               font-weight: 600;
-            }
-            
-            td {
-              padding: 16px 0;
-              border-bottom: 1px solid #222;
             }
             
             .total {
@@ -179,7 +174,6 @@ const Invoices = () => {
         </head>
         <body>
           <div class="invoice-container">
-            
             <div class="watermark">
               <img src="/logo-watermark.png" alt="ClientRadar" />
             </div>
@@ -198,7 +192,7 @@ const Invoices = () => {
               </div>
             </div>
 
-            <div class="section">
+            <div style="margin-bottom:40px; position:relative; z-index:2;">
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:30px;">
                 <div>
                   <div style="font-size:11px; color:#888;">FROM</div>
@@ -266,14 +260,16 @@ const Invoices = () => {
         </button>
       </header>
 
+      {/* Create Invoice Form - Improved */}
       {showCreateForm && (
         <div className="neo-card p-6 md:p-8">
-          <h3 className="text-xl font-bold mb-4">Create New Invoice</h3>
-          <div className="grid grid-cols-1 gap-4">
+          <h3 className="text-xl font-bold mb-5">Create New Invoice</h3>
+          
+          <div className="space-y-4">
             <select
               value={selectedLeadId}
               onChange={(e) => setSelectedLeadId(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+              className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] text-sm"
             >
               <option value="">Select a deal...</option>
               {dealLeads.map((lead: any) => (
@@ -289,13 +285,13 @@ const Invoices = () => {
                 placeholder="Invoice Amount ($)"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] text-sm"
               />
               <input
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] text-sm"
               />
             </div>
 
@@ -304,21 +300,21 @@ const Invoices = () => {
               placeholder="Notes (optional)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+              className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)] text-sm"
             />
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 mt-6">
             <button
               onClick={handleCreateInvoice}
-              disabled={!selectedLeadId || !amount || !dueDate}
-              className="px-6 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50 flex-1 md:flex-none"
+              disabled={!selectedLeadId || !amount || !dueDate || isCreating}
+              className="px-6 py-3.5 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50 flex-1 md:flex-none flex items-center justify-center gap-2"
             >
-              Create Invoice
+              {isCreating ? "Creating..." : "Create Invoice"}
             </button>
             <button 
               onClick={() => setShowCreateForm(false)} 
-              className="px-6 py-3 neo-button rounded-2xl flex-1 md:flex-none"
+              className="px-6 py-3.5 neo-button rounded-2xl flex-1 md:flex-none"
             >
               Cancel
             </button>
@@ -326,6 +322,7 @@ const Invoices = () => {
         </div>
       )}
 
+      {/* Invoice History - Redesigned */}
       <div className="neo-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <FileText size={20} className="text-[var(--accent)]" />
@@ -340,54 +337,52 @@ const Invoices = () => {
           <div className="space-y-4">
             {invoices.map((invoice) => (
               <div key={invoice.id} className="neo-in p-5 rounded-2xl">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="font-bold text-[var(--text-primary)]">{invoice.businessName}</p>
-                    <p className="text-sm text-[var(--text-secondary)] mt-1">
+                    <p className="font-bold text-[var(--text-primary)] text-lg">{invoice.businessName}</p>
+                    <p className="text-sm text-[var(--text-secondary)] mt-0.5">
                       Due: {new Date(invoice.dueDate).toLocaleDateString()}
                     </p>
                   </div>
+                  <button
+                    onClick={() => handleDeleteInvoice(invoice.id)}
+                    className="text-red-500 hover:text-red-600 p-1"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
 
-                  <div className="flex items-center gap-4 mt-3 md:mt-0">
-                    <div>
-                      <p className="text-xs text-[var(--text-secondary)]">Amount</p>
-                      <p className="font-black text-lg">${invoice.amount.toLocaleString()}</p>
-                    </div>
-
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-xs font-medium",
-                      invoice.status === 'Paid'
-                        ? 'bg-green-500/10 text-green-500'
-                        : 'bg-orange-500/10 text-orange-500'
-                    )}>
-                      {invoice.status}
-                    </span>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => generatePDF(invoice)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl neo-button text-sm"
-                      >
-                        <Download size={16} /> PDF
-                      </button>
-
-                      {invoice.status === 'Pending' && (
-                        <button
-                          onClick={() => handleMarkPaid(invoice.id)}
-                          className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium"
-                        >
-                          Mark Paid
-                        </button>
-                      )}
-
-                      <button
-                        onClick={() => handleDeleteInvoice(invoice.id)}
-                        className="px-3 py-2 rounded-xl text-red-500 hover:bg-red-500/10"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-xs text-[var(--text-secondary)]">Amount</p>
+                    <p className="text-2xl font-black text-[var(--text-primary)]">${invoice.amount.toLocaleString()}</p>
                   </div>
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-xs font-medium",
+                    invoice.status === 'Paid'
+                      ? 'bg-green-500/10 text-green-500'
+                      : 'bg-orange-500/10 text-orange-500'
+                  )}>
+                    {invoice.status}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    onClick={() => generatePDF(invoice)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl neo-button text-sm"
+                  >
+                    <Download size={16} /> Download PDF
+                  </button>
+
+                  {invoice.status === 'Pending' && (
+                    <button
+                      onClick={() => handleMarkPaid(invoice.id)}
+                      className="flex-1 px-4 py-2.5 rounded-xl bg-green-600 text-white text-sm font-medium"
+                    >
+                      Mark as Paid
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
