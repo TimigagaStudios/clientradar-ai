@@ -101,7 +101,7 @@ const Invoices = () => {
         <body>
           <div class="container">
             <div class="logo">
-              <img src="/icon-1024.png" alt="ClientRadar Logo" />
+              <img src="/icons/icon-192.png" alt="ClientRadar Logo" />
               <div>
                 <strong>ClientRadar</strong><br>
                 <span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span>
