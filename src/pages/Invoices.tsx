@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
 import { FileText, Plus, Download, Trash2 } from 'lucide-react';
 import { cn } from '../utils/cn';
-import Logo from '../components/Logo';
 
 type Invoice = {
   id: string;
@@ -292,7 +291,6 @@ const Invoices = () => {
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
               />
-
               <input
                 type="date"
                 value={dueDate}
