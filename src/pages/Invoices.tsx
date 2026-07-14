@@ -91,7 +91,7 @@ const Invoices = () => {
             body { font-family: system-ui, sans-serif; padding: 30px; background: #0F0F0F; color: white; }
             .container { max-width: 800px; margin: 0 auto; background: #111; border-radius: 20px; padding: 40px; }
             .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
-            .logo-circle { width: 48px; height: 48px; background: #FF7A00; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 22px; }
+            .logo img { width: 48px; height: 48px; border-radius: 12px; }
             table { width: 100%; border-collapse: collapse; margin: 30px 0; }
             th { text-align: left; padding: 12px 0; border-bottom: 1px solid #333; color: #FF7A00; }
             .total { font-size: 20px; font-weight: 700; text-align: right; }
@@ -101,16 +101,22 @@ const Invoices = () => {
         <body>
           <div class="container">
             <div class="logo">
-              <div class="logo-circle">CR</div>
-              <div><strong>ClientRadar</strong><br><span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span></div>
+              <img src="/icon-1024.png" alt="ClientRadar Logo" />
+              <div>
+                <strong>ClientRadar</strong><br>
+                <span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span>
+              </div>
             </div>
+            
             <h2>Invoice #${invoice.id}</h2>
             <p><strong>Bill To:</strong> ${invoice.businessName}</p>
             <p><strong>Date:</strong> ${new Date(invoice.createdAt).toLocaleDateString()}</p>
+            
             <table>
               <tr><th>Description</th><th style="text-align:right">Amount</th></tr>
               <tr><td>Website Project</td><td style="text-align:right">$${invoice.amount.toLocaleString()}</td></tr>
             </table>
+            
             <div class="total">Total Due: <span class="orange">$${invoice.amount.toLocaleString()}</span></div>
           </div>
         </body>
