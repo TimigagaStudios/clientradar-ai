@@ -174,7 +174,7 @@ const Invoices = () => {
               <option value="">Select a deal...</option>
               {dealLeads.map((lead: any) => (
                 <option key={lead.id} value={lead.id}>
-                  {lead.businessName} â€” ${Number(lead.dealValue || 0).toLocaleString()}
+                  {lead.businessName} - ${Number(lead.dealValue || 0).toLocaleString()}
                 </option>
               ))}
             </select>
