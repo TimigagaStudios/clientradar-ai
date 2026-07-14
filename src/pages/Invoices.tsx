@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { FileText, Plus, Download, Trash2, Calendar, DollarSign } from 'lucide-react';
+import { FileText, Plus, Download, Trash2 } from 'lucide-react';
 import { cn } from '../utils/cn';
+import Logo from '../components/Logo';
 
 type Invoice = {
   id: string;
@@ -149,12 +150,6 @@ const Invoices = () => {
               letter-spacing: -1.5px;
             }
             
-            .section {
-              margin-bottom: 35px;
-              position: relative;
-              z-index: 2;
-            }
-            
             table {
               width: 100%;
               border-collapse: collapse;
@@ -254,7 +249,7 @@ const Invoices = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 md:px-0">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight mb-2 text-[var(--text-primary)]">
@@ -266,7 +261,7 @@ const Invoices = () => {
         </div>
         <button
           onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium"
+          className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium w-full md:w-auto justify-center"
         >
           <Plus size={18} /> Create Invoice
         </button>
@@ -275,7 +270,7 @@ const Invoices = () => {
       {showCreateForm && (
         <div className="neo-card p-6 md:p-8">
           <h3 className="text-xl font-bold mb-4">Create New Invoice</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <select
               value={selectedLeadId}
               onChange={(e) => setSelectedLeadId(e.target.value)}
@@ -289,20 +284,22 @@ const Invoices = () => {
               ))}
             </select>
 
-            <input
-              type="number"
-              placeholder="Invoice Amount ($)"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="number"
+                placeholder="Invoice Amount ($)"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+              />
 
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
-            />
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"
+              />
+            </div>
 
             <input
               type="text"
@@ -313,15 +310,18 @@ const Invoices = () => {
             />
           </div>
 
-          <div className="flex gap-3 mt-6">
+          <div className="flex flex-col md:flex-row gap-3 mt-6">
             <button
               onClick={handleCreateInvoice}
               disabled={!selectedLeadId || !amount || !dueDate}
-              className="px-6 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50"
+              className="px-6 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50 flex-1 md:flex-none"
             >
               Create Invoice
             </button>
-            <button onClick={() => setShowCreateForm(false)} className="px-6 py-3 neo-button rounded-2xl">
+            <button 
+              onClick={() => setShowCreateForm(false)} 
+              className="px-6 py-3 neo-button rounded-2xl flex-1 md:flex-none"
+            >
               Cancel
             </button>
           </div>
@@ -341,21 +341,21 @@ const Invoices = () => {
         ) : (
           <div className="space-y-4">
             {invoices.map((invoice) => (
-              <div key={invoice.id} className="neo-in p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <p className="font-bold text-[var(--text-primary)]">{invoice.businessName}</p>
-                  <p className="text-sm text-[var(--text-secondary)] mt-1">
-                    Due: {new Date(invoice.dueDate).toLocaleDateString()}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-6">
+              <div key={invoice.id} className="neo-in p-5 rounded-2xl">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <p className="text-xs text-[var(--text-secondary)]">Amount</p>
-                    <p className="font-black text-lg">${invoice.amount.toLocaleString()}</p>
+                    <p className="font-bold text-[var(--text-primary)]">{invoice.businessName}</p>
+                    <p className="text-sm text-[var(--text-secondary)] mt-1">
+                      Due: {new Date(invoice.dueDate).toLocaleDateString()}
+                    </p>
                   </div>
 
-                  <div>
+                  <div className="flex items-center gap-4 mt-3 md:mt-0">
+                    <div>
+                      <p className="text-xs text-[var(--text-secondary)]">Amount</p>
+                      <p className="font-black text-lg">${invoice.amount.toLocaleString()}</p>
+                    </div>
+
                     <span className={cn(
                       "px-3 py-1 rounded-full text-xs font-medium",
                       invoice.status === 'Paid'
@@ -364,31 +364,31 @@ const Invoices = () => {
                     )}>
                       {invoice.status}
                     </span>
-                  </div>
 
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => generatePDF(invoice)}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl neo-button text-sm"
-                    >
-                      <Download size={16} /> PDF
-                    </button>
-
-                    {invoice.status === 'Pending' && (
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleMarkPaid(invoice.id)}
-                        className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium"
+                        onClick={() => generatePDF(invoice)}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl neo-button text-sm"
                       >
-                        Mark Paid
+                        <Download size={16} /> PDF
                       </button>
-                    )}
 
-                    <button
-                      onClick={() => handleDeleteInvoice(invoice.id)}
-                      className="px-3 py-2 rounded-xl text-red-500 hover:bg-red-500/10"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                      {invoice.status === 'Pending' && (
+                        <button
+                          onClick={() => handleMarkPaid(invoice.id)}
+                          className="px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium"
+                        >
+                          Mark Paid
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDeleteInvoice(invoice.id)}
+                        className="px-3 py-2 rounded-xl text-red-500 hover:bg-red-500/10"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
