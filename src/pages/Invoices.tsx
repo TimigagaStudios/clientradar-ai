@@ -89,9 +89,32 @@ const Invoices = () => {
           <title>Invoice - ${invoice.businessName}</title>
           <style>
             body { font-family: system-ui, sans-serif; padding: 30px; background: #0F0F0F; color: white; }
-            .container { max-width: 800px; margin: 0 auto; background: #111; border-radius: 20px; padding: 40px; }
-            .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
-            .logo img { width: 48px; height: 48px; border-radius: 12px; }
+            .container { max-width: 800px; margin: 0 auto; background: #111; border-radius: 20px; padding: 40px; position: relative; overflow: hidden; }
+            
+            .watermark {
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              transform: translate(-50%, -50%) rotate(-18deg);
+              opacity: 0.05;
+              pointer-events: none;
+              z-index: 1;
+            }
+            
+            .watermark img {
+              width: 380px;
+              height: 380px;
+            }
+            
+            .logo {
+              margin-bottom: 30px;
+            }
+            
+            .logo img {
+              height: 48px;
+              width: auto;
+            }
+            
             table { width: 100%; border-collapse: collapse; margin: 30px 0; }
             th { text-align: left; padding: 12px 0; border-bottom: 1px solid #333; color: #FF7A00; }
             .total { font-size: 20px; font-weight: 700; text-align: right; }
@@ -100,12 +123,15 @@ const Invoices = () => {
         </head>
         <body>
           <div class="container">
+            
+            <!-- Watermark -->
+            <div class="watermark">
+              <img src="/logo-watermark.png" alt="Watermark" />
+            </div>
+
+            <!-- Timigaga Studios Logo Only -->
             <div class="logo">
-              <img src="/icons/icon-192.png" alt="ClientRadar Logo" />
-              <div>
-                <strong>ClientRadar</strong><br>
-                <span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span>
-              </div>
+              <img src="/timigaga-logo-full.png" alt="Timigaga Studios" />
             </div>
             
             <h2>Invoice #${invoice.id}</h2>
