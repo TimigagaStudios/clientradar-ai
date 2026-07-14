@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { FileText, Plus, Download, Trash2 } from 'lucide-react';
+import { FileText, Plus, Download, Trash2, X } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 type Invoice = {
@@ -9,7 +9,6 @@ type Invoice = {
   businessName: string;
   amount: number;
   status: 'Pending' | 'Paid';
-  dueDate: string;
   createdAt: string;
   notes?: string;
 };
@@ -23,9 +22,9 @@ const Invoices = () => {
   });
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -38,7 +37,7 @@ const Invoices = () => {
   );
 
   const handleCreateInvoice = () => {
-    if (!selectedLeadId || !amount || !dueDate) return;
+    if (!selectedLeadId || !amount) return;
 
     const lead = leads.find((l: any) => l.id === selectedLeadId);
     if (!lead) return;
@@ -52,7 +51,6 @@ const Invoices = () => {
         businessName: lead.businessName,
         amount: Number(amount),
         status: 'Pending',
-        dueDate,
         createdAt: new Date().toISOString(),
         notes: notes.trim() || undefined,
       };
@@ -61,21 +59,24 @@ const Invoices = () => {
       setShowCreateForm(false);
       setSelectedLeadId('');
       setAmount('');
-      setDueDate('');
       setNotes('');
       setIsCreating(false);
-    }, 500);
+    }, 400);
   };
 
   const handleMarkPaid = (id: string) => {
     setInvoices(invoices.map(inv =>
       inv.id === id ? { ...inv, status: 'Paid' as const } : inv
     ));
+    if (selectedInvoice && selectedInvoice.id === id) {
+      setSelectedInvoice({ ...selectedInvoice, status: 'Paid' });
+    }
   };
 
   const handleDeleteInvoice = (id: string) => {
     if (!confirm('Delete this invoice?')) return;
     setInvoices(invoices.filter(inv => inv.id !== id));
+    setSelectedInvoice(null);
   };
 
   const generatePDF = (invoice: Invoice) => {
@@ -89,8 +90,7 @@ const Invoices = () => {
           <style>
             body { font-family: system-ui, sans-serif; padding: 30px; background: #0F0F0F; color: white; }
             .container { max-width: 800px; margin: 0 auto; background: #111; border-radius: 20px; padding: 40px; }
-            .header { display: flex; justify-content: space-between; margin-bottom: 40px; }
-            .logo { display: flex; align-items: center; gap: 12px; }
+            .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
             .logo-circle { width: 48px; height: 48px; background: #FF7A00; border-radius: 9999px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 22px; }
             table { width: 100%; border-collapse: collapse; margin: 30px 0; }
             th { text-align: left; padding: 12px 0; border-bottom: 1px solid #333; color: #FF7A00; }
@@ -100,27 +100,17 @@ const Invoices = () => {
         </head>
         <body>
           <div class="container">
-            <div class="header">
-              <div class="logo">
-                <div class="logo-circle">CR</div>
-                <div><strong>ClientRadar</strong><br><span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span></div>
-              </div>
-              <div style="text-align:right;">
-                <div style="color:#FF7A00; font-weight:600;">INVOICE</div>
-                <div>#${invoice.id}</div>
-              </div>
+            <div class="logo">
+              <div class="logo-circle">CR</div>
+              <div><strong>ClientRadar</strong><br><span style="color:#FF7A00; font-size:12px;">Timigaga Studios</span></div>
             </div>
-
-            <div style="margin-bottom:30px;">
-              <strong>Bill To:</strong> ${invoice.businessName}<br>
-              <strong>Due Date:</strong> ${new Date(invoice.dueDate).toLocaleDateString()}
-            </div>
-
+            <h2>Invoice #${invoice.id}</h2>
+            <p><strong>Bill To:</strong> ${invoice.businessName}</p>
+            <p><strong>Date:</strong> ${new Date(invoice.createdAt).toLocaleDateString()}</p>
             <table>
               <tr><th>Description</th><th style="text-align:right">Amount</th></tr>
               <tr><td>Website Project</td><td style="text-align:right">$${invoice.amount.toLocaleString()}</td></tr>
             </table>
-
             <div class="total">Total Due: <span class="orange">$${invoice.amount.toLocaleString()}</span></div>
           </div>
         </body>
@@ -165,21 +155,13 @@ const Invoices = () => {
               ))}
             </select>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="number"
-                placeholder="Invoice Amount ($)"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-              />
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-              />
-            </div>
+            <input
+              type="number"
+              placeholder="Invoice Amount ($)"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
+            />
 
             <input
               type="text"
@@ -193,7 +175,7 @@ const Invoices = () => {
           <div className="flex flex-col md:flex-row gap-3 mt-6">
             <button
               onClick={handleCreateInvoice}
-              disabled={!selectedLeadId || !amount || !dueDate || isCreating}
+              disabled={!selectedLeadId || !amount || isCreating}
               className="px-6 py-3.5 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50 flex-1 md:flex-none"
             >
               {isCreating ? "Creating..." : "Create Invoice"}
@@ -205,7 +187,7 @@ const Invoices = () => {
         </div>
       )}
 
-      {/* Invoice History - Compact Row Style */}
+      {/* Invoice History - Transaction List Style */}
       <div className="neo-card p-6 md:p-8">
         <div className="flex items-center gap-3 mb-6">
           <FileText size={20} className="text-[var(--accent)]" />
@@ -217,47 +199,91 @@ const Invoices = () => {
             No invoices created yet.
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {invoices.map((invoice) => (
-              <div key={invoice.id} className="neo-in p-4 rounded-2xl">
-                <div className="flex items-center justify-between mb-2">
+              <div
+                key={invoice.id}
+                onClick={() => setSelectedInvoice(invoice)}
+                className="flex items-center justify-between p-4 rounded-2xl neo-in active:bg-black/5 dark:active:bg-white/5 cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-[var(--accent)] font-bold text-sm">
+                    {invoice.businessName.slice(0, 1)}
+                  </div>
                   <div>
                     <p className="font-semibold text-[var(--text-primary)]">{invoice.businessName}</p>
-                    <p className="text-xs text-[var(--text-secondary)]">Due: {new Date(invoice.dueDate).toLocaleDateString()}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {new Date(invoice.createdAt).toLocaleDateString()}
+                    </p>
                   </div>
-                  <button onClick={() => handleDeleteInvoice(invoice.id)} className="text-red-500">
-                    <Trash2 size={18} />
-                  </button>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-[var(--text-secondary)]">Amount</p>
-                    <p className="text-xl font-black">${invoice.amount.toLocaleString()}</p>
-                  </div>
+                <div className="text-right">
+                  <p className="font-bold text-[var(--text-primary)]">${invoice.amount.toLocaleString()}</p>
                   <span className={cn(
-                    "px-3 py-1 rounded-full text-xs font-medium",
+                    "text-xs px-2 py-0.5 rounded-full",
                     invoice.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'
                   )}>
                     {invoice.status}
                   </span>
-                </div>
-
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => generatePDF(invoice)} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-xl neo-button text-sm">
-                    <Download size={16} /> PDF
-                  </button>
-                  {invoice.status === 'Pending' && (
-                    <button onClick={() => handleMarkPaid(invoice.id)} className="flex-1 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-medium">
-                      Mark Paid
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Invoice Detail Modal */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60" onClick={() => setSelectedInvoice(null)}>
+          <div 
+            className="w-full max-w-md neo-card p-6 rounded-t-3xl md:rounded-3xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div>
+                <h3 className="text-xl font-bold">{selectedInvoice.businessName}</h3>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {new Date(selectedInvoice.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button onClick={() => setSelectedInvoice(null)} className="text-[var(--text-secondary)]">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="text-center mb-8">
+              <p className="text-sm text-[var(--text-secondary)]">Total Amount</p>
+              <p className="text-4xl font-black mt-1">${selectedInvoice.amount.toLocaleString()}</p>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => generatePDF(selectedInvoice)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl neo-button text-sm"
+              >
+                <Download size={18} /> Download PDF
+              </button>
+
+              {selectedInvoice.status === 'Pending' && (
+                <button
+                  onClick={() => handleMarkPaid(selectedInvoice.id)}
+                  className="w-full px-4 py-3 rounded-2xl bg-green-600 text-white text-sm font-medium"
+                >
+                  Mark as Paid
+                </button>
+              )}
+
+              <button
+                onClick={() => handleDeleteInvoice(selectedInvoice.id)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-500/10 text-sm"
+              >
+                <Trash2 size={18} /> Delete Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
