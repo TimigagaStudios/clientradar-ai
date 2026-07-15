@@ -6,20 +6,10 @@
   width: min(100%, var(--sparky-max-width, 640px));
   aspect-ratio: 4 / 3;
   min-height: 250px;
-  isolation: isolate;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background:
-    radial-gradient(
-      circle at 50% 47%,
-      rgba(224, 225, 248, 0.74) 0%,
-      rgba(234, 232, 244, 0.56) 43%,
-      transparent 73%
-    ),
-    linear-gradient(145deg, #eef2f6 0%, #eae8f0 54%, #ebf0f5 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 22px 70px rgba(84, 88, 138, 0.10);
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   transform: translateZ(0);
 }
 
@@ -28,7 +18,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  z-index: -3;
+  z-index: 0;
   width: 76%;
   aspect-ratio: 1;
   border-radius: 50%;
@@ -52,8 +42,9 @@
 .sparky-loader__spotlight-orbit {
   position: absolute;
   inset: 0;
-  z-index: -2;
+  z-index: 1;
   pointer-events: none;
+  mix-blend-mode: screen;
   transform: translateZ(0) rotate(0deg);
   animation: sparky-spotlight-orbit 7.8s linear infinite;
   will-change: transform;
@@ -74,14 +65,15 @@
     transparent 74%
   );
   filter: blur(35px);
-  opacity: 0.78;
+  mix-blend-mode: screen;
+  opacity: 0.62;
   transform: translate3d(18%, -72%, 0);
   will-change: transform, opacity;
 }
 
 .sparky-loader__svg {
   position: relative;
-  z-index: 1;
+  z-index: 2;
   display: block;
   width: min(76%, 390px);
   height: auto;
@@ -97,7 +89,6 @@
 }
 
 .sparky-loader__ring {
-  opacity: var(--sparky-ring-opacity, 1);
   transform-box: view-box;
   transform-origin: 180px 180px;
   animation-name: sparky-ring-drift;
@@ -121,7 +112,7 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  z-index: 0;
+  z-index: 3;
   width: 35%;
   aspect-ratio: 1;
   border: 1px solid rgba(255, 255, 255, 0.58);
@@ -148,7 +139,7 @@
 }
 
 .sparky-loader--listening .sparky-loader__spotlight {
-  opacity: 0.94;
+  opacity: 0.70;
 }
 
 .sparky-loader--listening .sparky-loader__response-ring {
@@ -210,7 +201,7 @@
 @keyframes sparky-dot-wave {
   0%,
   100% {
-    opacity: 0.38;
+    opacity: 0.18;
     transform: scale(0.72);
   }
   24% {
