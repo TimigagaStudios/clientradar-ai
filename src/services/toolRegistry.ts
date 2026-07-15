@@ -2,6 +2,9 @@
 
 import { sendOutreachTool } from './tools/sendOutreachTool';
 import { searchBusinessTool } from './tools/searchBusinessTool';
+import { logClientReplyTool } from './tools/logClientReplyTool';
+import { updateLeadStatusTool } from './tools/updateLeadStatusTool';
+import { createInvoiceTool } from './tools/createInvoiceTool';
 
 export interface Tool {
   name: string;
@@ -17,6 +20,9 @@ export class ToolRegistry {
     // Register default tools used by ClientRadar
     this.registerTool(sendOutreachTool);
     this.registerTool(searchBusinessTool);
+    this.registerTool(logClientReplyTool);
+    this.registerTool(updateLeadStatusTool);
+    this.registerTool(createInvoiceTool);
   }
 
   // Register a new tool
