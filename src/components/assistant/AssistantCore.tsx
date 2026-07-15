@@ -1,6 +1,4 @@
 import React, {
-  lazy,
-  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -16,12 +14,11 @@ import {
   Send,
   Zap,
 } from 'lucide-react';
-import AgentOrb, { type OrbState } from './AgentOrb';
+import AgentPresence, {
+  type AgentPresenceState,
+} from './AgentPresence';
 import { useLeads } from '../../context/LeadContext';
 import './assistant.css';
-
-// Lazy-load the 3D orb so it does not block the initial application bundle.
-const AgentOrb3D = lazy(() => import('./AgentOrb3D'));
 
 type Mode = 'full' | 'compact';
 
@@ -30,47 +27,6 @@ interface Msg {
   side: 'ai' | 'me';
   html: string;
 }
-
-interface Particle {
-  x: number;
-  y: number;
-  radius: number;
-  opacity: number;
-  delay: number;
-}
-
-// Deliberate crescent/spiral particle composition based on the first visual
-// reference. These particles belong to the atmosphere, never to the orb mesh.
-const PARTICLES: Particle[] = [
-  { x: 111, y: 67, radius: 7.2, opacity: 0.95, delay: 0.00 },
-  { x: 137, y: 58, radius: 6.4, opacity: 0.92, delay: 0.18 },
-  { x: 164, y: 54, radius: 5.2, opacity: 0.86, delay: 0.36 },
-  { x: 190, y: 58, radius: 4.0, opacity: 0.78, delay: 0.54 },
-  { x: 213, y: 68, radius: 3.0, opacity: 0.64, delay: 0.72 },
-  { x: 91, y: 89, radius: 7.6, opacity: 0.96, delay: 0.12 },
-  { x: 121, y: 82, radius: 7.0, opacity: 0.94, delay: 0.30 },
-  { x: 151, y: 80, radius: 6.1, opacity: 0.90, delay: 0.48 },
-  { x: 180, y: 84, radius: 4.8, opacity: 0.80, delay: 0.66 },
-  { x: 207, y: 94, radius: 3.5, opacity: 0.67, delay: 0.84 },
-  { x: 78, y: 116, radius: 7.4, opacity: 0.94, delay: 0.24 },
-  { x: 109, y: 108, radius: 7.1, opacity: 0.95, delay: 0.42 },
-  { x: 141, y: 107, radius: 6.5, opacity: 0.91, delay: 0.60 },
-  { x: 172, y: 112, radius: 5.2, opacity: 0.83, delay: 0.78 },
-  { x: 199, y: 124, radius: 3.8, opacity: 0.68, delay: 0.96 },
-  { x: 74, y: 147, radius: 6.7, opacity: 0.90, delay: 0.36 },
-  { x: 104, y: 140, radius: 6.8, opacity: 0.93, delay: 0.54 },
-  { x: 136, y: 142, radius: 6.1, opacity: 0.89, delay: 0.72 },
-  { x: 165, y: 151, radius: 4.9, opacity: 0.78, delay: 0.90 },
-  { x: 189, y: 166, radius: 3.2, opacity: 0.61, delay: 1.08 },
-  { x: 83, y: 177, radius: 5.8, opacity: 0.82, delay: 0.48 },
-  { x: 112, y: 173, radius: 5.9, opacity: 0.87, delay: 0.66 },
-  { x: 140, y: 181, radius: 5.0, opacity: 0.78, delay: 0.84 },
-  { x: 164, y: 195, radius: 3.6, opacity: 0.62, delay: 1.02 },
-  { x: 98, y: 205, radius: 4.4, opacity: 0.68, delay: 0.60 },
-  { x: 124, y: 207, radius: 4.2, opacity: 0.70, delay: 0.78 },
-  { x: 145, y: 221, radius: 3.0, opacity: 0.54, delay: 0.96 },
-  { x: 116, y: 234, radius: 2.6, opacity: 0.44, delay: 0.84 },
-];
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -132,10 +88,11 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     };
   }, [leads]);
 
-  const [orb, setOrb] = useState<OrbState>('boot');
+  const [presenceState, setPresenceState] =
+    useState<AgentPresenceState>('boot');
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setOrb('idle'), 2200);
+    const timeout = window.setTimeout(() => setPresenceState('idle'), 2200);
     return () => window.clearTimeout(timeout);
   }, []);
 
@@ -193,12 +150,12 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       window.clearTimeout(agentTimerRef.current);
     }
 
-    setOrb('thinking');
+    setPresenceState('thinking');
     setThinking(true);
 
     agentTimerRef.current = window.setTimeout(() => {
       setThinking(false);
-      setOrb('idle');
+      setPresenceState('idle');
       setConversation((current) => [
         ...current,
         { id: uid(), side: 'ai', html: brain(text) },
@@ -225,11 +182,11 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     }
 
     setListening(true);
-    setOrb('listening');
+    setPresenceState('listening');
 
     microphoneTimerRef.current = window.setTimeout(() => {
       setListening(false);
-      setOrb('idle');
+      setPresenceState('idle');
       setInput('Scan for new leads');
       microphoneTimerRef.current = null;
     }, 1600);
@@ -268,48 +225,8 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     <div className={`cr-core cr-core--${mode}`}>
       {mode === 'full' && (
         <div className="cr-hero flex flex-col items-center text-center">
-          <div className="cr-orb-stage">
-            <div className="cr-orb-atmosphere" aria-hidden="true" />
-
-            <svg
-              className="cr-particle-field"
-              viewBox="0 0 320 300"
-              aria-hidden="true"
-            >
-              <defs>
-                <filter id="cr-particle-soft-glow" x="-80%" y="-80%" width="260%" height="260%">
-                  <feGaussianBlur stdDeviation="2.2" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              <g filter="url(#cr-particle-soft-glow)">
-                {PARTICLES.map((particle, index) => (
-                  <circle
-                    key={`${particle.x}-${particle.y}-${index}`}
-                    className="cr-particle-dot"
-                    cx={particle.x}
-                    cy={particle.y}
-                    r={particle.radius}
-                    style={
-                      {
-                        '--cr-dot-opacity': particle.opacity,
-                        '--cr-dot-delay': `${particle.delay}s`,
-                      } as React.CSSProperties
-                    }
-                  />
-                ))}
-              </g>
-            </svg>
-
-            <div className="cr-orb-stage__orb">
-              <Suspense fallback={<AgentOrb state={orb} size={240} />}>
-                <AgentOrb3D state={orb} size={240} />
-              </Suspense>
-            </div>
+          <div className="cr-presence-stage">
+            <AgentPresence state={presenceState} size={300} />
           </div>
 
           <div className="cr-greet">
