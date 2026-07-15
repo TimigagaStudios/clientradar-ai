@@ -115,7 +115,7 @@ function frameValues(
 }
 
 /**
- * AgentPresence â€” ClientRadar AI's SVG particle identity.
+ * AgentPresence â ClientRadar AI's SVG particle identity.
  *
  * It replaces the WebGL orb with a lightweight rotating particle sphere over
  * a blue/lavender atmospheric field. The component remains state-reactive and
