@@ -5,7 +5,7 @@ import { toolRegistry } from './toolRegistry';
 
 export class ToolExecutionSystem {
   // Execute a tool by name with parameters
-  async runTool(toolName: string, params: any) {
+  async runTool(toolName: string, params: any): Promise<any> {
     const tool = toolRegistry.getTool(toolName);
 
     if (!tool) {
@@ -15,8 +15,25 @@ export class ToolExecutionSystem {
       };
     }
 
-    // Use the Tool Executor to run the tool
-    return await toolExecutor.executeTool(toolName, params);
+    if (!tool.execute) {
+      return {
+        success: false,
+        error: `Tool "${toolName}" does not have an execute function`,
+      };
+    }
+
+    try {
+      const result = await tool.execute(params);
+      return {
+        success: true,
+        result,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Tool execution failed',
+      };
+    }
   }
 
   // Get list of all available tools (for agents to know what they can use)
@@ -24,6 +41,7 @@ export class ToolExecutionSystem {
     return toolRegistry.getAllTools().map(tool => ({
       name: tool.name,
       description: tool.description,
+      parameters: tool.parameters,
     }));
   }
 
