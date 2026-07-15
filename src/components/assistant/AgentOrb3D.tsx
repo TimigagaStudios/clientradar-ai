@@ -1,198 +1,240 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import AgentOrb, { OrbState } from './AgentOrb';
+import type { OrbState } from './AgentOrb';
 
 /**
- * AgentOrb3D â€” clean, engineered AI assistant sphere.
+ * AgentOrb3D â€” engineered AI-assistant sphere.
  *
- * SPEC COMPLIANCE:
- *  - Near-perfect sphere (no blob, no noise, no random displacement)
- *  - 5 clean mathematical spiral grooves, evenly spaced, consistent width
- *  - Perfect symmetry from every angle
- *  - Premium glossy finish, soft studio lighting
- *  - State-reactive: idle / listening / thinking / speaking
- *  - No clipping â€” container allows full overflow
+ * The mesh position is never displaced. This guarantees a perfectly circular
+ * silhouette and removes the pole pinch that the previous displaced geometry
+ * produced. The five spiral grooves are created by mathematically perturbing
+ * only the surface normals.
  *
- * NO noise functions. NO organic melt. Everything is mathematical sine/cos.
+ * No noise, fbm, turbulence, random deformation, or organic morphing is used.
  */
 
 /* ======================================================================
-   VERTEX SHADER â€” clean spiral grooves on a perfect sphere
+   VERTEX SHADER â€” five mathematical spiral grooves, circular silhouette
    ====================================================================== */
+
 const VERTEX = /* glsl */ `
   uniform float uTime;
-  uniform float uFlowSpeed;    // how fast grooves flow (state-dependent)
-  uniform float uRipple;       // sound-wave ripple amount (listening/speaking)
-  uniform float uBands;        // number of spiral bands (5.0)
-  uniform float uTwist;        // spiral twist factor (3.0)
-  uniform float uGrooveDepth;  // how deep the grooves are (subtle, 0.04)
+  uniform float uFlowSpeed;
+  uniform float uRipple;
+  uniform float uBands;
+  uniform float uTwist;
+  uniform float uGrooveDepth;
 
   varying vec3 vNormal;
-  varying vec3 vView;
-  varying float vGroovePattern;  // raw groove pattern for fragment shading
-  varying float vDisp;
+  varying vec3 vViewPosition;
+  varying float vBandHeight;
+  varying float vGrooveLine;
 
-  // Returns groove displacement at a point on the unit sphere.
-  // PURE MATHEMATICS. No noise. Clean cosine spiral.
-  float getDisp(vec3 p) {
-    float angle = atan(p.z, p.x);
-    float lat = p.y;
+  float spiralHeight(vec3 pointOnSphere) {
+    vec3 p = normalize(pointOnSphere);
+    float longitude = atan(p.z, p.x);
+    float latitude = asin(clamp(p.y, -1.0, 1.0));
 
-    // Spiral phase: bands twist from bottom to top
-    float phase = angle * uBands + lat * uTwist + uTime * uFlowSpeed;
-    float bands = cos(phase);
+    // Five evenly spaced helical bands. Animation moves energy through the
+    // grooves without changing the sphere's geometry or silhouette.
+    float phase = longitude * uBands
+      + latitude * uTwist
+      - uTime * uFlowSpeed;
 
-    // Sound-wave ripple layered on top (active in listening/speaking)
-    bands += sin(uTime * 3.5 + phase * 2.0) * uRipple * 0.18;
+    float wave = cos(phase);
+    wave += sin(phase * 2.0 + uTime * 3.2) * uRipple * 0.075;
 
-    // Map to 0..1 and create clean grooves with smooth walls
-    float b = bands * 0.5 + 0.5;
-    float groove = smoothstep(0.30, 0.60, b);
-
-    // Displacement: bands push out slightly, grooves push in slightly
-    return (groove - 0.5) * uGrooveDepth * 2.0;
+    // Broad rounded ridges separated by clean, narrow valleys.
+    float ridge = pow(clamp(wave * 0.5 + 0.5, 0.0, 1.0), 1.35);
+    return ridge;
   }
 
   void main() {
-    vec3 N = normalize(position);  // unit sphere: normal = position direction
-    float d = getDisp(N);
-    vec3 displaced = N * (1.0 + d);
+    vec3 N = normalize(normal);
 
-    // ---- Recompute normal via finite differences for accurate groove shading ----
-    float eps = 0.015;
-    vec3 upRef = abs(N.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-    vec3 t1 = normalize(cross(N, upRef));
-    vec3 t2 = normalize(cross(N, t1));
+    // Build a stable tangent frame on the sphere.
+    vec3 referenceAxis = abs(N.y) > 0.92
+      ? vec3(1.0, 0.0, 0.0)
+      : vec3(0.0, 1.0, 0.0);
+    vec3 tangentA = normalize(cross(referenceAxis, N));
+    vec3 tangentB = normalize(cross(N, tangentA));
 
-    // Sample neighbors ON the sphere surface
-    vec3 sB = normalize(N + t1 * eps);
-    vec3 sC = normalize(N + t2 * eps);
-    vec3 dB = sB * (1.0 + getDisp(sB));
-    vec3 dC = sC * (1.0 + getDisp(sC));
+    // Finite differences calculate the mathematical groove slope. Only the
+    // normal changes; the vertex position remains the original sphere.
+    float epsilon = 0.006;
+    float h = spiralHeight(N);
+    float hA = spiralHeight(normalize(N + tangentA * epsilon));
+    float hB = spiralHeight(normalize(N + tangentB * epsilon));
 
-    vec3 newNormal = normalize(cross(dB - displaced, dC - displaced));
-    if (dot(newNormal, N) < 0.0) newNormal = -newNormal;
+    float slopeA = (hA - h) / epsilon;
+    float slopeB = (hB - h) / epsilon;
+    vec3 grooveNormal = normalize(
+      N - (tangentA * slopeA + tangentB * slopeB) * uGrooveDepth
+    );
 
-    vNormal = normalize(normalMatrix * newNormal);
+    vec4 modelViewPosition = modelViewMatrix * vec4(position, 1.0);
 
-    // Pass groove pattern for fragment energy effect
-    float phase = atan(N.z, N.x) * uBands + N.y * uTwist + uTime * uFlowSpeed;
-    vGroovePattern = cos(phase);
+    vNormal = normalize(normalMatrix * grooveNormal);
+    vViewPosition = -modelViewPosition.xyz;
+    vBandHeight = h;
+    vGrooveLine = 1.0 - smoothstep(0.08, 0.30, h);
 
-    vec4 mv = modelViewMatrix * vec4(displaced, 1.0);
-    vView = normalize(-mv.xyz);
-    vDisp = d;
-    gl_Position = projectionMatrix * mv;
+    // IMPORTANT: untouched sphere position = perfectly circular silhouette.
+    gl_Position = projectionMatrix * modelViewPosition;
   }
 `;
 
 /* ======================================================================
-   FRAGMENT SHADER â€” premium glossy studio-lit material
+   FRAGMENT SHADER â€” premium glossy studio material
    ====================================================================== */
+
 const FRAGMENT = /* glsl */ `
   precision highp float;
 
-  uniform vec3 uColorHi;    // highlight (warm cream)
-  uniform vec3 uColorMid;   // mid (vibrant accent)
-  uniform vec3 uColorLo;    // shadow (deep warm)
-  uniform vec3 uGlow;       // energy/glow tint
+  uniform vec3 uColorHi;
+  uniform vec3 uColorMid;
+  uniform vec3 uColorLo;
+  uniform vec3 uGlow;
   uniform float uTime;
   uniform float uFlowSpeed;
-  uniform float uEnergy;    // internal energy brightness (state-dependent)
+  uniform float uEnergy;
 
   varying vec3 vNormal;
-  varying vec3 vView;
-  varying float vGroovePattern;
-  varying float vDisp;
+  varying vec3 vViewPosition;
+  varying float vBandHeight;
+  varying float vGrooveLine;
 
   void main() {
     vec3 N = normalize(vNormal);
+    vec3 V = normalize(vViewPosition);
 
-    // ---- 3-point studio lighting ----
-    vec3 keyDir  = normalize(vec3(0.45, 0.80, 0.55));   // key, upper-left-front
-    vec3 fillDir = normalize(vec3(-0.50, -0.15, 0.55)); // soft fill, right
-    vec3 rimDir  = normalize(vec3(0.10, 0.35, -0.95));  // rim/back
+    vec3 keyDirection = normalize(vec3(-0.52, 0.72, 0.66));
+    vec3 fillDirection = normalize(vec3(0.70, 0.05, 0.55));
+    vec3 rimDirection = normalize(vec3(0.10, 0.42, -0.90));
 
-    float keyLight  = max(dot(N, keyDir), 0.0);
-    float fillLight = max(dot(N, fillDir), 0.0) * 0.30;
-    float rimLight  = pow(max(dot(N, rimDir), 0.0), 2.0) * 0.45;
+    float key = max(dot(N, keyDirection), 0.0);
+    float fill = max(dot(N, fillDirection), 0.0);
+    float rim = pow(max(dot(N, rimDirection), 0.0), 2.2);
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
 
-    // ---- Fresnel rim glow ----
-    float fres = pow(1.0 - max(dot(N, vView), 0.0), 2.5);
+    vec3 halfVector = normalize(keyDirection + V);
+    float primarySpecular = pow(max(dot(N, halfVector), 0.0), 72.0);
 
-    // ---- Glossy specular (tight highlight = premium gloss) ----
-    vec3 H = normalize(keyDir + vView);
-    float spec = pow(max(dot(N, H), 0.0), 52.0) * 1.4;
+    vec3 fillHalfVector = normalize(fillDirection + V);
+    float secondarySpecular = pow(max(dot(N, fillHalfVector), 0.0), 34.0);
 
-    // ---- Base color: gradient from key light ----
-    vec3 base = mix(uColorLo, uColorMid, keyLight * 0.72 + 0.28);
+    // Rich orange base with cream-facing light and deep warm shadow.
+    vec3 base = mix(uColorLo, uColorMid, 0.24 + key * 0.76);
+    base = mix(base, uColorHi, key * key * 0.20);
 
-    // ---- Band/groove visual enhancement ----
-    // Bands (high points) catch more light, grooves are slightly darker
-    float bandFactor = vGroovePattern * 0.5 + 0.5;
-    base = mix(base * 0.82, base * 1.08, bandFactor);
+    // The valleys remain clean and dark while rounded ridges catch light.
+    base *= mix(0.64, 1.08, smoothstep(0.02, 0.94, vBandHeight));
+    base = mix(base, uColorLo * 0.72, vGrooveLine * 0.48);
 
-    vec3 col = base;
-    col += uColorMid * fillLight;
-    col += uGlow * rimLight;
-    col += uColorHi * spec;              // glossy specular sheen
-    col += uGlow * fres * 0.55;          // fresnel rim
+    vec3 color = base;
+    color += uColorMid * fill * 0.16;
+    color += uGlow * rim * 0.22;
+    color += uColorHi * primarySpecular * 1.30;
+    color += uColorHi * secondarySpecular * 0.28;
+    color += uGlow * fresnel * 0.22;
 
-    // ---- Internal energy flowing along spiral bands ----
-    float energy = smoothstep(0.15, 0.85, sin(vGroovePattern * 3.0 - uTime * 1.6 * uFlowSpeed) * 0.5 + 0.5);
-    col += uGlow * energy * uEnergy * 0.18;
+    // State energy travels inside the existing bands; it never deforms them.
+    float travellingEnergy = 0.5 + 0.5 * sin(
+      vBandHeight * 8.0 - uTime * (1.0 + uFlowSpeed * 2.0)
+    );
+    color += uGlow * travellingEnergy * uEnergy * vBandHeight * 0.10;
 
-    // ---- Subtle filmic tone map for rich, non-flat color ----
-    col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14);
+    // Filmic tone mapping.
+    color = (color * (2.51 * color + 0.03)) /
+      (color * (2.43 * color + 0.59) + 0.14);
+    color = pow(color, vec3(1.0 / 2.2));
 
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(color, 1.0);
   }
 `;
 
 /* ======================================================================
-   STATE PARAMETERS â€” each AI state has clean, defined behavior
+   STATE PARAMETERS
    ====================================================================== */
+
 interface StateParams {
-  flow: number;         // groove flow speed
-  ripple: number;       // sound-wave ripple
-  energy: number;       // internal energy glow
-  breathe: number;      // breathing scale amplitude (1-2% idle)
-  breatheSpeed: number; // breathing speed
-  rotSpeed: number;     // rotation speed
+  flow: number;
+  ripple: number;
+  energy: number;
+  breathe: number;
+  breatheSpeed: number;
+  rotationSpeed: number;
 }
 
 const STATE_PARAMS: Record<OrbState, StateParams> = {
-  boot:      { flow: 0.25, ripple: 0.05, energy: 0.30, breathe: 0.015, breatheSpeed: 0.8, rotSpeed: 0.06 },
-  idle:      { flow: 0.12, ripple: 0.00, energy: 0.12, breathe: 0.012, breatheSpeed: 0.5, rotSpeed: 0.04 },
-  listening: { flow: 0.40, ripple: 0.50, energy: 0.40, breathe: 0.035, breatheSpeed: 1.5, rotSpeed: 0.08 },
-  thinking:  { flow: 0.70, ripple: 0.15, energy: 0.60, breathe: 0.020, breatheSpeed: 0.9, rotSpeed: 0.12 },
-  speaking:  { flow: 0.50, ripple: 0.30, energy: 0.50, breathe: 0.030, breatheSpeed: 1.2, rotSpeed: 0.08 },
+  boot: {
+    flow: 0.22,
+    ripple: 0.02,
+    energy: 0.28,
+    breathe: 0.010,
+    breatheSpeed: 0.75,
+    rotationSpeed: 0.045,
+  },
+  idle: {
+    flow: 0.08,
+    ripple: 0,
+    energy: 0.10,
+    breathe: 0.010,
+    breatheSpeed: 0.48,
+    rotationSpeed: 0.028,
+  },
+  listening: {
+    flow: 0.34,
+    ripple: 0.34,
+    energy: 0.38,
+    breathe: 0.024,
+    breatheSpeed: 1.45,
+    rotationSpeed: 0.052,
+  },
+  thinking: {
+    flow: 0.54,
+    ripple: 0.08,
+    energy: 0.52,
+    breathe: 0.015,
+    breatheSpeed: 0.86,
+    rotationSpeed: 0.082,
+  },
+  speaking: {
+    flow: 0.42,
+    ripple: 0.22,
+    energy: 0.44,
+    breathe: 0.022,
+    breatheSpeed: 1.18,
+    rotationSpeed: 0.060,
+  },
 };
 
-/* ======================================================================
-   THE ORB MESH
-   ====================================================================== */
 interface OrbMeshProps {
   state: OrbState;
 }
 
 const OrbMesh: React.FC<OrbMeshProps> = ({ state: orbState }) => {
-  const matRef = useRef<THREE.ShaderMaterial>(null);
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
   const meshRef = useRef<THREE.Mesh>(null);
 
-  // High-detail smooth sphere â€” no facets
   const geometry = useMemo(() => new THREE.SphereGeometry(1, 128, 128), []);
+
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uFlowSpeed: { value: 0.12 },
-      uRipple: { value: 0 },
-      uEnergy: { value: 0.12 },
+      uFlowSpeed: { value: STATE_PARAMS.idle.flow },
+      uRipple: { value: STATE_PARAMS.idle.ripple },
+      uEnergy: { value: STATE_PARAMS.idle.energy },
+
+      // Locked orb controls â€” keep together for screenshot-driven tuning.
       uBands: { value: 5.0 },
       uTwist: { value: 3.0 },
-      uGrooveDepth: { value: 0.04 },
+      uGrooveDepth: { value: 0.040 },
+
+      // Locked ClientRadar brand palette.
       uColorHi: { value: new THREE.Color('#FFE8D0') },
       uColorMid: { value: new THREE.Color('#FF7A00') },
       uColorLo: { value: new THREE.Color('#5C1F00') },
@@ -201,54 +243,59 @@ const OrbMesh: React.FC<OrbMeshProps> = ({ state: orbState }) => {
     []
   );
 
-  // Track interpolated state params across frames
-  const interp = useRef({ flow: 0.12, ripple: 0, energy: 0.12, breathe: 0.012, breatheSpeed: 0.5, rotSpeed: 0.04 });
+  const interpolated = useRef({ ...STATE_PARAMS.idle });
 
   useFrame((threeState, delta) => {
     const dt = Math.min(delta, 0.05);
     const target = STATE_PARAMS[orbState] ?? STATE_PARAMS.idle;
-    const k = Math.min(dt * 2.5, 1); // smooth interpolation factor
+    const smoothing = Math.min(dt * 2.5, 1);
+    const current = interpolated.current;
 
-    // Interpolate toward target state params
-    interp.current.flow += (target.flow - interp.current.flow) * k;
-    interp.current.ripple += (target.ripple - interp.current.ripple) * k;
-    interp.current.energy += (target.energy - interp.current.energy) * k;
-    interp.current.breathe += (target.breathe - interp.current.breathe) * k;
-    interp.current.breatheSpeed += (target.breatheSpeed - interp.current.breatheSpeed) * k;
-    interp.current.rotSpeed += (target.rotSpeed - interp.current.rotSpeed) * k;
+    current.flow += (target.flow - current.flow) * smoothing;
+    current.ripple += (target.ripple - current.ripple) * smoothing;
+    current.energy += (target.energy - current.energy) * smoothing;
+    current.breathe += (target.breathe - current.breathe) * smoothing;
+    current.breatheSpeed +=
+      (target.breatheSpeed - current.breatheSpeed) * smoothing;
+    current.rotationSpeed +=
+      (target.rotationSpeed - current.rotationSpeed) * smoothing;
 
-    if (matRef.current) {
-      const u = matRef.current.uniforms;
-      u.uTime.value += dt;
-      u.uFlowSpeed.value = interp.current.flow;
-      u.uRipple.value = interp.current.ripple;
-      u.uEnergy.value = interp.current.energy;
+    if (materialRef.current) {
+      const shaderUniforms = materialRef.current.uniforms;
+      shaderUniforms.uTime.value += dt;
+      shaderUniforms.uFlowSpeed.value = current.flow;
+      shaderUniforms.uRipple.value = current.ripple;
+      shaderUniforms.uEnergy.value = current.energy;
     }
 
     if (meshRef.current) {
-      // Gentle breathing (1-2% scale for idle, more for active states)
-      let breatheAmt = interp.current.breathe;
-      let breatheSpd = interp.current.breatheSpeed;
+      let breatheAmount = current.breathe;
 
-      // Listening: simulate volume-reactive expansion/contraction
-      // (Wire to real mic amplitude via Web Audio API later)
       if (orbState === 'listening') {
-        const simulatedVolume = Math.sin(threeState.clock.elapsedTime * 4.0) * 0.5 + 0.5;
-        breatheAmt = 0.015 + simulatedVolume * 0.04;
+        // Temporary simulated amplitude. Replace with Web Audio API amplitude.
+        const simulatedVolume =
+          Math.sin(threeState.clock.elapsedTime * 4.0) * 0.5 + 0.5;
+        breatheAmount = 0.012 + simulatedVolume * 0.024;
       }
 
-      const scale = 1.0 + Math.sin(threeState.clock.elapsedTime * breatheSpd) * breatheAmt;
-      meshRef.current.scale.setScalar(scale);
+      const scale =
+        1.0 +
+        Math.sin(threeState.clock.elapsedTime * current.breatheSpeed) *
+          breatheAmount;
 
-      // Slow elegant rotation
-      meshRef.current.rotation.y += dt * interp.current.rotSpeed;
+      meshRef.current.scale.setScalar(scale);
+      meshRef.current.rotation.y += dt * current.rotationSpeed;
     }
   });
 
   return (
-    <mesh ref={meshRef} geometry={geometry}>
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      rotation={[0.28, -0.22, -0.08]}
+    >
       <shaderMaterial
-        ref={matRef}
+        ref={materialRef}
         vertexShader={VERTEX}
         fragmentShader={FRAGMENT}
         uniforms={uniforms}
@@ -257,46 +304,35 @@ const OrbMesh: React.FC<OrbMeshProps> = ({ state: orbState }) => {
   );
 };
 
-/* ======================================================================
-   PUBLIC API
-   ====================================================================== */
 interface AgentOrb3DProps {
   state?: OrbState;
   size?: number;
 }
 
-const AgentOrb3D: React.FC<AgentOrb3DProps> = ({ state = 'idle', size = 240 }) => {
+const AgentOrb3D: React.FC<AgentOrb3DProps> = ({
+  state = 'idle',
+  size = 240,
+}) => {
   return (
     <div
+      className="cr-orb3d"
       style={{
         width: size,
         height: size,
-        position: 'relative',
-        overflow: 'visible', // FIX: never clip the orb or its glow
       }}
     >
-      {/* Soft glow behind the orb â€” extends beyond container, not clipped */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: '-18%',
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle at 50% 45%, var(--accent, #FF7A00), transparent 60%)',
-          opacity: 0.16,
-          filter: 'blur(20px)',
-          zIndex: 0,
-          pointerEvents: 'none',
-        }}
-      />
+      <div className="cr-orb3d__glow" aria-hidden="true" />
+
       <Canvas
-        camera={{ position: [0, 0, 3], fov: 42 }}
+        camera={{ position: [0, 0, 3.15], fov: 42 }}
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: 'high-performance',
+        }}
         style={{ position: 'relative', zIndex: 1 }}
       >
-        <ambientLight intensity={0.45} />
-        <directionalLight position={[3, 5, 4]} intensity={1.1} />
         <OrbMesh state={state} />
       </Canvas>
     </div>
