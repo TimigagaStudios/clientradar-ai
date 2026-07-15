@@ -116,8 +116,8 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       {/* hero: orb + greeting (compact hides big greeting) */}
       {mode === 'full' && (
         <div className="flex flex-col items-center text-center">
-          <Suspense fallback={<AgentOrb state={orb} size={220} />}>
-            <AgentOrb3D state={orb} size={220} />
+          <Suspense fallback={<AgentOrb state={orb} size={240} />}>
+            <AgentOrb3D state={orb} size={240} />
           </Suspense>
           <div className="cr-greet mt-4">
             <h1>Good {greeting()}, <b>Timothy</b>.</h1>
