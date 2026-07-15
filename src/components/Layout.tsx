@@ -37,6 +37,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [userEmail, setUserEmail] = useState<string | null>(null);
+
   const location = useLocation();
   const navigate = useNavigate();
   const adminMenuRef = useRef<HTMLDivElement | null>(null);
@@ -48,11 +49,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? null);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserEmail(session?.user?.email ?? null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -75,7 +74,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const avatarUrl = '/avatar-founder.jpg';
 
   const menuItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
+    { icon: Sparkles, label: 'Assistant', path: '/' }, // âœ… NEW â€” Executive Agent home
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // âœ… relocated
     { icon: Search, label: 'Lead Finder', path: '/finder' },
     { icon: Users, label: 'Leads', path: '/leads' },
     { icon: MonitorPlay, label: 'Demos', path: '/demos' },
@@ -83,7 +83,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-    { icon: FileText, label: 'Invoices', path: '/invoices' }, // âœ… NEW
+    { icon: FileText, label: 'Invoices', path: '/invoices' }, // âœ… Invoices
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
   ];
 
@@ -98,20 +98,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   // Close admin menu on outside click / ESC
   useEffect(() => {
     if (!isAdminMenuOpen) return;
-
     const handleClickOutside = (event: MouseEvent) => {
       if (adminMenuRef.current && !adminMenuRef.current.contains(event.target as Node)) {
         setIsAdminMenuOpen(false);
       }
     };
-
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsAdminMenuOpen(false);
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleEsc);
-
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEsc);
@@ -168,7 +164,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           <div className="mb-10">
             <Logo size={44} />
           </div>
-
           <nav className="flex-1 space-y-3">
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path;
@@ -212,7 +207,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           >
             <Menu size={22} />
           </button>
-
           <form onSubmit={handleGlobalSearchSubmit} className="flex-1 min-w-0 relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
             <input
@@ -223,7 +217,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               className="w-full rounded-2xl bg-black/[0.025] dark:bg-white/5 border border-black/6 dark:border-white/8 py-3 pl-12 pr-4 outline-none text-sm sm:text-base text-[var(--text-primary)] placeholder-[var(--text-secondary)]"
             />
           </form>
-
           <div className="flex items-center gap-3 shrink-0">
             {/* Desktop quick actions */}
             <div className="hidden md:flex gap-2">
@@ -238,7 +231,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                 </Button>
               ))}
             </div>
-
             {/* Profile / Admin menu */}
             <div className="relative" ref={adminMenuRef}>
               <button
@@ -258,7 +250,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   height={40}
                 />
               </button>
-
               {isAdminMenuOpen && (
                 <div className="absolute right-0 mt-3 w-72 neo-card p-2 z-[60] shadow-2xl max-w-[calc(100vw-2rem)]">
                   {/* Profile header */}
@@ -281,7 +272,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                       </div>
                     </div>
                   </div>
-
                   {/* Mobile quick actions */}
                   <div className="md:hidden border-b border-black/5 dark:border-white/5 pb-2 mb-2">
                     {quickActions.map((action) => (
@@ -295,7 +285,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                       </button>
                     ))}
                   </div>
-
                   <button
                     onClick={() => { setIsAdminMenuOpen(false); navigate('/settings'); }}
                     className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
@@ -303,7 +292,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     <SettingsIcon size={16} className="text-[var(--text-secondary)]" />
                     Settings
                   </button>
-
                   <button
                     onClick={() => { setIsAdminMenuOpen(false); toggleTheme(); }}
                     className="w-full px-4 py-3 text-left rounded-xl hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-[var(--text-primary)] flex items-center gap-3"
@@ -311,9 +299,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                     {theme === 'dark' ? <Sun size={16} className="text-[var(--text-secondary)]" /> : <Moon size={16} className="text-[var(--text-secondary)]" />}
                     Toggle Theme
                   </button>
-
                   <div className="my-1 border-t border-black/5 dark:border-white/5" />
-
                   <button
                     onClick={handleLogout}
                     className="w-full px-4 py-3 text-left rounded-xl hover:bg-red-500/10 text-red-500 flex items-center gap-3"
