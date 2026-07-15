@@ -49,6 +49,16 @@ export class ToolExecutionSystem {
   toolExists(toolName: string): boolean {
     return toolRegistry.hasTool(toolName);
   }
+
+  // Execute multiple tools in sequence
+  async runMultipleTools(tools: Array<{ name: string; params: any }>): Promise<any[]> {
+    const results = [];
+    for (const tool of tools) {
+      const result = await this.runTool(tool.name, tool.params);
+      results.push(result);
+    }
+    return results;
+  }
 }
 
 // Export a singleton instance
