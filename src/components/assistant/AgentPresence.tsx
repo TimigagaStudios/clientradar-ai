@@ -14,212 +14,203 @@ interface AgentPresenceProps {
   className?: string;
 }
 
-interface Vector3 {
-  x: number;
-  y: number;
-  z: number;
+interface RingDefinition {
+  radius: number;
+  count: number;
+  dotRadius: number;
+  opacity: number;
+  speed: number;
+  direction: 'normal' | 'reverse';
+  offset: number;
 }
 
-interface ParticleFrame {
+interface DotDefinition {
+  id: string;
   x: number;
   y: number;
   radius: number;
-  opacity: number;
-}
-
-interface Particle {
-  id: number;
-  frames: ParticleFrame[];
   delay: number;
 }
 
-const PARTICLE_COUNT = 58;
-const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-const PHASES = [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5, Math.PI * 2];
-
-const STATE_DURATION: Record<AgentPresenceState, number> = {
-  boot: 3.8,
-  idle: 12,
-  listening: 5.2,
-  thinking: 6.4,
-  speaking: 4.8,
-};
-
-function rotateY(point: Vector3, angle: number): Vector3 {
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
-
-  return {
-    x: point.x * cosine + point.z * sine,
-    y: point.y,
-    z: -point.x * sine + point.z * cosine,
-  };
+interface RenderRing extends RingDefinition {
+  dots: DotDefinition[];
 }
 
-function rotateX(point: Vector3, angle: number): Vector3 {
-  const cosine = Math.cos(angle);
-  const sine = Math.sin(angle);
+const VIEWBOX_SIZE = 360;
+const CENTER = VIEWBOX_SIZE / 2;
 
-  return {
-    x: point.x,
-    y: point.y * cosine - point.z * sine,
-    z: point.y * sine + point.z * cosine,
-  };
-}
+// Exact hierarchy requested: the center rings carry the largest dots and each
+// outward ring progressively resolves into smaller, micro-fine particles.
+const RINGS: RingDefinition[] = [
+  {
+    radius: 28,
+    count: 8,
+    dotRadius: 7.8,
+    opacity: 1,
+    speed: 13.0,
+    direction: 'normal',
+    offset: 0.16,
+  },
+  {
+    radius: 50,
+    count: 12,
+    dotRadius: 6.8,
+    opacity: 0.98,
+    speed: 15.5,
+    direction: 'reverse',
+    offset: 0.38,
+  },
+  {
+    radius: 73,
+    count: 17,
+    dotRadius: 5.6,
+    opacity: 0.94,
+    speed: 18.0,
+    direction: 'normal',
+    offset: 0.06,
+  },
+  {
+    radius: 96,
+    count: 22,
+    dotRadius: 4.3,
+    opacity: 0.84,
+    speed: 21.0,
+    direction: 'reverse',
+    offset: 0.28,
+  },
+  {
+    radius: 119,
+    count: 28,
+    dotRadius: 2.9,
+    opacity: 0.66,
+    speed: 24.5,
+    direction: 'normal',
+    offset: 0.12,
+  },
+  {
+    radius: 141,
+    count: 36,
+    dotRadius: 1.65,
+    opacity: 0.38,
+    speed: 29.0,
+    direction: 'reverse',
+    offset: 0.32,
+  },
+];
 
-function projectParticle(point: Vector3, phase: number): ParticleFrame {
-  const turned = rotateY(point, phase);
-  const tilted = rotateX(turned, -0.16 + Math.sin(phase) * 0.10);
+function buildRings(): RenderRing[] {
+  return RINGS.map((ring, ringIndex) => {
+    const dots = Array.from({ length: ring.count }, (_, dotIndex) => {
+      const progress = dotIndex / ring.count;
+      const theta = progress * Math.PI * 2 + ring.offset;
 
-  // A gentle perspective makes front particles larger and brighter while the
-  // rear particles fade into the blue/lavender atmosphere.
-  const perspective = 1 + tilted.z * 0.12;
-  const depth = (tilted.z + 1) * 0.5;
+      return {
+        id: `${ringIndex}-${dotIndex}`,
+        x: CENTER + ring.radius * Math.cos(theta),
+        y: CENTER + ring.radius * Math.sin(theta),
+        radius: ring.dotRadius,
+        // A negative phase delay creates the travelling bright crescent seen
+        // in the reference without changing the perfect polar-coordinate grid.
+        delay: -(progress * 6.8 + ringIndex * 0.14),
+      };
+    });
 
-  return {
-    x: 160 + tilted.x * 76 * perspective,
-    y: 150 + tilted.y * 96 * perspective,
-    radius: 2.0 + depth * 5.1,
-    opacity: 0.12 + depth * 0.86,
-  };
-}
-
-function createParticles(): Particle[] {
-  return Array.from({ length: PARTICLE_COUNT }, (_, index) => {
-    // Deterministic Fibonacci-sphere distribution: evenly spaced and free of
-    // random clusters while still reading as a living particle volume.
-    const y = 1 - (2 * (index + 0.5)) / PARTICLE_COUNT;
-    const horizontalRadius = Math.sqrt(Math.max(0, 1 - y * y));
-    const longitude = index * GOLDEN_ANGLE;
-
-    const point: Vector3 = {
-      x: Math.cos(longitude) * horizontalRadius,
-      y,
-      z: Math.sin(longitude) * horizontalRadius,
-    };
-
-    return {
-      id: index,
-      frames: PHASES.map((phase) => projectParticle(point, phase)),
-      delay: (index % 11) * 0.07,
-    };
+    return { ...ring, dots };
   });
 }
 
-function frameValues(
-  frames: ParticleFrame[],
-  key: keyof ParticleFrame,
-  precision = 2
-): string {
-  return frames.map((frame) => frame[key].toFixed(precision)).join(';');
-}
-
 /**
- * AgentPresence â ClientRadar AI's SVG particle identity.
+ * AgentPresence â programmatic Sparkybit-style SVG loader.
  *
- * It replaces the WebGL orb with a lightweight rotating particle sphere over
- * a blue/lavender atmospheric field. The component remains state-reactive and
- * works without Three.js, React Three Fiber, canvas, or GPU-specific shaders.
+ * Rendering is entirely React + inline SVG + CSS. There are no images, video,
+ * GIFs, canvas libraries, WebGL dependencies, or external assets.
  */
 const AgentPresence: React.FC<AgentPresenceProps> = ({
   state = 'idle',
-  size = 300,
+  size = 640,
   className = '',
 }) => {
-  const particles = useMemo(createParticles, []);
-  const rawId = useId();
-  const filterId = `cr-presence-glow-${rawId.replace(/:/g, '')}`;
-  const duration = STATE_DURATION[state];
+  const rings = useMemo(buildRings, []);
+  const reactId = useId().replace(/:/g, '');
+  const particleGlowId = `sparky-particle-glow-${reactId}`;
 
   return (
-    <div
-      className={`cr-presence cr-presence--${state} ${className}`.trim()}
-      style={{ '--cr-presence-size': `${size}px` } as React.CSSProperties}
+    <section
+      className={`sparky-loader sparky-loader--${state} relative isolate grid w-full place-items-center overflow-hidden rounded-[36px] bg-[#EBF0F5] ${className}`.trim()}
+      style={
+        {
+          '--sparky-max-width': `${size}px`,
+        } as React.CSSProperties
+      }
       role="img"
       aria-label={`AI assistant is ${state}`}
     >
-      <div className="cr-presence__atmosphere" aria-hidden="true" />
-      <div className="cr-presence__aura" aria-hidden="true" />
+      <div className="sparky-loader__lavender" aria-hidden="true" />
+
+      <div className="sparky-loader__spotlight-orbit" aria-hidden="true">
+        <div className="sparky-loader__spotlight" />
+      </div>
 
       <svg
-        className="cr-presence__svg"
-        viewBox="0 0 320 300"
+        className="sparky-loader__svg"
+        viewBox={`0 0 ${VIEWBOX_SIZE} ${VIEWBOX_SIZE}`}
         aria-hidden="true"
       >
         <defs>
           <filter
-            id={filterId}
+            id={particleGlowId}
             x="-60%"
             y="-60%"
             width="220%"
             height="220%"
           >
-            <feGaussianBlur stdDeviation="1.8" result="softGlow" />
+            <feGaussianBlur stdDeviation="1.45" result="particleBlur" />
             <feMerge>
-              <feMergeNode in="softGlow" />
+              <feMergeNode in="particleBlur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
         </defs>
 
-        <g className="cr-presence__particles" filter={`url(#${filterId})`}>
-          {particles.map((particle) => {
-            const firstFrame = particle.frames[0];
-
-            return (
-              <circle
-                key={particle.id}
-                className="cr-presence__dot"
-                cx={firstFrame.x}
-                cy={firstFrame.y}
-                r={firstFrame.radius}
-                opacity={firstFrame.opacity}
-                style={
-                  {
-                    '--cr-dot-delay': `${particle.delay}s`,
-                  } as React.CSSProperties
-                }
-              >
-                <animate
-                  attributeName="cx"
-                  values={frameValues(particle.frames, 'x')}
-                  keyTimes="0;0.25;0.5;0.75;1"
-                  dur={`${duration}s`}
-                  repeatCount="indefinite"
-                  calcMode="spline"
-                  keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"
+        <g
+          className="sparky-loader__particle-field"
+          filter={`url(#${particleGlowId})`}
+        >
+          {rings.map((ring, ringIndex) => (
+            <g
+              key={ring.radius}
+              className="sparky-loader__ring"
+              style={
+                {
+                  '--sparky-ring-speed': `${ring.speed}s`,
+                  '--sparky-ring-delay': `${-ringIndex * 0.72}s`,
+                  '--sparky-ring-opacity': ring.opacity,
+                  animationDirection: ring.direction,
+                } as React.CSSProperties
+              }
+            >
+              {ring.dots.map((dot) => (
+                <circle
+                  key={dot.id}
+                  className="sparky-loader__dot"
+                  cx={dot.x}
+                  cy={dot.y}
+                  r={dot.radius}
+                  fill="#FFFFFF"
+                  style={
+                    {
+                      '--sparky-dot-delay': `${dot.delay}s`,
+                    } as React.CSSProperties
+                  }
                 />
-                <animate
-                  attributeName="cy"
-                  values={frameValues(particle.frames, 'y')}
-                  keyTimes="0;0.25;0.5;0.75;1"
-                  dur={`${duration}s`}
-                  repeatCount="indefinite"
-                  calcMode="spline"
-                  keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1"
-                />
-                <animate
-                  attributeName="r"
-                  values={frameValues(particle.frames, 'radius')}
-                  keyTimes="0;0.25;0.5;0.75;1"
-                  dur={`${duration}s`}
-                  repeatCount="indefinite"
-                />
-                <animate
-                  attributeName="opacity"
-                  values={frameValues(particle.frames, 'opacity')}
-                  keyTimes="0;0.25;0.5;0.75;1"
-                  dur={`${duration}s`}
-                  repeatCount="indefinite"
-                />
-              </circle>
-            );
-          })}
+              ))}
+            </g>
+          ))}
         </g>
       </svg>
 
-      <div className="cr-presence__state-ring" aria-hidden="true" />
-    </div>
+      <div className="sparky-loader__response-ring" aria-hidden="true" />
+    </section>
   );
 };
 
