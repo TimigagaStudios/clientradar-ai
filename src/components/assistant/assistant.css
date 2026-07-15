@@ -1,0 +1,175 @@
+/* ============================================================
+   ClientRadar AI â€” Assistant styles
+   Uses existing CSS variables (--accent, --text-primary, etc.)
+   so it inherits the app's dark/light theme automatically.
+   Keyes neumorphic shadows off the Tailwind `.dark` class too.
+   ============================================================ */
+
+/* ---------- Orb root ---------- */
+.cr-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--cr-size, 180px);
+  height: var(--cr-size, 180px);
+  isolation: isolate;
+}
+
+/* outer accent glow */
+.cr-orb__glow {
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, var(--accent, #FF7A00), transparent 60%);
+  opacity: 0.20;
+  filter: blur(16px);
+  z-index: -2;
+  animation: cr-breathe 6s ease-in-out infinite;
+}
+
+/* ambient occlusion shadow -> levitation */
+.cr-orb__ao {
+  position: absolute;
+  bottom: -4%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 68%;
+  height: 15%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.45), transparent 70%);
+  filter: blur(9px);
+  z-index: -1;
+  opacity: 0.6;
+}
+
+.cr-orb__svg { display: block; overflow: visible; width: 100%; height: 100%; }
+
+/* the morphing core â€” gentle constant organic melt via SMIL filter */
+.cr-orb__core { transform-origin: 100px 100px; animation: cr-energy 5s ease-in-out infinite; }
+
+/* specular sheen */
+.cr-orb__sheen { animation: cr-sheen 7s ease-in-out infinite; }
+
+/* orbit rings */
+.cr-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 122, 0, 0.28);
+  pointer-events: none;
+}
+.cr-ring--1 { inset: 6%;  border-style: solid;  animation: cr-spin 16s linear infinite; }
+.cr-ring--2 { inset: -8%; border-style: dashed; border-color: rgba(255,255,255,0.10); animation: cr-spin 26s linear infinite reverse; }
+.cr-ring--3 { inset: -20%; border-color: rgba(255,122,0,0.10); animation: cr-spin 34s linear infinite; }
+
+/* ---------- State reactivity ---------- */
+.cr-orb--idle .cr-orb__core      { animation-duration: 5s; }
+.cr-orb--thinking .cr-orb__core  { animation: cr-energy 1.4s ease-in-out infinite; }
+.cr-orb--listening .cr-orb__core { animation: cr-energy 1.1s ease-in-out infinite; }
+.cr-orb--speaking .cr-orb__core  { animation: cr-energy 0.9s ease-in-out infinite; }
+.cr-orb--thinking .cr-orb__glow,
+.cr-orb--speaking .cr-orb__glow  { opacity: 0.4; animation-duration: 2s; }
+
+/* boot: particles, hide core until done */
+.cr-orb--boot .cr-orb__core,
+.cr-orb--boot .cr-orb__sheen { opacity: 0; }
+.cr-orb--boot .cr-orb__glow  { opacity: 0.35; }
+
+/* ---------- Boot particle spiral ---------- */
+.cr-spiral { position: absolute; inset: 0; display: grid; place-items: center; }
+.cr-spiral i {
+  position: absolute; left: 50%; top: 50%;
+  width: 7px; height: 7px; margin: -3.5px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 0 8px rgba(255,255,255,0.8);
+  animation: cr-orbit 1.8s linear infinite;
+}
+
+@keyframes cr-energy {
+  0%,100% { transform: scale(1) rotate(0deg); }
+  50%     { transform: scale(1.05) rotate(6deg); }
+}
+@keyframes cr-breathe { 0%,100% { transform: scale(1); opacity: .2; } 50% { transform: scale(1.08); opacity: .32; } }
+@keyframes cr-sheen   { 0%,100% { opacity: .22; transform: translate(0,0);} 50% { opacity: .34; transform: translate(4px,3px);} }
+@keyframes cr-spin    { to { transform: rotate(360deg); } }
+
+/* particle orbit (set --angle + --radius inline per node) */
+@keyframes cr-orbit {
+  0%   { transform: rotate(var(--angle)) translateX(var(--radius)) scale(0.4); opacity: 0; }
+  20%  { opacity: 1; }
+  55%  { transform: rotate(calc(var(--angle) + 220deg)) translateX(calc(var(--radius) * 0.35)) scale(1.15); opacity: 1; }
+  85%  { opacity: 0; }
+  100% { transform: rotate(calc(var(--angle) + 300deg)) translateX(0) scale(0); opacity: 0; }
+}
+
+/* ============================================================
+   AssistantCore layout
+   ============================================================ */
+.cr-core { display: flex; flex-direction: column; gap: 1.5rem; }
+.cr-core--compact { gap: 1rem; }
+
+/* greeting */
+.cr-greet h1 { font-size: 1.75rem; line-height: 1.2; font-weight: 800; letter-spacing: -0.02em; color: var(--text-primary); }
+.cr-greet h1 b { color: var(--accent); }
+.cr-greet .cr-brief { margin-top: 0.6rem; font-size: 0.95rem; line-height: 1.6; color: var(--text-secondary); min-height: 3rem; }
+.cr-greet .cr-brief .num { color: var(--text-primary); font-weight: 700; }
+.cr-caret { display: inline-block; width: 7px; height: 1.05rem; background: var(--accent); margin-left: 2px; vertical-align: -2px; border-radius: 1px; animation: cr-blink .9s steps(2) infinite; }
+@keyframes cr-blink { 50% { opacity: 0; } }
+
+/* quick actions */
+.cr-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.cr-chip {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  padding: 0.7rem 1rem; border-radius: 999px;
+  background: var(--cr-surface, rgba(255,255,255,0.05));
+  border: 1px solid var(--cr-border, rgba(255,255,255,0.10));
+  color: var(--text-primary); font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; transition: transform .12s, border-color .2s, background .2s;
+}
+.cr-chip:hover { border-color: var(--accent); }
+.cr-chip:active { transform: scale(0.95); }
+.cr-chip svg { width: 15px; height: 15px; color: var(--accent); }
+.cr-chip.primary {
+  background: linear-gradient(135deg, var(--accent), #D85C00);
+  border-color: transparent; color: #fff;
+  box-shadow: 0 8px 22px rgba(255,122,0,0.25);
+}
+.cr-chip.primary svg { color: #fff; }
+
+/* conversation */
+.cr-convo { display: flex; flex-direction: column; gap: 0.7rem; }
+.cr-msg { display: flex; gap: 0.6rem; max-width: 88%; }
+.cr-msg.me { align-self: flex-end; flex-direction: row-reverse; }
+.cr-av { width: 28px; height: 28px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #fff; }
+.cr-av.ai { background: radial-gradient(circle at 35% 30%, #FFB066, #8A2E00); }
+.cr-av.me { background: rgba(255,255,255,0.12); }
+.cr-bubble {
+  padding: 0.7rem 0.9rem; border-radius: 14px; font-size: 0.85rem; line-height: 1.5;
+  border: 1px solid var(--cr-border, rgba(255,255,255,0.10));
+  background: var(--cr-surface, rgba(255,255,255,0.05));
+}
+.cr-msg.me .cr-bubble { background: rgba(255,122,0,0.16); border-color: rgba(255,122,0,0.3); }
+.cr-bubble b { color: var(--text-primary); }
+.cr-bubble .cr-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; flex-wrap: wrap; }
+.cr-mini { font-size: 0.72rem; padding: 0.45rem 0.7rem; border-radius: 8px; border: 1px solid var(--cr-border, rgba(255,255,255,0.16)); background: var(--cr-surface-strong, rgba(255,255,255,0.08)); color: var(--text-primary); cursor: pointer; font-weight: 600; }
+.cr-mini.go { background: var(--accent); border-color: transparent; color: #fff; }
+
+.cr-typing span { display: inline-flex; gap: 4px; }
+.cr-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-secondary); animation: cr-bounce 1.2s infinite; }
+.cr-typing i:nth-child(2){ animation-delay:.15s } .cr-typing i:nth-child(3){ animation-delay:.3s }
+@keyframes cr-bounce { 0%,60%,100%{ transform: translateY(0); opacity:.5 } 30%{ transform: translateY(-4px); opacity:1 } }
+
+/* composer */
+.cr-composer { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.4rem 0.4rem 1rem; border-radius: 999px; border: 1px solid var(--cr-border, rgba(255,255,255,0.14)); background: var(--cr-surface-strong, rgba(255,255,255,0.07)); }
+.cr-composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255,122,0,0.15); }
+.cr-composer input { flex: 1; background: none; border: none; outline: none; color: var(--text-primary); font-size: 0.9rem; font-family: inherit; min-width: 0; }
+.cr-composer input::placeholder { color: var(--text-secondary); opacity: 0.7; }
+.cr-icbtn { width: 38px; height: 38px; border-radius: 50%; flex: none; display: grid; place-items: center; cursor: pointer; border: none; background: var(--cr-surface, rgba(255,255,255,0.06)); color: var(--text-secondary); transition: background .2s, transform .12s; }
+.cr-icbtn svg { width: 18px; height: 18px; }
+.cr-icbtn:active { transform: scale(0.9); }
+.cr-icbtn.mic.live { background: var(--accent); color: #fff; animation: cr-micpulse 1.1s infinite; }
+.cr-icbtn.send { background: linear-gradient(135deg, var(--accent), #D85C00); color: #fff; }
+.cr-icbtn.send:disabled { opacity: 0.35; }
+@keyframes cr-micpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(255,122,0,0.5) } 50%{ box-shadow: 0 0 0 9px transparent } }
+
+/* ---------- Dark theme (navy) refinements ---------- */
+.dark .cr-orb__ao { opacity: 0.75; }
+.dark .cr-orb__glow { opacity: 0.26; }
