@@ -18,7 +18,6 @@ interface RingDefinition {
   radius: number;
   count: number;
   dotRadius: number;
-  opacity: number;
   speed: number;
   direction: 'normal' | 'reverse';
   offset: number;
@@ -46,7 +45,6 @@ const RINGS: RingDefinition[] = [
     radius: 28,
     count: 8,
     dotRadius: 7.8,
-    opacity: 1,
     speed: 13.0,
     direction: 'normal',
     offset: 0.16,
@@ -55,7 +53,6 @@ const RINGS: RingDefinition[] = [
     radius: 50,
     count: 12,
     dotRadius: 6.8,
-    opacity: 0.98,
     speed: 15.5,
     direction: 'reverse',
     offset: 0.38,
@@ -64,7 +61,6 @@ const RINGS: RingDefinition[] = [
     radius: 73,
     count: 17,
     dotRadius: 5.6,
-    opacity: 0.94,
     speed: 18.0,
     direction: 'normal',
     offset: 0.06,
@@ -73,7 +69,6 @@ const RINGS: RingDefinition[] = [
     radius: 96,
     count: 22,
     dotRadius: 4.3,
-    opacity: 0.84,
     speed: 21.0,
     direction: 'reverse',
     offset: 0.28,
@@ -82,7 +77,6 @@ const RINGS: RingDefinition[] = [
     radius: 119,
     count: 28,
     dotRadius: 2.9,
-    opacity: 0.66,
     speed: 24.5,
     direction: 'normal',
     offset: 0.12,
@@ -91,7 +85,6 @@ const RINGS: RingDefinition[] = [
     radius: 141,
     count: 36,
     dotRadius: 1.65,
-    opacity: 0.38,
     speed: 29.0,
     direction: 'reverse',
     offset: 0.32,
@@ -136,7 +129,7 @@ const AgentPresence: React.FC<AgentPresenceProps> = ({
 
   return (
     <section
-      className={`sparky-loader sparky-loader--${state} relative isolate grid w-full place-items-center overflow-hidden rounded-[36px] bg-[#EBF0F5] ${className}`.trim()}
+      className={`sparky-loader sparky-loader--${state} relative grid w-full place-items-center overflow-visible bg-transparent ${className}`.trim()}
       style={
         {
           '--sparky-max-width': `${size}px`,
@@ -184,7 +177,6 @@ const AgentPresence: React.FC<AgentPresenceProps> = ({
                 {
                   '--sparky-ring-speed': `${ring.speed}s`,
                   '--sparky-ring-delay': `${-ringIndex * 0.72}s`,
-                  '--sparky-ring-opacity': ring.opacity,
                   animationDirection: ring.direction,
                 } as React.CSSProperties
               }
