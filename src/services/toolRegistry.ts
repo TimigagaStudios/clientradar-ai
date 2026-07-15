@@ -1,5 +1,8 @@
 // src/services/toolRegistry.ts
 
+import { sendOutreachTool } from './tools/sendOutreachTool';
+import { searchBusinessTool } from './tools/searchBusinessTool';
+
 export interface Tool {
   name: string;
   description: string;
@@ -9,6 +12,12 @@ export interface Tool {
 
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
+
+  constructor() {
+    // Register default tools used by ClientRadar
+    this.registerTool(sendOutreachTool);
+    this.registerTool(searchBusinessTool);
+  }
 
   // Register a new tool
   registerTool(tool: Tool) {
