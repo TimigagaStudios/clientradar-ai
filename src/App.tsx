@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Layout from './components/Layout';
@@ -13,7 +14,8 @@ import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
 import Demos from './pages/Demos';
 import AIOutreach from './pages/AIOutreach';
-import Invoices from './pages/Invoices'; // âœ… NEW
+import Invoices from './pages/Invoices';
+import Assistant from './pages/Assistant'; // âœ… NEW â€” Executive Agent home
 
 import { LeadProvider } from './context/LeadContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -31,13 +33,10 @@ const RequireAuth = ({ children }: { children: React.ReactNode }) => {
       setIsAuthenticated(!!session);
       setLoading(false);
     };
-
     checkSession();
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -65,7 +64,15 @@ const App = () => {
             <Routes>
               <Route path="/login" element={<Login />} />
 
-              <Route path="/" element={<RequireAuth><Layout><Dashboard /></Layout></RequireAuth>} />
+              {/* âœ… (A) Assistant is now the HOME route (post-login greeting) */}
+              <Route path="/" element={<RequireAuth><Layout><Assistant /></Layout></RequireAuth>} />
+
+              {/* âœ… Dashboard relocated to /dashboard (fully intact) */}
+              <Route path="/dashboard" element={<RequireAuth><Layout><Dashboard /></Layout></RequireAuth>} />
+
+              {/* âœ… (B) Dedicated assistant route (reachable from nav anytime) */}
+              <Route path="/assistant" element={<RequireAuth><Layout><Assistant /></Layout></RequireAuth>} />
+
               <Route path="/finder" element={<RequireAuth><Layout><LeadFinder /></Layout></RequireAuth>} />
               <Route path="/leads" element={<RequireAuth><Layout><Leads /></Layout></RequireAuth>} />
               <Route path="/leads/:id" element={<RequireAuth><Layout><LeadDetail /></Layout></RequireAuth>} />
@@ -76,7 +83,7 @@ const App = () => {
               <Route path="/ai-outreach" element={<RequireAuth><Layout><AIOutreach /></Layout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><Layout><Settings /></Layout></RequireAuth>} />
 
-              {/* âœ… NEW INVOICES ROUTE */}
+              {/* âœ… Invoices route */}
               <Route path="/invoices" element={<RequireAuth><Layout><Invoices /></Layout></RequireAuth>} />
 
               <Route path="*" element={<Navigate to="/" replace />} />
