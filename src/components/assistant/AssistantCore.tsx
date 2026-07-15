@@ -1,9 +1,12 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect, Suspense, lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Zap, Radar, Mail, BarChart3, FileText, Send, Mic,
 } from 'lucide-react';
 import AgentOrb, { OrbState } from './AgentOrb';
+// Lazy-load the real 3D orb so it never bloats initial bundle.
+// Falls back to the CSS orb while loading or if WebGL is unavailable.
+const AgentOrb3D = lazy(() => import('./AgentOrb3D'));
 import { useLeads } from '../../context/LeadContext';
 import './assistant.css';
 
@@ -113,7 +116,9 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       {/* hero: orb + greeting (compact hides big greeting) */}
       {mode === 'full' && (
         <div className="flex flex-col items-center text-center">
-          <AgentOrb state={orb} size={184} />
+          <Suspense fallback={<AgentOrb state={orb} size={220} />}>
+            <AgentOrb3D state={orb} size={220} />
+          </Suspense>
           <div className="cr-greet mt-4">
             <h1>Good {greeting()}, <b>Timothy</b>.</h1>
             <p className="cr-brief" dangerouslySetInnerHTML={{ __html: typed + '<span class="cr-caret"></span>' }} />
