@@ -1,0 +1,310 @@
+/* ============================================================
+   ClientRadar AI â€” particle presence
+   Reference direction: white dimensional particles suspended in a soft
+   blue/lavender atmospheric field.
+   ============================================================ */
+
+.cr-presence {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, var(--cr-presence-size, 300px));
+  aspect-ratio: 1 / 0.94;
+  isolation: isolate;
+  overflow: visible;
+  transform: translateZ(0);
+}
+
+.cr-presence__atmosphere {
+  position: absolute;
+  inset: -20% -26%;
+  z-index: -4;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      circle at 34% 47%,
+      rgba(43, 120, 255, 0.74) 0%,
+      rgba(72, 110, 255, 0.48) 20%,
+      rgba(111, 119, 255, 0.25) 38%,
+      transparent 66%
+    ),
+    radial-gradient(
+      circle at 68% 42%,
+      rgba(196, 184, 255, 0.52) 0%,
+      rgba(181, 190, 255, 0.28) 28%,
+      transparent 64%
+    ),
+    radial-gradient(
+      ellipse at 52% 62%,
+      rgba(238, 240, 255, 0.20) 0%,
+      rgba(187, 204, 255, 0.12) 36%,
+      transparent 68%
+    );
+  filter: blur(22px) saturate(112%);
+  opacity: 0.94;
+  animation: cr-presence-atmosphere 8s ease-in-out infinite;
+  -webkit-mask-image: radial-gradient(
+    ellipse at center,
+    #000 0%,
+    rgba(0, 0, 0, 0.96) 42%,
+    transparent 78%
+  );
+  mask-image: radial-gradient(
+    ellipse at center,
+    #000 0%,
+    rgba(0, 0, 0, 0.96) 42%,
+    transparent 78%
+  );
+}
+
+.cr-presence__aura {
+  position: absolute;
+  inset: 13% 10%;
+  z-index: -2;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    rgba(99, 149, 255, 0.36) 0%,
+    rgba(124, 137, 255, 0.20) 38%,
+    transparent 70%
+  );
+  filter: blur(18px);
+  animation: cr-presence-aura 5.8s ease-in-out infinite;
+}
+
+.cr-presence__svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.cr-presence__particles {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cr-presence__dot {
+  fill: #fff;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cr-presence-dot-breathe 3.8s ease-in-out infinite;
+  animation-delay: var(--cr-dot-delay, 0s);
+}
+
+.cr-presence__state-ring {
+  position: absolute;
+  inset: 20%;
+  z-index: -1;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* ---------- Boot ---------- */
+
+.cr-presence--boot {
+  animation: cr-presence-boot 2.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cr-presence--boot .cr-presence__dot {
+  animation-duration: 1.5s;
+}
+
+/* ---------- Idle ---------- */
+
+.cr-presence--idle .cr-presence__particles {
+  animation: cr-presence-float 7s ease-in-out infinite;
+}
+
+/* ---------- Listening ---------- */
+
+.cr-presence--listening .cr-presence__particles {
+  animation: cr-presence-listen 1.05s ease-in-out infinite;
+}
+
+.cr-presence--listening .cr-presence__aura {
+  animation-duration: 1.05s;
+  opacity: 0.96;
+}
+
+.cr-presence--listening .cr-presence__state-ring {
+  border-color: rgba(255, 255, 255, 0.30);
+  animation: cr-presence-ring 1.2s ease-out infinite;
+}
+
+/* ---------- Thinking ---------- */
+
+.cr-presence--thinking .cr-presence__particles {
+  animation: cr-presence-think 2.8s ease-in-out infinite;
+}
+
+.cr-presence--thinking .cr-presence__atmosphere {
+  filter: blur(22px) saturate(132%);
+  animation-duration: 3.2s;
+}
+
+/* ---------- Speaking ---------- */
+
+.cr-presence--speaking .cr-presence__particles {
+  animation: cr-presence-speak 0.86s ease-in-out infinite;
+}
+
+.cr-presence--speaking .cr-presence__state-ring {
+  border-color: rgba(255, 255, 255, 0.24);
+  animation: cr-presence-ring 0.92s ease-out infinite;
+}
+
+/* ---------- Animation ---------- */
+
+@keyframes cr-presence-atmosphere {
+  0%,
+  100% {
+    opacity: 0.80;
+    transform: scale(0.98) translate(-1%, 1%);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.045) translate(1%, -1%);
+  }
+}
+
+@keyframes cr-presence-aura {
+  0%,
+  100% {
+    opacity: 0.58;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 0.88;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes cr-presence-dot-breathe {
+  0%,
+  100% {
+    filter: brightness(0.94);
+    transform: scale(0.94);
+  }
+  50% {
+    filter: brightness(1.18);
+    transform: scale(1.08);
+  }
+}
+
+@keyframes cr-presence-boot {
+  0% {
+    opacity: 0;
+    transform: scale(0.70);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cr-presence-float {
+  0%,
+  100% {
+    transform: translateY(2px) scale(0.99);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.015);
+  }
+}
+
+@keyframes cr-presence-listen {
+  0%,
+  100% {
+    transform: scale(0.94);
+  }
+  45% {
+    transform: scale(1.075);
+  }
+  70% {
+    transform: scale(1.01);
+  }
+}
+
+@keyframes cr-presence-think {
+  0%,
+  100% {
+    transform: rotate(-2deg) scale(0.98);
+  }
+  50% {
+    transform: rotate(2deg) scale(1.035);
+  }
+}
+
+@keyframes cr-presence-speak {
+  0%,
+  100% {
+    transform: scale(0.96);
+  }
+  32% {
+    transform: scale(1.06);
+  }
+  62% {
+    transform: scale(1.015);
+  }
+}
+
+@keyframes cr-presence-ring {
+  0% {
+    opacity: 0.70;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+/* ---------- Theme treatment ---------- */
+
+.dark .cr-presence__atmosphere {
+  opacity: 1;
+  filter: blur(22px) saturate(124%);
+}
+
+:root:not(.dark) .cr-presence__atmosphere {
+  opacity: 0.76;
+  filter: blur(24px) saturate(104%);
+}
+
+:root:not(.dark) .cr-presence__dot {
+  fill: #fff;
+  filter: drop-shadow(0 1px 2px rgba(62, 88, 170, 0.20));
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 420px) {
+  .cr-presence {
+    width: min(100%, calc(var(--cr-presence-size, 300px) * 0.94));
+  }
+
+  .cr-presence__atmosphere {
+    inset: -17% -20%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cr-presence,
+  .cr-presence__atmosphere,
+  .cr-presence__aura,
+  .cr-presence__particles,
+  .cr-presence__dot,
+  .cr-presence__state-ring {
+    animation: none !important;
+  }
+}
