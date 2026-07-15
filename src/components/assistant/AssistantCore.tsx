@@ -39,7 +39,7 @@ const greeting = () => {
 };
 
 /**
- * AssistantCore â€” reusable Executive Agent experience.
+ * AssistantCore — reusable Executive Agent experience.
  *
  * Placements:
  *   (A) post-login home hero
@@ -322,7 +322,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
           onKeyDown={(event) => {
             if (event.key === 'Enter') send();
           }}
-          placeholder="Ask your assistantâ€¦"
+          placeholder="Ask your assistant…"
         />
 
         <button
@@ -353,17 +353,17 @@ function brain(text: string): string {
 
   if (normalisedText.includes('brief')) {
     return `Here's your day, Timothy.<br />
-â€¢ A few leads still need first outreach<br />
-â€¢ Some are awaiting your reply<br />
-â€¢ Demos are ready to send<br /><br />
+• A few leads still need first outreach<br />
+• Some are awaiting your reply<br />
+• Demos are ready to send<br /><br />
 Recommendation: clear outreach first, then chase replies. <span class="cr-row"><button class="cr-mini go" data-go="/outreach">Go to Outreach</button></span>`;
   }
 
   if (normalisedText.includes('scan')) {
-    return `Scan for new businesses on the Lead Finder. I've pre-loaded your filters (no website Â· services). <span class="cr-row"><button class="cr-mini go" data-go="/finder">Open Finder</button></span>`;
+    return `Scan for new businesses on the Lead Finder. I've pre-loaded your filters (no website · services). <span class="cr-row"><button class="cr-mini go" data-go="/finder">Open Finder</button></span>`;
   }
 
-  return `I'm your Executive Agent â€” I can scan leads, draft and send outreach, track your pipeline, and create invoices. What would you like to do?`;
+  return `I'm your Executive Agent — I can scan leads, draft and send outreach, track your pipeline, and create invoices. What would you like to do?`;
 }
 
 export default AssistantCore;
