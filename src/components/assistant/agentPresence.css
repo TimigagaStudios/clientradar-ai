@@ -1,11 +1,12 @@
 /* ============================================================
-   Sparkybit-style SVG loader — light pastel reference treatment
+   Sparkybit-style particle presence — transparent jellyfish edition
+   Three static rings + spring-driven infinity-path pressure field.
    ============================================================ */
 
 .sparky-loader {
   width: min(100%, var(--sparky-max-width, 640px));
   aspect-ratio: 4 / 3;
-  min-height: 250px;
+  min-height: 240px;
   overflow: visible;
   border: 0;
   background: transparent;
@@ -13,302 +14,65 @@
   transform: translateZ(0);
 }
 
-/* Passive lavender haze that blends the blue source into the pale canvas. */
-.sparky-loader__lavender {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 0;
-  width: 76%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  pointer-events: none;
-  background: radial-gradient(
-    circle,
-    rgba(171, 164, 238, 0.34) 0%,
-    rgba(190, 187, 239, 0.24) 31%,
-    rgba(215, 213, 239, 0.14) 52%,
-    transparent 72%
-  );
-  filter: blur(28px);
-  opacity: 0.82;
-  transform: translate3d(-50%, -50%, 0);
-  animation: sparky-lavender-breathe 7.6s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-/* The orbit wrapper rotates; its offset child therefore follows a mathematically
-   perfect circular path around the center of the particle array. */
-.sparky-loader__spotlight-orbit {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  mix-blend-mode: screen;
-  transform: translateZ(0) rotate(0deg);
-  animation: sparky-spotlight-orbit 7.8s linear infinite;
-  will-change: transform;
-}
-
-.sparky-loader__spotlight {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 43%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(31, 81, 255, 0.90) 0%,
-    rgba(37, 99, 235, 0.68) 28%,
-    rgba(69, 111, 255, 0.30) 54%,
-    transparent 74%
-  );
-  filter: blur(35px);
-  mix-blend-mode: screen;
-  opacity: 0.62;
-  transform: translate3d(18%, -72%, 0);
-  will-change: transform, opacity;
-}
-
 .sparky-loader__svg {
   position: relative;
-  z-index: 2;
   display: block;
-  width: min(76%, 390px);
+  width: 100%;
   height: auto;
   overflow: visible;
-  filter: drop-shadow(0 3px 8px rgba(57, 84, 192, 0.08));
+  contain: layout paint style;
 }
 
-.sparky-loader__particle-field {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: sparky-field-float 6.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  will-change: transform;
-}
-
-.sparky-loader__ring {
+.sparky-loader__blob {
+  pointer-events: none;
+  mix-blend-mode: screen;
   transform-box: view-box;
-  transform-origin: 180px 180px;
-  animation-name: sparky-ring-drift;
-  animation-duration: var(--sparky-ring-speed, 18s);
-  animation-delay: var(--sparky-ring-delay, 0s);
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
+  transform-origin: 0 0;
   will-change: transform;
+}
+
+.sparky-loader__blob--trail {
+  opacity: 0.46;
+}
+
+.sparky-loader__blob--main {
+  opacity: 0.66;
+}
+
+.sparky-loader__blob-core {
+  mix-blend-mode: screen;
+}
+
+/* The ring group is deliberately static: no rotate animation, no CSS drift,
+   and no transform animation. React updates only local dots under pressure. */
+.sparky-loader__rings {
+  pointer-events: none;
 }
 
 .sparky-loader__dot {
-  opacity: var(--sparky-dot-opacity, 1);
+  fill: #fff;
   transform-box: fill-box;
   transform-origin: center;
-  animation: sparky-dot-wave 6.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  animation-delay: var(--sparky-dot-delay, 0s);
-  will-change: transform, opacity;
+  will-change: opacity;
 }
 
-.sparky-loader__response-ring {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 3;
-  width: 35%;
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.58);
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0;
-  transform: translate3d(-50%, -50%, 0) scale(0.72);
+.sparky-loader--listening .sparky-loader__blob--main {
+  opacity: 0.72;
 }
 
-/* ---------- Assistant states ---------- */
-
-.sparky-loader--boot .sparky-loader__particle-field {
-  animation:
-    sparky-field-enter 1.9s cubic-bezier(0.22, 1, 0.36, 1) both,
-    sparky-field-float 6.8s 1.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-}
-
-.sparky-loader--listening .sparky-loader__particle-field {
-  animation: sparky-field-listen 1.05s cubic-bezier(0.37, 0, 0.63, 1) infinite;
-}
-
-.sparky-loader--listening .sparky-loader__spotlight-orbit {
-  animation-duration: 4.6s;
-}
-
-.sparky-loader--listening .sparky-loader__spotlight {
+.sparky-loader--thinking .sparky-loader__blob--main,
+.sparky-loader--speaking .sparky-loader__blob--main {
   opacity: 0.70;
 }
 
-.sparky-loader--listening .sparky-loader__response-ring {
-  animation: sparky-response-ring 1.15s ease-out infinite;
-}
-
-.sparky-loader--thinking .sparky-loader__spotlight-orbit {
-  animation-duration: 5.2s;
-}
-
-.sparky-loader--thinking .sparky-loader__particle-field {
-  animation: sparky-field-think 2.8s ease-in-out infinite;
-}
-
-.sparky-loader--speaking .sparky-loader__particle-field {
-  animation: sparky-field-speak 0.88s cubic-bezier(0.37, 0, 0.63, 1) infinite;
-}
-
-.sparky-loader--speaking .sparky-loader__response-ring {
-  animation: sparky-response-ring 0.92s ease-out infinite;
-}
-
-/* ---------- Motion ---------- */
-
-@keyframes sparky-spotlight-orbit {
-  to {
-    transform: translateZ(0) rotate(360deg);
-  }
-}
-
-@keyframes sparky-lavender-breathe {
-  0%,
-  100% {
-    opacity: 0.70;
-    transform: translate3d(-50%, -50%, 0) scale(0.96);
-  }
-  50% {
-    opacity: 0.92;
-    transform: translate3d(-50%, -50%, 0) scale(1.07);
-  }
-}
-
-@keyframes sparky-ring-drift {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes sparky-field-float {
-  0%,
-  100% {
-    transform: translate3d(-3px, 2px, 0) rotate(-1.2deg) scale(0.985);
-  }
-  50% {
-    transform: translate3d(4px, -4px, 0) rotate(1.2deg) scale(1.018);
-  }
-}
-
-@keyframes sparky-dot-wave {
-  0%,
-  100% {
-    opacity: 0.18;
-    transform: scale(0.72);
-  }
-  24% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-  48% {
-    opacity: 0.72;
-    transform: scale(0.94);
-  }
-  72% {
-    opacity: 0.26;
-    transform: scale(0.64);
-  }
-}
-
-@keyframes sparky-field-enter {
-  0% {
-    opacity: 0;
-    transform: scale(0.56) rotate(-18deg);
-  }
-  64% {
-    opacity: 1;
-    transform: scale(1.055) rotate(2deg);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) rotate(0deg);
-  }
-}
-
-@keyframes sparky-field-listen {
-  0%,
-  100% {
-    transform: scale(0.94);
-  }
-  44% {
-    transform: scale(1.075);
-  }
-  70% {
-    transform: scale(1.015);
-  }
-}
-
-@keyframes sparky-field-think {
-  0%,
-  100% {
-    transform: translate3d(-3px, 1px, 0) rotate(-2deg) scale(0.98);
-  }
-  50% {
-    transform: translate3d(4px, -3px, 0) rotate(2deg) scale(1.035);
-  }
-}
-
-@keyframes sparky-field-speak {
-  0%,
-  100% {
-    transform: scale(0.96);
-  }
-  32% {
-    transform: scale(1.06);
-  }
-  62% {
-    transform: scale(1.012);
-  }
-}
-
-@keyframes sparky-response-ring {
-  0% {
-    opacity: 0.74;
-    transform: translate3d(-50%, -50%, 0) scale(0.66);
-  }
-  100% {
-    opacity: 0;
-    transform: translate3d(-50%, -50%, 0) scale(1.78);
-  }
-}
-
-/* ---------- Responsive sizing ---------- */
-
 @media (max-width: 640px) {
   .sparky-loader {
-    min-height: 230px;
-    border-radius: 30px;
-  }
-
-  .sparky-loader__svg {
-    width: 82%;
-  }
-
-  .sparky-loader__spotlight {
-    filter: blur(32px);
+    min-height: 220px;
   }
 }
 
-/* SMIL is not used; all motion is CSS and can be disabled consistently. */
 @media (prefers-reduced-motion: reduce) {
-  .sparky-loader__lavender,
-  .sparky-loader__spotlight-orbit,
-  .sparky-loader__particle-field,
-  .sparky-loader__ring,
-  .sparky-loader__dot,
-  .sparky-loader__response-ring {
+  .sparky-loader__rings {
     animation: none !important;
-  }
-
-  .sparky-loader__dot {
-    opacity: 1;
   }
 }
