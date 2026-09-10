@@ -1,13 +1,50 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay } from 'lucide-react';
+import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
+import { demoTemplates, mapDemoJob } from '../lib/demo-factory';
 
 const Demos = () => {
-  const { leads } = useLeads() as any;
+  const { leads, updateDemoStatus } = useLeads() as any;
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [selectedLeadId, setSelectedLeadId] = useState('');
+  const [templateKey, setTemplateKey] = useState('auto');
+  const [demoJobs, setDemoJobs] = useState<any[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [jobError, setJobError] = useState('');
+
+  const refreshJobs = async () => {
+    const response = await fetch('/api/demo-jobs');
+    const result = await response.json();
+    if (response.ok) setDemoJobs((result.data || []).map(mapDemoJob));
+  };
+
+  useEffect(() => {
+    void refreshJobs();
+  }, []);
+
+  const handleCreateDemo = async () => {
+    if (!selectedLeadId) return setJobError('Choose a lead first.');
+    setCreating(true);
+    setJobError('');
+    try {
+      const response = await fetch('/api/demo-jobs', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedLeadId, templateKey }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not queue demo.');
+      await updateDemoStatus(selectedLeadId, 'In Progress');
+      await refreshJobs();
+      setSelectedLeadId('');
+    } catch (error) {
+      setJobError(error instanceof Error ? error.message : 'Could not queue demo.');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const demoLeads = useMemo(() => {
     return leads.filter((lead: any) => lead.demoLink || lead.demoStatus);
@@ -54,6 +91,26 @@ const Demos = () => {
           </div>
         </div>
       </header>
+
+      <section className="neo-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <Rocket className="text-[var(--accent)]" size={20} />
+          <div><h2 className="font-bold text-[var(--text-primary)]">Demo Factory</h2><p className="text-sm text-[var(--text-secondary)]">Queue a website demo for one lead. The worker will generate the preview later.</p></div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3">
+          <select value={selectedLeadId} onChange={(event) => setSelectedLeadId(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+            <option value="">Choose a lead without a demo</option>
+            {leads.filter((lead: any) => !lead.demoLink && lead.demoStatus !== 'In Progress').map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} â {lead.category || 'Business'}</option>)}
+          </select>
+          <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+            {demoTemplates.map((template) => <option key={template.key} value={template.key}>{template.label}</option>)}
+          </select>
+          <button type="button" onClick={() => void handleCreateDemo()} disabled={creating || !selectedLeadId} className="btn-neumorph-primary px-5 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-50"><Plus size={16} />{creating ? 'Queueing...' : 'Generate Demo'}</button>
+        </div>
+        {jobError && <p className="text-sm text-red-500">{jobError}</p>}
+      </section>
+
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{job.templateKey} Â· {job.status}</p></div><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span></div>; })}</div></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
