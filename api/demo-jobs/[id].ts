@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { generateDemoContent } from '../lib/demo-ai';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -48,7 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await supabase.from('demo_jobs').update({ status: 'generating', attempts: (job.attempts || 0) + 1, started_at: new Date().toISOString() }).eq('id', id);
     try {
-      const content = makeContent(job.leads, job.template_key);
+      const content = (await generateDemoContent(job.leads, job.template_key, job.prompt)) || makeContent(job.leads, job.template_key);
       const demoUrl = `/demos/preview/${id}`;
       const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
       if (error) throw error;
