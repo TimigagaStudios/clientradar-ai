@@ -23,8 +23,6 @@ const Demos = () => {
 
   useEffect(() => {
     void refreshJobs();
-    const interval = window.setInterval(() => void refreshJobs(), 5000);
-    return () => window.clearInterval(interval);
   }, []);
 
   const handleCreateDemo = async () => {
@@ -39,25 +37,13 @@ const Demos = () => {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not queue demo.');
       await updateDemoStatus(selectedLeadId, 'In Progress');
-      await fetch(`/api/demo-jobs/${result.data.id}`, { method: 'POST' });
+      await fetch('/api/demo-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobId: result.data.id, action: 'process' }) });
       await refreshJobs();
       setSelectedLeadId('');
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not queue demo.');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const retryDemo = async (jobId: string) => {
-    setJobError('');
-    try {
-      const response = await fetch(`/api/demo-jobs/${jobId}`, { method: 'POST' });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not retry demo.');
-      await refreshJobs();
-    } catch (error) {
-      setJobError(error instanceof Error ? error.message : 'Could not retry demo.');
     }
   };
 
@@ -125,7 +111,7 @@ const Demos = () => {
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 
-      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{job.templateKey} · {job.status} · attempt {job.attempts}</p></div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}</div></div>; })}</div></section>}
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{job.templateKey} · {job.status}</p></div><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span></div>; })}</div></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
