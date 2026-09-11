@@ -1,7 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { buildDemoPrompt } from '../src/lib/demo-factory';
 import { processDemoJob } from './lib/demo-job-process';
+
+function buildPrompt(lead: any, templateKey: string) {
+  return [
+    'Create a polished, mobile-first demo website for this business.',
+    `Business name: ${lead.business_name}`,
+    `Industry: ${lead.category || 'General business'}`,
+    `Location: ${lead.city || 'Not provided'}`,
+    `Phone: ${lead.phone || 'Not provided'}`,
+    `Email: ${lead.email || 'Not provided'}`,
+    `Instagram: ${lead.instagram || 'Not provided'}`,
+    `Website status: ${lead.website ? 'Existing website' : 'No website found'}`,
+    `Template: ${templateKey}`,
+    'Include a hero, services, about, trust points, contact section, and a clear call to action.',
+    'Do not invent medical, legal, financial, awards, pricing, or performance claims.',
+    'Return structured website content only; the template controls layout and code.',
+  ].join('\n');
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -28,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (leadError || !lead) return res.status(404).json({ success: false, error: 'Lead not found' });
       const { data: activeJob } = await supabase.from('demo_jobs').select('id,status').eq('lead_id', leadId).in('status', ['queued', 'generating']).maybeSingle();
       if (activeJob) return res.status(409).json({ success: false, error: 'This lead already has a demo job in progress.', data: activeJob });
-      const prompt = buildDemoPrompt({ id: lead.id, businessName: lead.business_name, category: lead.category, city: lead.city, rating: lead.rating || 0, reviewCount: lead.review_count || 0, phone: lead.phone || undefined, email: lead.email || undefined, instagram: lead.instagram || undefined, website: lead.website || undefined, outdatedWebsite: lead.outdated_website || false, leadScore: lead.lead_score || 0, priority: lead.priority, status: lead.status, demoStatus: lead.demo_status || 'Not Started', notes: lead.notes || '', demoLink: lead.demo_link || undefined, dealValue: lead.deal_value || undefined, createdAt: lead.created_at, updatedAt: lead.updated_at, timeline: lead.timeline || [], outreachHistory: lead.outreach_history || [] }, templateKey);
+      const prompt = buildPrompt(lead, templateKey);
       const { data, error } = await supabase.from('demo_jobs').insert({ lead_id: leadId, template_key: templateKey, status: 'queued', prompt }).select().single();
       if (error) return res.status(500).json({ success: false, error: error.message });
       await supabase.from('leads').update({ demo_status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', leadId);
