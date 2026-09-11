@@ -5,6 +5,11 @@ import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
 import { demoTemplates, mapDemoJob } from '../lib/demo-factory';
 
+const parseDemoResponse = async (response: Response) => {
+  const text = await response.text();
+  try { return JSON.parse(text); } catch { throw new Error(`Demo API ${response.status}: ${text.slice(0, 180)}`); }
+};
+
 const Demos = () => {
   const { leads, updateDemoStatus } = useLeads() as any;
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,7 +22,7 @@ const Demos = () => {
 
   const refreshJobs = async () => {
     const response = await fetch('/api/demo-jobs');
-    const result = await response.json();
+    const result = await parseDemoResponse(response);
     if (response.ok) setDemoJobs((result.data || []).map(mapDemoJob));
   };
 
@@ -34,7 +39,7 @@ const Demos = () => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: selectedLeadId, templateKey }),
       });
-      const result = await response.json();
+      const result = await parseDemoResponse(response);
       if (!response.ok) throw new Error(result.error || 'Could not queue demo.');
       await updateDemoStatus(selectedLeadId, 'In Progress');
       await fetch('/api/demo-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobId: result.data.id, action: 'process' }) });
