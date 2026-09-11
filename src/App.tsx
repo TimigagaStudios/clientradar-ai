@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import Analytics from './pages/Analytics';
 import Deals from './pages/Deals';
 import Demos from './pages/Demos';
+import DemoPreview from './pages/DemoPreview';
 import AIOutreach from './pages/AIOutreach';
 import Invoices from './pages/Invoices';
 import Assistant from './pages/Assistant'; // âœ… NEW â€” Executive Agent home
@@ -80,6 +81,7 @@ const App = () => {
               <Route path="/analytics" element={<RequireAuth><Layout><Analytics /></Layout></RequireAuth>} />
               <Route path="/deals" element={<RequireAuth><Layout><Deals /></Layout></RequireAuth>} />
               <Route path="/demos" element={<RequireAuth><Layout><Demos /></Layout></RequireAuth>} />
+              <Route path="/demos/preview/:id" element={<DemoPreview />} />
               <Route path="/ai-outreach" element={<RequireAuth><Layout><AIOutreach /></Layout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><Layout><Settings /></Layout></RequireAuth>} />
 
