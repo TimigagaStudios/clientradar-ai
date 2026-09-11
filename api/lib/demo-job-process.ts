@@ -1,4 +1,4 @@
-import { generateDemoContent } from './demo-ai';
+import { generateDemoContent } from './demo-ai.js';
 
 function fallbackContent(lead: any, templateKey: string) {
   const business = lead.business_name || 'Your Business';
