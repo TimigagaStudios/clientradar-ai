@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { processDemoJob } from './lib/demo-job-process';
+import { processDemoJob } from './lib/demo-job-process.js';
 
 function buildPrompt(lead: any, templateKey: string) {
   return [
