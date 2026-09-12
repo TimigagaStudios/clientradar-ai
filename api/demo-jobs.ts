@@ -28,9 +28,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const supabase = createClient(supabaseUrl, serviceRoleKey);
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase.from('demo_jobs').select('*').order('created_at', { ascending: false }).limit(100);
+      const jobId = typeof req.query.jobId === 'string' ? req.query.jobId : '';
+      let query = supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).limit(100);
+      if (jobId) query = query.eq('id', jobId).limit(1);
+      const { data, error } = await query;
       if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.status(200).json({ success: true, data });
+      if (jobId && !data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
+      return res.status(200).json({ success: true, data: jobId ? data[0] : data });
     }
 
     if (req.method === 'POST') {
