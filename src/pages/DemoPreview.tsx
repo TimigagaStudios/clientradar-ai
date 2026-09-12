@@ -10,8 +10,11 @@ export default function DemoPreview() {
 
   useEffect(() => {
     if (!id) return;
-    fetch(`/api/demo-jobs/${id}`).then((response) => response.json()).then((result) => {
-      if (!result.success) throw new Error(result.error || 'Demo not found');
+    fetch(`/api/demo-jobs?jobId=${encodeURIComponent(id)}`).then(async (response) => {
+      const text = await response.text();
+      let result: any;
+      try { result = JSON.parse(text); } catch { throw new Error(`Demo API ${response.status}: ${text.slice(0, 160)}`); }
+      if (!response.ok || !result.success) throw new Error(result.error || 'Demo not found');
       setJob(result.data);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Demo not found'));
   }, [id]);
