@@ -25,8 +25,6 @@ function mapSupabaseLead(row: any): Lead {
     businessName: row.business_name,
     category: row.category,
     city: row.city,
-    latitude: row.latitude ?? undefined,
-    longitude: row.longitude ?? undefined,
     rating: row.rating || 0,
     reviewCount: row.review_count || 0,
     phone: row.phone || undefined,
