@@ -25,6 +25,8 @@ function mapSupabaseLead(row: any): Lead {
     businessName: row.business_name,
     category: row.category,
     city: row.city,
+    latitude: row.latitude ?? undefined,
+    longitude: row.longitude ?? undefined,
     rating: row.rating || 0,
     reviewCount: row.review_count || 0,
     phone: row.phone || undefined,
@@ -39,7 +41,7 @@ function mapSupabaseLead(row: any): Lead {
     notes: row.notes || '',
     demoLink: row.demo_link || undefined,
     dealValue: row.deal_value || undefined,
-    clientReplies: row.client_replies || [],   // âœ… NEW
+    clientReplies: row.client_replies || [],   // Ã¢Åâ¦ NEW
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     timeline: row.timeline || [],
