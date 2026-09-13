@@ -33,6 +33,8 @@ export type Lead = {
   businessName: string;
   category: string;
   city: string;
+  latitude?: number;
+  longitude?: number;
   rating: number;
   reviewCount: number;
   phone?: string;
