@@ -89,6 +89,8 @@ const LeadFinder = () => {
         businessName: result.businessName,
         category: searchParams.category || 'General',
         city: searchParams.city || 'Unknown',
+        latitude: result.latitude,
+        longitude: result.longitude,
         rating: result.rating,
         reviewCount: result.reviewCount,
         phone: result.phone,
