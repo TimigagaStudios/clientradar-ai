@@ -77,7 +77,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Sparkles, label: 'Assistant', path: '/' }, // Ã¢Åâ¦ NEW Ã¢â¬â Executive Agent home
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // Ã¢Åâ¦ relocated
     { icon: Search, label: 'Lead Finder', path: '/finder' },
-    { icon: Globe, label: 'Lead Globe', path: '/globe' },
     { icon: Users, label: 'Leads', path: '/leads' },
     { icon: MonitorPlay, label: 'Demos', path: '/demos' },
     { icon: Mail, label: 'Outreach', path: '/outreach' },
