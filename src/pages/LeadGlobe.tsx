@@ -23,6 +23,14 @@ export default function LeadGlobe() {
   const selected = locatedLeads.find((lead) => lead.id === selectedId);
 
   useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    const previous = meta?.content || '';
+    if (meta) meta.content = '#02040b';
+    else { const created = document.createElement('meta'); created.name = 'theme-color'; created.content = '#02040b'; document.head.appendChild(created); }
+    return () => { if (meta) meta.content = previous; };
+  }, []);
+
+  useEffect(() => {
     fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
       .then((response) => response.json())
       .then((data) => setCountries(data.features || []))
@@ -56,7 +64,7 @@ export default function LeadGlobe() {
     <header className="pointer-events-auto absolute inset-x-0 top-24 z-30 flex items-center justify-center px-5 sm:top-7"><Link to="/dashboard" className="absolute left-5 flex items-center gap-2 text-sm font-semibold text-white/70 transition hover:text-white sm:left-10"><span className="grid h-9 w-9 place-items-center rounded-full border border-white/20 bg-white/10"><ArrowLeft size={16} /></span><span className="hidden sm:inline">Back to ClientRadar</span></Link><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-white/75"><Globe2 size={15} className="text-[var(--accent)]" /> Lead Globe</div><button type="button" onClick={resetView} className="absolute right-5 rounded-full border border-white/15 bg-black/20 p-3 text-white/70 backdrop-blur-md transition hover:border-white/35 hover:text-white sm:right-10" aria-label="Reset globe"><RotateCcw size={16} /></button></header>
 
     <div className="absolute inset-0 z-10 flex items-center justify-center pt-32 sm:pt-36">
-      <Globe ref={globeRef as any} width={typeof window !== 'undefined' ? Math.min(window.innerWidth - (window.innerWidth >= 1024 ? 320 : 32), 920) : 900} height={typeof window !== 'undefined' ? Math.min(window.innerHeight, 820) : 700} backgroundColor="rgba(0,0,0,0)" rendererConfig={{ antialias: false, alpha: true, powerPreference: 'low-power' }} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png" polygonsData={isSmallScreen ? [] : countries} polygonCapColor={() => 'rgba(74, 92, 153, 0.16)'} polygonSideColor={() => 'rgba(255, 122, 0, 0.14)'} polygonStrokeColor={() => 'rgba(255,255,255,0.12)'} polygonsTransitionDuration={500} pointsData={filteredLeads} pointLat="latitude" pointLng="longitude" pointColor={(point: any) => point.id === selectedId ? '#ff7a00' : '#a99bff'} pointRadius={(point: any) => point.id === selectedId ? 0.65 : 0.42} pointAltitude={0.025} pointsMerge={false} onGlobeReady={() => setGlobeReady(true)} onPointClick={(point: any) => focusLead(point)} />
+      <Globe ref={globeRef as any} width={typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? window.innerWidth - 320 : window.innerWidth, 1100) : 900} height={typeof window !== 'undefined' ? Math.min(window.innerHeight, 820) : 700} backgroundColor="rgba(0,0,0,0)" rendererConfig={{ antialias: false, alpha: true, powerPreference: 'low-power' }} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png" polygonsData={isSmallScreen ? [] : countries} polygonCapColor={() => 'rgba(74, 92, 153, 0.16)'} polygonSideColor={() => 'rgba(255, 122, 0, 0.14)'} polygonStrokeColor={() => 'rgba(255,255,255,0.12)'} polygonsTransitionDuration={500} pointsData={filteredLeads} pointLat="latitude" pointLng="longitude" pointColor={(point: any) => point.id === selectedId ? '#ff7a00' : '#a99bff'} pointRadius={(point: any) => point.id === selectedId ? 0.65 : 0.42} pointAltitude={0.025} pointsMerge={false} onGlobeReady={() => setGlobeReady(true)} onPointClick={(point: any) => focusLead(point)} />
     </div>
     <style>{`@keyframes clipiq-earth-spin { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }`}</style>
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-[58%] bg-gradient-to-t from-black via-black/85 to-transparent" />
