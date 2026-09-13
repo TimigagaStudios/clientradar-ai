@@ -33,8 +33,6 @@ export type Lead = {
   businessName: string;
   category: string;
   city: string;
-  latitude?: number;
-  longitude?: number;
   rating: number;
   reviewCount: number;
   phone?: string;
@@ -58,8 +56,6 @@ export type Lead = {
 export type SearchResult = {
   businessName: string;
   address: string;
-  latitude?: number;
-  longitude?: number;
   phone?: string;
   website?: string;
   outdatedWebsite: boolean;
