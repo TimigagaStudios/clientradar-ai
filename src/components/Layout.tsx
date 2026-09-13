@@ -74,16 +74,17 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const avatarUrl = '/avatar-founder.jpg';
 
   const menuItems = [
-    { icon: Sparkles, label: 'Assistant', path: '/' }, // Ã¢Åâ¦ NEW Ã¢â¬â Executive Agent home
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // Ã¢Åâ¦ relocated
+    { icon: Sparkles, label: 'Assistant', path: '/' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ NEW ÃÂ¢Ã¢ÂÂ¬Ã¢ÂÂ Executive Agent home
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ relocated
     { icon: Search, label: 'Lead Finder', path: '/finder' },
+    { icon: Globe, label: 'Lead Globe', path: '/globe' },
     { icon: Users, label: 'Leads', path: '/leads' },
     { icon: MonitorPlay, label: 'Demos', path: '/demos' },
     { icon: Mail, label: 'Outreach', path: '/outreach' },
     { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
-    { icon: FileText, label: 'Invoices', path: '/invoices' }, // Ã¢Åâ¦ Invoices
+    { icon: FileText, label: 'Invoices', path: '/invoices' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ Invoices
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
   ];
 
