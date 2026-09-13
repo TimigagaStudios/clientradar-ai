@@ -8,6 +8,7 @@ type GoogleTextSearchResult = {
   rating?: number;
   user_ratings_total?: number;
   place_id: string;
+  geometry?: { location?: { lat?: number; lng?: number } };
 };
 
 async function fetchPlaceDetails(placeId: string) {
@@ -81,6 +82,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return {
             businessName: place.name,
             address: place.formatted_address,
+            latitude: place.geometry?.location?.lat,
+            longitude: place.geometry?.location?.lng,
             rating: place.rating || 0,
             reviewCount: place.user_ratings_total || 0,
             website,
@@ -94,6 +97,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return {
             businessName: place.name,
             address: place.formatted_address,
+            latitude: place.geometry?.location?.lat,
+            longitude: place.geometry?.location?.lng,
             rating: place.rating || 0,
             reviewCount: place.user_ratings_total || 0,
             website: undefined,
