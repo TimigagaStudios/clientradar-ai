@@ -5,7 +5,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import LeadFinder from './pages/LeadFinder';
-import LeadGlobe from './pages/LeadGlobe';
 import Leads from './pages/Leads';
 import LeadDetail from './pages/LeadDetail';
 import Outreach from './pages/Outreach';
@@ -76,7 +75,6 @@ const App = () => {
               <Route path="/assistant" element={<RequireAuth><Layout><Assistant /></Layout></RequireAuth>} />
 
               <Route path="/finder" element={<RequireAuth><Layout><LeadFinder /></Layout></RequireAuth>} />
-              <Route path="/globe" element={<RequireAuth><Layout><LeadGlobe /></Layout></RequireAuth>} />
               <Route path="/leads" element={<RequireAuth><Layout><Leads /></Layout></RequireAuth>} />
               <Route path="/leads/:id" element={<RequireAuth><Layout><LeadDetail /></Layout></RequireAuth>} />
               <Route path="/outreach" element={<RequireAuth><Layout><Outreach /></Layout></RequireAuth>} />
