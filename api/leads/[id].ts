@@ -46,6 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if ('businessName' in updates) payload.business_name = updates.businessName;
       if ('category' in updates) payload.category = updates.category;
       if ('city' in updates) payload.city = updates.city;
+      if ('latitude' in updates) payload.latitude = updates.latitude;
+      if ('longitude' in updates) payload.longitude = updates.longitude;
       if ('rating' in updates) payload.rating = updates.rating;
       if ('reviewCount' in updates) payload.review_count = updates.reviewCount;
       if ('leadScore' in updates) payload.lead_score = updates.leadScore;
