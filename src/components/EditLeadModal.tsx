@@ -62,7 +62,7 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     if (ln.length < 3 || ln.length > 60) score -= 5;
     if (hasEmail || hasUrl) score -= 10;
     if (hasDigit) score -= 4;
-    if (/[|Â©â€¢Â·]/.test(ln)) score -= 3;
+    if (/[|ÃÂ©Ã¢â¬Â¢ÃÂ·]/.test(ln)) score -= 3;
 
     if (score > bestScore && /[a-zA-Z]/.test(ln)) {
       bestScore = score;
@@ -416,6 +416,17 @@ const EditLeadModal: React.FC<Props> = ({ open, onClose, lead }) => {
                 placeholder="Category"
                 className={inputCls}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Latitude</label>
+              <input type="number" step="any" min="-90" max="90" value={form.latitude ?? ''} onChange={(e) => handleChange('latitude', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="e.g. 34.0522" className={inputCls} />
+            </div>
+            <div>
+              <label className={labelCls}>Longitude</label>
+              <input type="number" step="any" min="-180" max="180" value={form.longitude ?? ''} onChange={(e) => handleChange('longitude', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="e.g. -118.2437" className={inputCls} />
             </div>
           </div>
 
