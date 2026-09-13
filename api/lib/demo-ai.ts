@@ -14,7 +14,7 @@ export async function generateDemoContent(lead: DemoLead, templateKey: string, p
   if (provider === 'fallback' || !apiKey) return null;
 
   const model = process.env.DEMO_AI_MODEL || 'gemini-2.0-flash';
-  const instruction = `${prompt}\n\nReturn only valid JSON with this shape: {"hero":{"eyebrow":"","title":"","description":"","cta":""},"sections":[{"title":"","body":""}],"disclaimer":""}. Do not invent claims.`;
+  const instruction = `${prompt}\n\nReturn only valid JSON with this shape: {"theme":{"background":"#000000","surface":"#111111","accent":"#ff7a00","text":"#ffffff","muted":"#cccccc","style":"modern"},"hero":{"eyebrow":"","title":"","description":"","cta":""},"sections":[{"title":"","body":""}],"disclaimer":""}. Use the existing website profile colors when provided. Do not invent claims.`;
   let response: Response;
 
   if (provider === 'gemini') {
