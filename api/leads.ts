@@ -44,6 +44,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             business_name: lead.businessName,
             category: lead.category,
             city: lead.city,
+            latitude: lead.latitude ?? null,
+            longitude: lead.longitude ?? null,
             rating: lead.rating,
             review_count: lead.reviewCount,
             phone: lead.phone || null,
