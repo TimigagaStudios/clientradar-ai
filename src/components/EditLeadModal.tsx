@@ -6,6 +6,7 @@ import { Camera, Loader2, X, Check, Wand2 } from 'lucide-react';
 
 // npm install tesseract.js
 import Tesseract from 'tesseract.js';
+import { parseMapLink } from '../lib/map-link';
 
 interface Props {
   open: boolean;
@@ -62,7 +63,7 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     if (ln.length < 3 || ln.length > 60) score -= 5;
     if (hasEmail || hasUrl) score -= 10;
     if (hasDigit) score -= 4;
-    if (/[|ÃÂ©Ã¢â¬Â¢ÃÂ·]/.test(ln)) score -= 3;
+    if (/[|ÃÂÃÂ©ÃÂ¢Ã¢ÂÂ¬ÃÂ¢ÃÂÃÂ·]/.test(ln)) score -= 3;
 
     if (score > bestScore && /[a-zA-Z]/.test(ln)) {
       bestScore = score;
@@ -396,6 +397,14 @@ const EditLeadModal: React.FC<Props> = ({ open, onClose, lead }) => {
               placeholder="example.com"
               className={inputCls}
             />
+          </div>
+
+          <div>
+            <label className={labelCls}>Business map link</label>
+            <div className="flex gap-2">
+              <input value={form.mapLink || ''} onChange={(e) => handleChange('mapLink', e.target.value)} placeholder="Paste Apple Maps or Google Maps link" className={inputCls} />
+              <button type="button" onClick={() => { const parsed = parseMapLink(form.mapLink || ''); if (!parsed) return showToast({ type: 'error', title: 'Map link not recognized', message: 'Paste a full place link.' }); handleChange('businessName', parsed.businessName || form.businessName); handleChange('city', parsed.address?.split(',').slice(-2, -1)[0]?.trim() || form.city); handleChange('latitude', parsed.latitude); handleChange('longitude', parsed.longitude); showToast({ type: 'success', title: 'Location extracted', message: 'The business name and coordinates were filled in.' }); }} className="shrink-0 rounded-xl bg-[var(--accent)] px-3 text-xs font-bold text-white">Parse</button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
