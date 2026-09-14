@@ -4,6 +4,7 @@ import Button from './Button';
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
 import Tesseract from 'tesseract.js';
+import { parseMapLink } from '../lib/map-link';
 
 interface AddLeadModalProps {
   open: boolean;
@@ -72,7 +73,7 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     // Heavy penalties for noise
     if (hasEmail || hasUrl) score -= 20;
     if (hasDigit) score -= 8;
-    if (/[|â€¢Â·Â©Ã—X]/.test(line)) score -= 8;
+    if (/[|Ã¢â¬Â¢ÃÂ·ÃÂ©ÃâX]/.test(line)) score -= 8;
     if (line.length < 4 || line.length > 55) score -= 8;
 
     // Bonus for looking like a real business name
@@ -89,7 +90,7 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     let cleaned = bestName
       .replace(/^[A-Z]\s+/, '')           // remove leading single letter (e.g. "M Pegasus")
       .replace(/\s+[A-Z]$/, '')           // remove trailing single letter (e.g. "Pegasus X")
-      .replace(/\s+[Ã—X]\s*$/, '')         // remove close button artifacts
+      .replace(/\s+[ÃâX]\s*$/, '')         // remove close button artifacts
       .trim();
 
     // Only accept if it's still a reasonable name
@@ -98,8 +99,8 @@ const extractFieldsFromText = (text: string): ExtractedFields => {
     }
   }
 
-  // 5. Category + Location line (Yelp style: "Apartment Rental Agency Â· Downtown, Los Angeles")
-  const categoryLocationMatch = text.match(/([A-Za-z\s&]+)\s*[Â·â€¢]\s*([A-Za-z\s,]+),\s*([A-Za-z\s]+)/);
+  // 5. Category + Location line (Yelp style: "Apartment Rental Agency ÃÂ· Downtown, Los Angeles")
+  const categoryLocationMatch = text.match(/([A-Za-z\s&]+)\s*[ÃÂ·Ã¢â¬Â¢]\s*([A-Za-z\s,]+),\s*([A-Za-z\s]+)/);
   if (categoryLocationMatch) {
     if (!out.category) out.category = categoryLocationMatch[1].trim();
     if (!out.city) out.city = categoryLocationMatch[3].trim();
@@ -174,6 +175,9 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
     email: '',
     instagram: '',
     website: '',
+    mapLink: '',
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
     outdatedWebsite: false,
     leadScore: 50,
     priority: 'Medium' as 'Low' | 'Medium' | 'High',
@@ -314,6 +318,8 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
         email: formData.email || undefined,
         instagram: formData.instagram || undefined,
         website: formData.website || undefined,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
         outdatedWebsite: formData.outdatedWebsite,
         leadScore: Number(formData.leadScore),
         priority: formData.priority,
@@ -402,7 +408,10 @@ const AddLeadModal: React.FC<AddLeadModalProps> = ({ open, onClose }) => {
           <input name="city" placeholder="City" value={formData.city} onChange={handleChange} className={inputClasses} required />
           <input name="phone" placeholder="Phone" value={formData.phone} onChange={handleChange} className={inputClasses} />
           <input name="email" placeholder="Email" value={formData.email} onChange={handleChange} className={inputClasses} />
-          <input name="website" placeholder="Website" value={formData.website} onChange={handleChange} className={inputClasses} />
+          <div className="md:col-span-2 flex gap-2">
+            <input name="mapLink" placeholder="Apple Maps or Google Maps link" value={formData.mapLink} onChange={handleChange} className={inputClasses} />
+            <button type="button" onClick={() => { const parsed = parseMapLink(formData.mapLink); if (!parsed) return showToast({ type: 'error', title: 'Map link not recognized', message: 'Paste a full place link.' }); setFormData(prev => ({ ...prev, businessName: parsed.businessName || prev.businessName, city: parsed.address?.split(',').slice(-2, -1)[0]?.trim() || prev.city, latitude: parsed.latitude, longitude: parsed.longitude, notes: parsed.address ? `${prev.notes ? `${prev.notes}\n` : ''}Map address: ${parsed.address}` : prev.notes })); showToast({ type: 'success', title: 'Location extracted', message: 'The business name and coordinates were filled in.' }); }} className="shrink-0 rounded-2xl bg-[var(--accent)] px-4 text-xs font-bold text-white">Parse</button>
+          </div>
           <input name="dealValue" type="number" placeholder="Potential Deal Value ($)" value={formData.dealValue} onChange={handleChange} className={inputClasses} />
           <select name="priority" value={formData.priority} onChange={handleChange} className={inputClasses}>
             <option value="Low">Low Priority</option>
