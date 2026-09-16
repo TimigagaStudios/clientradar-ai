@@ -4,30 +4,30 @@ import { ArrowLeft, Globe2, MapPin, RotateCcw, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 
-type LeadPoint = { id: string; businessName: string; city: string; category: string; latitude: number; longitude: number; leadScore: number; status: string; phone?: string; email?: string; website?: string; rating?: number; reviewCount?: number; priority?: string; demoStatus?: string; demoLink?: string; dealValue?: number; notes?: string };
+type LeadPoint = {
+  id: string; businessName: string; city: string; category: string;
+  latitude: number; longitude: number; leadScore: number; status: string;
+  phone?: string; email?: string; website?: string; rating?: number;
+  reviewCount?: number; priority?: string; demoStatus?: string;
+  demoLink?: string; dealValue?: number;
+};
 type GlobeRef = { pointOfView: (view: { lat: number; lng: number; altitude: number }, duration?: number) => void; controls: () => { autoRotate: boolean; autoRotateSpeed: number; enableZoom: boolean } };
-
-const GEO_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.import { useEffect, useMemo, useRef, useState } from 'react';
-import Globe from 'react-globe.gl';
-import { ArrowLeft, Globe2, MapPin, RotateCcw, Search } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useLeads } from '../context/LeadContext';
-
-type LeadPoint = { id: string; businessName: string; city: string; category: string; latitude: number; longitude: number; leadScore: number; status: string; phone?: string; email?: string; website?: string; rating?: number; reviewCount?: number; priority?: string; demoStatus?: string; demoLink?: string; dealValue?: number; notes?: string };
-type GlobeRef = { pointOfView: (view: { lat: number; lng: number; altitude: number }, duration?: number) => void; controls: () => { autoRotate: boolean; autoRotateSpeed: number; enableZoom: boolean } };
-
-const GEO_URL = 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson';
 
 export default function LeadGlobe() {
   const { leads } = useLeads();
   const globeRef = useRef<GlobeRef | undefined>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [globeReady, setGlobeReady] = useState(false);
-  const [isSmallScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [countries, setCountries] = useState<unknown[]>([]);
 
-  const locatedLeads = useMemo<LeadPoint[]>(() => leads.filter((lead: any) => Number.isFinite(lead.latitude) && Number.isFinite(lead.longitude)).map((lead: any) => ({ id: lead.id, businessName: lead.businessName, city: lead.city, category: lead.category, latitude: lead.latitude, longitude: lead.longitude, leadScore: lead.leadScore || 0, status: lead.status, phone: lead.phone, email: lead.email, website: lead.website, rating: lead.rating, reviewCount: lead.reviewCount, priority: lead.priority, demoStatus: lead.demoStatus, demoLink: lead.demoLink, dealValue: lead.dealValue, notes: lead.notes })), [leads]);
+  const locatedLeads = useMemo<LeadPoint[]>(() => leads
+    .filter((lead: any) => Number.isFinite(lead.latitude) && Number.isFinite(lead.longitude))
+    .map((lead: any) => ({
+      id: lead.id, businessName: lead.businessName, city: lead.city, category: lead.category,
+      latitude: lead.latitude, longitude: lead.longitude, leadScore: lead.leadScore || 0,
+      status: lead.status, phone: lead.phone, email: lead.email, website: lead.website,
+      rating: lead.rating, reviewCount: lead.reviewCount, priority: lead.priority,
+      demoStatus: lead.demoStatus, demoLink: lead.demoLink, dealValue: lead.dealValue,
+    })), [leads]);
   const filteredLeads = useMemo(() => locatedLeads.filter((lead) => `${lead.businessName} ${lead.city} ${lead.category}`.toLowerCase().includes(search.toLowerCase())), [locatedLeads, search]);
   const suggestions = useMemo(() => search.trim() ? filteredLeads.slice(0, 6) : [], [filteredLeads, search]);
   const selected = locatedLeads.find((lead) => lead.id === selectedId);
@@ -41,32 +41,23 @@ export default function LeadGlobe() {
   }, []);
 
   useEffect(() => {
-    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
-      .then((response) => response.json())
-      .then((data) => setCountries(data.features || []))
-      .catch(() => setCountries([]));
-  }, []);
-
-  useEffect(() => {
     try {
       const controls = globeRef.current?.controls();
       if (!controls) return;
       controls.autoRotate = !selected;
       controls.autoRotateSpeed = 0.32;
       controls.enableZoom = true;
-    } catch {
-      // Keep the page controls usable if WebGL is unavailable on a device.
-    }
+    } catch { /* WebGL controls are optional on unsupported devices. */ }
   }, [selected]);
 
   const focusLead = (lead: LeadPoint) => {
     setSelectedId(lead.id);
-    try { globeRef.current?.pointOfView({ lat: lead.latitude, lng: lead.longitude, altitude: 0.62 }, 1100); } catch { /* WebGL fallback */ }
+    try { globeRef.current?.pointOfView({ lat: lead.latitude, lng: lead.longitude, altitude: 0.62 }, 1100); } catch { /* WebGL fallback. */ }
   };
 
   const resetView = () => {
     setSelectedId(null);
-    try { globeRef.current?.pointOfView({ lat: 20, lng: 10, altitude: 2.35 }, 1100); } catch { /* WebGL fallback */ }
+    try { globeRef.current?.pointOfView({ lat: 20, lng: 10, altitude: 2.35 }, 1100); } catch { /* WebGL fallback. */ }
   };
 
   const markerColor = (point: LeadPoint) => {
@@ -80,137 +71,33 @@ export default function LeadGlobe() {
   const markerElement = (point: LeadPoint) => {
     const element = document.createElement('button');
     const color = markerColor(point);
-    const symbol = point.demoStatus === 'Ready' ? 'Ã¢ÂÂ' : point.category.toLowerCase().includes('real') ? 'Ã¢ÂÂ' : 'Ã¢ÂÂ¢';
+    const symbol = point.demoStatus === 'Ready' ? 'OK' : point.category.toLowerCase().includes('real') ? 'RE' : 'LEAD';
     element.type = 'button';
     element.title = point.businessName;
+    element.textContent = symbol;
     element.style.pointerEvents = 'auto';
     element.style.cursor = 'pointer';
     element.style.transform = 'translate(-50%, -50%)';
     element.style.border = `2px solid ${color}`;
-    element.style.background = 'rgba(3, 6, 18, 0.9)';
+    element.style.background = 'rgba(3, 6, 18, 0.92)';
     element.style.color = color;
-    element.style.width = point.id === selectedId ? '44px' : '30px';
-    element.style.height = point.id === selectedId ? '44px' : '30px';
+    element.style.minWidth = point.id === selectedId ? '48px' : '36px';
+    element.style.height = point.id === selectedId ? '48px' : '36px';
+    element.style.padding = '0 7px';
     element.style.borderRadius = '999px';
     element.style.boxShadow = `0 0 18px ${color}`;
     element.style.fontWeight = '900';
-    element.style.fontSize = point.id === selectedId ? '19px' : '15px';
-    element.textContent = symbol;
+    element.style.fontSize = point.id === selectedId ? '10px' : '8px';
     element.addEventListener('click', (event) => { event.stopPropagation(); focusLead(point); });
     return element;
   };
 
-  return <><div className="pointer-events-none fixed inset-0 z-[35] bg-black" style={{ backgroundImage: 'radial-gradient(circle at 12% 16%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 72% 11%, #8fb7ff 0 1px, transparent 1.5px), radial-gradient(circle at 88% 34%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 30% 42%, #739fff 0 1px, transparent 1.5px), radial-gradient(circle at 62% 56%, #fff 0 1px, transparent 1.5px)', backgroundSize: '240px 190px, 310px 250px, 390px 300px, 280px 230px, 340px 270px' }} /><main className="relative left-1/2 z-[36] -mt-32 h-[100dvh] min-h-0 w-screen -translate-x-1/2 overflow-hidden bg-black text-white">
-
-    <header className="pointer-events-auto absolute inset-x-0 top-24 z-30 flex items-center justify-center px-5 sm:top-7"><Link to="/dashboard" className="absolute left-5 flex items-center gap-2 text-sm font-semibold text-white/70 transition hover:text-white sm:left-10"><span className="grid h-9 w-9 place-items-center rounded-full border border-white/20 bg-white/10"><ArrowLeft size={16} /></span><span className="hidden sm:inline">Back to ClientRadar</span></Link><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-white/75"><Globe2 size={15} className="text-[var(--accent)]" /> Lead Globe</div><button type="button" onClick={resetView} className="absolute right-5 rounded-full border border-white/15 bg-black/20 p-3 text-white/70 backdrop-blur-md transition hover:border-white/35 hover:text-white sm:right-10" aria-label="Reset globe"><RotateCcw size={16} /></button></header>
-
-    <div className="absolute inset-0 z-10 flex items-center justify-center pt-32 sm:pt-36">
-      <Globe ref={globeRef as any} width={typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? window.innerWidth - 320 : window.innerWidth, 1100) : 900} height={typeof window !== 'undefined' ? Math.min(window.innerHeight, 820) : 700} backgroundColor="rgba(0,0,0,0)" rendererConfig={{ antialias: false, alpha: true, powerPreference: 'low-power' }} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png" polygonsData={isSmallScreen ? [] : countries} polygonCapColor={() => 'rgba(74, 92, 153, 0.16)'} polygonSideColor={() => 'rgba(255, 122, 0, 0.14)'} polygonStrokeColor={() => 'rgba(255,255,255,0.12)'} polygonsTransitionDuration={500} pointsData={filteredLeads} pointLat="latitude" pointLng="longitude" htmlElementsData={filteredLeads} htmlLat={(point: any) => point.latitude} htmlLng={(point: any) => point.longitude} htmlElement={markerElement} onGlobeReady={() => setGlobeReady(true)} />
-    </div>
-    <style>{`@keyframes clipiq-earth-spin { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }`}</style>
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-[58%] bg-gradient-to-t from-black via-black/85 to-transparent" />
-
-    <section className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-8 sm:px-12 sm:pb-10"><div className="mx-auto max-w-6xl">{selected ? <div className="pointer-events-auto animate-in slide-in-from-bottom-8 fade-in duration-500"><div className="flex items-end justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Focused business</p><h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-5xl">{selected.businessName}</h1><p className="mt-2 text-sm text-white/60">{selected.category} - {selected.city}</p></div><button type="button" onClick={() => setSelectedId(null)} className="rounded-full border border-white/20 bg-black/30 px-4 py-2 text-xs font-bold text-white/75 backdrop-blur-md hover:text-white">Back to globe</button></div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Score</span><strong className="text-lg">{selected.leadScore}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Status</span><strong className="text-sm">{selected.status}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Priority</span><strong className="text-sm">{selected.priority || 'Unrated'}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Demo</span><strong className="text-sm">{selected.demoStatus || 'Not Started'}</strong></div></div><div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/60">{selected.phone && <span>{selected.phone}</span>}{selected.email && <span>{selected.email}</span>}{selected.website && <span>{selected.website}</span>}{selected.rating ? <span>{selected.rating.toFixed(1)} rating ({selected.reviewCount || 0} reviews)</span> : null}</div><div className="mt-4 flex flex-wrap items-center gap-4"><Link to={`/leads/${selected.id}`} className="text-sm font-bold text-white underline decoration-[var(--accent)] underline-offset-4">Open full lead</Link>{selected.demoLink && <a href={selected.demoLink} target="_blank" rel="noreferrer" className="text-sm font-bold text-[var(--accent)]">Open demo</a>}<Link to={`/globe/city/${selected.id}`} className="text-sm font-bold text-[var(--accent)]">City view</Link><a href={`https://www.google.com/maps/search/?api=1&query=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-white/70 hover:text-white">Google Maps</a><a href={`https://maps.apple.com/?ll=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-white/70 hover:text-white">Apple Maps</a></div></div> : <div className="pointer-events-auto"><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Live prospect map</p><h1 className="mt-3 max-w-2xl text-4xl font-black tracking-tight text-white sm:text-6xl">Every opportunity,<br /><span className="text-white/65">one world view.</span></h1><p className="mt-4 max-w-md text-sm leading-6 text-white/60">Drag to rotate. Scroll or pinch to zoom. Select a glowing lead marker to focus its region.</p><div className="mt-5 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-center"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/45" size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search a saved business..." className="w-full rounded-full border border-white/15 bg-black/35 px-11 py-3 text-sm text-white outline-none backdrop-blur-md placeholder:text-white/40 focus:border-[var(--accent)]" />{suggestions.length > 0 && <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-2xl border border-white/15 bg-[#050812]/95 shadow-2xl backdrop-blur-xl">{suggestions.map((lead) => <button key={lead.id} type="button" onClick={() => { setSearch(lead.businessName); focusLead(lead); }} className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/80 hover:bg-white/10"><span><strong className="block text-white">{lead.businessName}</strong><small className="text-white/45">{lead.city} - {lead.category}</small></span><span className="ml-3 text-xs font-bold text-[var(--accent)]">{lead.leadScore}</span></button>)}</div>}</div><span className="text-xs text-white/50">{filteredLeads.length} mapped leads</span></div></div>}</div></section>
-
-    {locatedLeads.length === 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 px-6 text-center"><p className="text-sm text-white/55">No mapped leads yet</p><p className="mt-2 text-xs text-white/35">Save a Lead Finder result to place the first marker.</p></div>}
-  </main></>;
-}
-
-
-export default function LeadGlobe() {
-  const { leads } = useLeads();
-  const globeRef = useRef<GlobeRef | undefined>();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [globeReady, setGlobeReady] = useState(false);
-  const [isSmallScreen] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [countries, setCountries] = useState<unknown[]>([]);
-
-  const locatedLeads = useMemo<LeadPoint[]>(() => leads.filter((lead: any) => Number.isFinite(lead.latitude) && Number.isFinite(lead.longitude)).map((lead: any) => ({ id: lead.id, businessName: lead.businessName, city: lead.city, category: lead.category, latitude: lead.latitude, longitude: lead.longitude, leadScore: lead.leadScore || 0, status: lead.status, phone: lead.phone, email: lead.email, website: lead.website, rating: lead.rating, reviewCount: lead.reviewCount, priority: lead.priority, demoStatus: lead.demoStatus, demoLink: lead.demoLink, dealValue: lead.dealValue, notes: lead.notes })), [leads]);
-  const filteredLeads = useMemo(() => locatedLeads.filter((lead) => `${lead.businessName} ${lead.city} ${lead.category}`.toLowerCase().includes(search.toLowerCase())), [locatedLeads, search]);
-  const suggestions = useMemo(() => search.trim() ? filteredLeads.slice(0, 6) : [], [filteredLeads, search]);
-  const selected = locatedLeads.find((lead) => lead.id === selectedId);
-
-  useEffect(() => {
-    const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
-    const previous = meta?.content || '';
-    if (meta) meta.content = '#02040b';
-    else { const created = document.createElement('meta'); created.name = 'theme-color'; created.content = '#02040b'; document.head.appendChild(created); }
-    return () => { if (meta) meta.content = previous; };
-  }, []);
-
-  useEffect(() => {
-    fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
-      .then((response) => response.json())
-      .then((data) => setCountries(data.features || []))
-      .catch(() => setCountries([]));
-  }, []);
-
-  useEffect(() => {
-    try {
-      const controls = globeRef.current?.controls();
-      if (!controls) return;
-      controls.autoRotate = !selected;
-      controls.autoRotateSpeed = 0.32;
-      controls.enableZoom = true;
-    } catch {
-      // Keep the page controls usable if WebGL is unavailable on a device.
-    }
-  }, [selected]);
-
-  const focusLead = (lead: LeadPoint) => {
-    setSelectedId(lead.id);
-    try { globeRef.current?.pointOfView({ lat: lead.latitude, lng: lead.longitude, altitude: 0.62 }, 1100); } catch { /* WebGL fallback */ }
-  };
-
-  const resetView = () => {
-    setSelectedId(null);
-    try { globeRef.current?.pointOfView({ lat: 20, lng: 10, altitude: 2.35 }, 1100); } catch { /* WebGL fallback */ }
-  };
-
-  const markerColor = (point: LeadPoint) => {
-    if (point.id === selectedId) return '#ff7a00';
-    if (point.demoStatus === 'Ready') return '#39d98a';
-    if (point.priority === 'High' || (point.dealValue || 0) >= 5000) return '#ff4d5f';
-    if (point.priority === 'Medium' || (point.dealValue || 0) >= 1000) return '#f2c94c';
-    return '#ffd08a';
-  };
-
-  const markerElement = (point: LeadPoint) => {
-    const element = document.createElement('button');
-    const color = markerColor(point);
-    const symbol = point.demoStatus === 'Ready' ? 'â' : point.category.toLowerCase().includes('real') ? 'â' : 'â¢';
-    element.type = 'button';
-    element.title = point.businessName;
-    element.style.pointerEvents = 'auto';
-    element.style.cursor = 'pointer';
-    element.style.transform = 'translate(-50%, -50%)';
-    element.style.border = `2px solid ${color}`;
-    element.style.background = 'rgba(3, 6, 18, 0.9)';
-    element.style.color = color;
-    element.style.width = point.id === selectedId ? '44px' : '30px';
-    element.style.height = point.id === selectedId ? '44px' : '30px';
-    element.style.borderRadius = '999px';
-    element.style.boxShadow = `0 0 18px ${color}`;
-    element.style.fontWeight = '900';
-    element.style.fontSize = point.id === selectedId ? '19px' : '15px';
-    element.textContent = symbol;
-    element.addEventListener('click', (event) => { event.stopPropagation(); focusLead(point); });
-    return element;
-  };
-
-  return <><div className="pointer-events-none fixed inset-0 z-[35] bg-black" style={{ backgroundImage: 'radial-gradient(circle at 12% 16%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 72% 11%, #8fb7ff 0 1px, transparent 1.5px), radial-gradient(circle at 88% 34%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 30% 42%, #739fff 0 1px, transparent 1.5px), radial-gradient(circle at 62% 56%, #fff 0 1px, transparent 1.5px)', backgroundSize: '240px 190px, 310px 250px, 390px 300px, 280px 230px, 340px 270px' }} /><main className="relative left-1/2 z-[36] -mt-32 h-[100dvh] min-h-0 w-screen -translate-x-1/2 overflow-hidden bg-black text-white">
-
-    <header className="pointer-events-auto absolute inset-x-0 top-24 z-30 flex items-center justify-center px-5 sm:top-7"><Link to="/dashboard" className="absolute left-5 flex items-center gap-2 text-sm font-semibold text-white/70 transition hover:text-white sm:left-10"><span className="grid h-9 w-9 place-items-center rounded-full border border-white/20 bg-white/10"><ArrowLeft size={16} /></span><span className="hidden sm:inline">Back to ClientRadar</span></Link><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-white/75"><Globe2 size={15} className="text-[var(--accent)]" /> Lead Globe</div><button type="button" onClick={resetView} className="absolute right-5 rounded-full border border-white/15 bg-black/20 p-3 text-white/70 backdrop-blur-md transition hover:border-white/35 hover:text-white sm:right-10" aria-label="Reset globe"><RotateCcw size={16} /></button></header>
-
-    <div className="absolute inset-0 z-10 flex items-center justify-center pt-32 sm:pt-36">
-      <Globe ref={globeRef as any} width={typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? window.innerWidth - 320 : window.innerWidth, 1100) : 900} height={typeof window !== 'undefined' ? Math.min(window.innerHeight, 820) : 700} backgroundColor="rgba(0,0,0,0)" rendererConfig={{ antialias: false, alpha: true, powerPreference: 'low-power' }} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png" polygonsData={isSmallScreen ? [] : countries} polygonCapColor={() => 'rgba(74, 92, 153, 0.16)'} polygonSideColor={() => 'rgba(255, 122, 0, 0.14)'} polygonStrokeColor={() => 'rgba(255,255,255,0.12)'} polygonsTransitionDuration={500} pointsData={filteredLeads} pointLat="latitude" pointLng="longitude" htmlElementsData={filteredLeads} htmlLat={(point: any) => point.latitude} htmlLng={(point: any) => point.longitude} htmlElement={markerElement} onGlobeReady={() => setGlobeReady(true)} />
-    </div>
-    <style>{`@keyframes clipiq-earth-spin { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }`}</style>
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-[58%] bg-gradient-to-t from-black via-black/85 to-transparent" />
-
-    <section className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-8 sm:px-12 sm:pb-10"><div className="mx-auto max-w-6xl">{selected ? <div className="pointer-events-auto animate-in slide-in-from-bottom-8 fade-in duration-500"><div className="flex items-end justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Focused business</p><h1 className="mt-2 text-3xl font-black tracking-tight text-white sm:text-5xl">{selected.businessName}</h1><p className="mt-2 text-sm text-white/60">{selected.category} - {selected.city}</p></div><button type="button" onClick={() => setSelectedId(null)} className="rounded-full border border-white/20 bg-black/30 px-4 py-2 text-xs font-bold text-white/75 backdrop-blur-md hover:text-white">Back to globe</button></div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4"><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Score</span><strong className="text-lg">{selected.leadScore}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Status</span><strong className="text-sm">{selected.status}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Priority</span><strong className="text-sm">{selected.priority || 'Unrated'}</strong></div><div className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">Demo</span><strong className="text-sm">{selected.demoStatus || 'Not Started'}</strong></div></div><div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/60">{selected.phone && <span>{selected.phone}</span>}{selected.email && <span>{selected.email}</span>}{selected.website && <span>{selected.website}</span>}{selected.rating ? <span>{selected.rating.toFixed(1)} rating ({selected.reviewCount || 0} reviews)</span> : null}</div><div className="mt-4 flex flex-wrap items-center gap-4"><Link to={`/leads/${selected.id}`} className="text-sm font-bold text-white underline decoration-[var(--accent)] underline-offset-4">Open full lead</Link>{selected.demoLink && <a href={selected.demoLink} target="_blank" rel="noreferrer" className="text-sm font-bold text-[var(--accent)]">Open demo</a>}<a href={`https://www.google.com/maps/search/?api=1&query=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-white/70 hover:text-white">Google Maps</a><a href={`https://maps.apple.com/?ll=${selected.latitude},${selected.longitude}`} target="_blank" rel="noreferrer" className="text-sm font-bold text-white/70 hover:text-white">Apple Maps</a></div></div> : <div className="pointer-events-auto"><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Live prospect map</p><h1 className="mt-3 max-w-2xl text-4xl font-black tracking-tight text-white sm:text-6xl">Every opportunity,<br /><span className="text-white/65">one world view.</span></h1><p className="mt-4 max-w-md text-sm leading-6 text-white/60">Drag to rotate. Scroll or pinch to zoom. Select a glowing lead marker to focus its region.</p><div className="mt-5 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-center"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/45" size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search a saved business..." className="w-full rounded-full border border-white/15 bg-black/35 px-11 py-3 text-sm text-white outline-none backdrop-blur-md placeholder:text-white/40 focus:border-[var(--accent)]" />{suggestions.length > 0 && <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-2xl border border-white/15 bg-[#050812]/95 shadow-2xl backdrop-blur-xl">{suggestions.map((lead) => <button key={lead.id} type="button" onClick={() => { setSearch(lead.businessName); focusLead(lead); }} className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/80 hover:bg-white/10"><span><strong className="block text-white">{lead.businessName}</strong><small className="text-white/45">{lead.city} - {lead.category}</small></span><span className="ml-3 text-xs font-bold text-[var(--accent)]">{lead.leadScore}</span></button>)}</div>}</div><span className="text-xs text-white/50">{filteredLeads.length} mapped leads</span></div></div>}</div></section>
-
-    {locatedLeads.length === 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 px-6 text-center"><p className="text-sm text-white/55">No mapped leads yet</p><p className="mt-2 text-xs text-white/35">Save a Lead Finder result to place the first marker.</p></div>}
-  </main></>;
+  return <><div className="pointer-events-none fixed inset-0 z-[35] bg-black" style={{ backgroundImage: 'radial-gradient(circle at 12% 16%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 72% 11%, #8fb7ff 0 1px, transparent 1.5px), radial-gradient(circle at 88% 34%, #fff 0 1px, transparent 1.5px), radial-gradient(circle at 30% 42%, #739fff 0 1px, transparent 1.5px), radial-gradient(circle at 62% 56%, #fff 0 1px, transparent 1.5px)', backgroundSize: '240px 190px, 310px 250px, 390px 300px, 280px 230px, 340px 270px' }} />
+    <main className="relative left-1/2 z-[36] -mt-32 h-[100dvh] min-h-0 w-screen -translate-x-1/2 overflow-hidden bg-black text-white">
+      <header className="pointer-events-auto absolute inset-x-0 top-24 z-30 flex items-center justify-center px-5 sm:top-7"><Link to="/dashboard" className="absolute left-5 flex items-center gap-2 text-sm font-semibold text-white/70 sm:left-10"><span className="grid h-9 w-9 place-items-center rounded-full border border-white/20 bg-white/10"><ArrowLeft size={16} /></span><span className="hidden sm:inline">Back to ClientRadar</span></Link><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.3em] text-white/75"><Globe2 size={15} className="text-[var(--accent)]" /> Lead Globe</div><button type="button" onClick={resetView} className="absolute right-5 rounded-full border border-white/15 bg-black/20 p-3 text-white/70 sm:right-10" aria-label="Reset globe"><RotateCcw size={16} /></button></header>
+      <div className="absolute inset-0 z-10 flex items-center justify-center pt-32 sm:pt-36"><Globe ref={globeRef as any} width={typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? window.innerWidth - 320 : window.innerWidth, 1100) : 900} height={typeof window !== 'undefined' ? Math.min(window.innerHeight, 820) : 700} backgroundColor="rgba(0,0,0,0)" rendererConfig={{ antialias: false, alpha: true, powerPreference: 'low-power' }} globeImageUrl="https://unpkg.com/three-globe/example/img/earth-night.jpg" backgroundImageUrl="https://unpkg.com/three-globe/example/img/night-sky.png" htmlElementsData={filteredLeads} htmlLat={(point: any) => point.latitude} htmlLng={(point: any) => point.longitude} htmlElement={markerElement} onGlobeReady={() => undefined} /></div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-[58%] bg-gradient-to-t from-black via-black/85 to-transparent" />
+      <section className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-6 pb-8 sm:px-12 sm:pb-10"><div className="mx-auto max-w-6xl">{selected ? <div className="pointer-events-auto animate-in slide-in-from-bottom-8 fade-in duration-500"><div className="flex items-end justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Focused business</p><h1 className="mt-2 text-3xl font-black sm:text-5xl">{selected.businessName}</h1><p className="mt-2 text-sm text-white/60">{selected.category} - {selected.city}</p></div><button type="button" onClick={() => setSelectedId(null)} className="rounded-full border border-white/20 bg-black/30 px-4 py-2 text-xs font-bold text-white/75">Back to globe</button></div><div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{[['Score', selected.leadScore], ['Status', selected.status], ['Priority', selected.priority || 'Unrated'], ['Demo', selected.demoStatus || 'Not Started']].map(([label, value]) => <div key={String(label)} className="border-l-2 border-[var(--accent)] pl-3"><span className="block text-[10px] uppercase tracking-wider text-white/45">{label}</span><strong className="text-sm">{value}</strong></div>)}</div><div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/60">{selected.phone && <span>{selected.phone}</span>}{selected.email && <span>{selected.email}</span>}{selected.website && <span>{selected.website}</span>}{selected.rating ? <span>{selected.rating.toFixed(1)} rating ({selected.reviewCount || 0} reviews)</span> : null}</div><div className="mt-4 flex flex-wrap items-center gap-4"><Link to={`/leads/${selected.id}`} className="text-sm font-bold underline decoration-[var(--accent)] underline-offset-4">Open full lead</Link>{selected.demoLink && <a href={selected.demoLink} target="_blank" rel="noreferrer" className="text-sm font-bold text-[var(--accent)]">Open demo</a>}<Link to={`/globe/city/${selected.id}`} className="text-sm font-bold text-[var(--accent)]">City view</Link></div></div> : <div className="pointer-events-auto"><p className="text-[10px] font-bold uppercase tracking-[0.35em] text-[var(--accent)]">Live prospect map</p><h1 className="mt-3 max-w-2xl text-4xl font-black sm:text-6xl">Every opportunity,<br /><span className="text-white/65">one world view.</span></h1><p className="mt-4 max-w-md text-sm leading-6 text-white/60">Drag to rotate. Scroll or pinch to zoom. Select a glowing lead marker to focus its region.</p><div className="relative mt-5 flex max-w-xl flex-col gap-3 sm:flex-row sm:items-center"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/45" size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search a saved business..." className="w-full rounded-full border border-white/15 bg-black/35 px-11 py-3 text-sm text-white outline-none placeholder:text-white/40" />{suggestions.length > 0 && <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-2xl border border-white/15 bg-[#050812]/95 shadow-2xl">{suggestions.map((lead) => <button key={lead.id} type="button" onClick={() => { setSearch(lead.businessName); focusLead(lead); }} className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-white/80 hover:bg-white/10"><span><strong className="block text-white">{lead.businessName}</strong><small className="text-white/45">{lead.city} - {lead.category}</small></span><span className="ml-3 text-xs font-bold text-[var(--accent)]">{lead.leadScore}</span></button>)}</div>}</div><span className="text-xs text-white/50">{filteredLeads.length} mapped leads</span></div></div>}</div></section>
+      {locatedLeads.length === 0 && <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 -translate-y-1/2 px-6 text-center"><p className="text-sm text-white/55">No mapped leads yet</p><p className="mt-2 text-xs text-white/35">Save a Lead Finder result to place the first marker.</p></div>}
+    </main></>;
 }
