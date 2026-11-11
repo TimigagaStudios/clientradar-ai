@@ -1,0 +1,84 @@
+/* Scoped to the city map popup; no marker glow or animated layers. */
+.lead-city-popup .maplibregl-popup-content {
+  padding: 0;
+  border: 1px solid #354267;
+  border-radius: 14px;
+  background: #101b39;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+  color: #f7f9ff;
+}
+
+.lead-city-popup-card {
+  min-width: 180px;
+  padding: 15px 31px 15px 16px;
+  overflow-wrap: anywhere;
+}
+
+.lead-city-popup-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #ff9a38;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  line-height: 1.3;
+}
+
+.lead-city-popup-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #ff8a19;
+}
+
+.lead-city-popup-name {
+  display: block;
+  margin-top: 8px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.3;
+}
+
+.lead-city-popup-location {
+  margin-top: 5px;
+  color: #b8c6df;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.lead-city-popup .maplibregl-popup-close-button {
+  top: 5px;
+  right: 7px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: #c9d5e8;
+  font-size: 19px;
+  line-height: 24px;
+}
+
+.lead-city-popup .maplibregl-popup-close-button:hover,
+.lead-city-popup .maplibregl-popup-close-button:focus-visible {
+  background: #293757;
+  color: #fff;
+}
+
+.lead-city-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.lead-city-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.lead-city-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: #101b39;
+}
+.lead-city-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.lead-city-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.lead-city-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #101b39;
+}
+.lead-city-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #101b39;
+}
+.lead-city-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #101b39;
+}
