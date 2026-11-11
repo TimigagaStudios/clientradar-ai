@@ -26,7 +26,21 @@ export default function LeadCityView() {
       },
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
-    const marker = new maplibregl.Marker({ color: '#ff7a00' }).setLngLat([lead.longitude, lead.latitude]).setPopup(new maplibregl.Popup({ offset: 28 }).setHTML(`<strong>${lead.businessName}</strong><br/><span>${lead.city || ''}</span>`)).addTo(map);
+    const popupContent = document.createElement('div');
+    popupContent.style.color = '#111827';
+    popupContent.style.backgroundColor = '#ffffff';
+    popupContent.style.minWidth = '120px';
+    const businessName = document.createElement('strong');
+    businessName.textContent = lead.businessName || 'Selected business';
+    businessName.style.color = '#111827';
+    popupContent.appendChild(businessName);
+    if (lead.city) {
+      const city = document.createElement('div');
+      city.textContent = lead.city;
+      city.style.color = '#4b5563';
+      popupContent.appendChild(city);
+    }
+    const marker = new maplibregl.Marker({ color: '#ff7a00' }).setLngLat([lead.longitude, lead.latitude]).setPopup(new maplibregl.Popup({ offset: 28 }).setDOMContent(popupContent)).addTo(map);
     marker.togglePopup();
     return () => { marker.remove(); map.remove(); };
   }, [lead]);
