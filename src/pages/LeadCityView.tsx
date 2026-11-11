@@ -3,6 +3,7 @@ import { ArrowLeft, ExternalLink, MapPin, Phone, Star, Globe2 } from 'lucide-rea
 import { Link, useParams } from 'react-router-dom';
 import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './LeadCityView.css';
 import { useLeads } from '../context/LeadContext';
 
 export default function LeadCityView() {
@@ -27,20 +28,24 @@ export default function LeadCityView() {
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'top-right');
     const popupContent = document.createElement('div');
-    popupContent.style.color = '#111827';
-    popupContent.style.backgroundColor = '#ffffff';
-    popupContent.style.minWidth = '120px';
+    popupContent.className = 'lead-city-popup-card';
+    const eyebrow = document.createElement('div');
+    eyebrow.className = 'lead-city-popup-eyebrow';
+    const dot = document.createElement('span');
+    dot.className = 'lead-city-popup-dot';
+    eyebrow.append(dot, document.createTextNode('SELECTED BUSINESS'));
     const businessName = document.createElement('strong');
+    businessName.className = 'lead-city-popup-name';
     businessName.textContent = lead.businessName || 'Selected business';
-    businessName.style.color = '#111827';
-    popupContent.appendChild(businessName);
-    if (lead.city) {
-      const city = document.createElement('div');
-      city.textContent = lead.city;
-      city.style.color = '#4b5563';
-      popupContent.appendChild(city);
+    popupContent.append(eyebrow, businessName);
+    const details = [lead.category, lead.city].filter(Boolean).join(' - ');
+    if (details) {
+      const location = document.createElement('div');
+      location.className = 'lead-city-popup-location';
+      location.textContent = details;
+      popupContent.appendChild(location);
     }
-    const marker = new maplibregl.Marker({ color: '#ff7a00' }).setLngLat([lead.longitude, lead.latitude]).setPopup(new maplibregl.Popup({ offset: 28 }).setDOMContent(popupContent)).addTo(map);
+    const marker = new maplibregl.Marker({ color: '#ff7a00' }).setLngLat([lead.longitude, lead.latitude]).setPopup(new maplibregl.Popup({ offset: 28, className: 'lead-city-popup', maxWidth: '260px' }).setDOMContent(popupContent)).addTo(map);
     marker.togglePopup();
     return () => { marker.remove(); map.remove(); };
   }, [lead]);
