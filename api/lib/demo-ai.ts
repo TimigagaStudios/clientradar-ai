@@ -10,11 +10,33 @@ type DemoLead = {
 
 export type DemoStyleLevel = 'mid' | 'hybrid' | 'ultra';
 
-export const TIER_LIMITS: Record<DemoStyleLevel, { services: number; highlights: number; process: number; faq: number }> = {
-  mid: { services: 3, highlights: 3, process: 0, faq: 0 },
-  hybrid: { services: 4, highlights: 3, process: 3, faq: 0 },
-  ultra: { services: 6, highlights: 4, process: 4, faq: 5 },
+export type DemoShowcaseKind = 'listings' | 'menu' | 'products' | 'booking';
+
+export const TIER_LIMITS: Record<DemoStyleLevel, { services: number; highlights: number; process: number; faq: number; showcase: number }> = {
+  mid: { services: 3, highlights: 3, process: 0, faq: 0, showcase: 0 },
+  hybrid: { services: 4, highlights: 3, process: 3, faq: 0, showcase: 3 },
+  ultra: { services: 6, highlights: 4, process: 4, faq: 5, showcase: 6 },
 };
+
+// Chooses the business-type sample screen from the template or the lead category.
+export function showcaseKind(template: string, category: unknown): DemoShowcaseKind {
+  const text = `${template} ${String(category || '')}`.toLowerCase();
+  if (/real[- ]?estate|apartment|propert|realt|housing|lettings/.test(text)) return 'listings';
+  if (/restaurant|cafe|coffee|food|bar\b|bakery|kitchen|grill|pizza|catering|eatery/.test(text)) return 'menu';
+  if (/barber|salon|spa\b|clinic|dental|dentist|repair|studio|gym|laundry/.test(text)) return 'booking';
+  if (/shop|store|boutique|retail|commerce|fashion|clothing|jewel|furniture|electronics/.test(text)) return 'products';
+  return 'booking';
+}
+
+export function showcaseRule(kind: DemoShowcaseKind, count: number) {
+  const subject = {
+    listings: 'sample property listings (title = listing name, subtitle = general area only, detail = short features such as bedrooms and bathrooms)',
+    menu: 'sample menu items (title = dish or drink, subtitle = menu section, detail = short description)',
+    products: 'sample products (title = product name, subtitle = product type, detail = short description)',
+    booking: 'bookable services (title = service name, subtitle = who it is for, detail = short description)',
+  }[kind];
+  return `Also write a "showcase" with ${count} ${subject}. These are clearly labelled samples: keep them plausible and generic, and do not include prices, street addresses, real people or availability claims.`;
+}
 
 export function normalizeStyleLevel(value: unknown): DemoStyleLevel {
   const level = String(value || '').toLowerCase();
@@ -64,6 +86,7 @@ function tierShape(level: DemoStyleLevel) {
     highlights: [{ title: '', body: '' }],
   };
   if (level !== 'mid') shape.process = [{ title: '', body: '' }];
+  if (level !== 'mid') shape.showcase = { title: '', items: [{ title: '', subtitle: '', detail: '' }] };
   if (level === 'ultra') shape.faq = [{ question: '', answer: '' }];
   shape.closing = { title: '', body: '', cta: '' };
   shape.disclaimer = '';
@@ -80,6 +103,15 @@ function cleanPairs(value: unknown, limit: number, first: string, second: string
     .map((item) => ({ [first]: cleanText(item?.[first], 90), [second]: cleanText(item?.[second], 420) }))
     .filter((item) => item[first] && item[second])
     .slice(0, limit);
+}
+
+function cleanShowcase(value: any, limit: number) {
+  if (!value || !Array.isArray(value.items) || limit <= 0) return null;
+  const items = value.items
+    .map((item: any) => ({ title: cleanText(item?.title, 70), subtitle: cleanText(item?.subtitle, 60), detail: cleanText(item?.detail, 200) }))
+    .filter((item: any) => item.title && item.detail)
+    .slice(0, limit);
+  return items.length >= 2 ? { title: cleanText(value.title, 80), items } : null;
 }
 
 function cleanTheme(value: any) {
@@ -110,6 +142,7 @@ export function normalizeDemoContent(parsed: any, level: DemoStyleLevel) {
     highlights: cleanPairs(parsed?.highlights, limits.highlights, 'title', 'body'),
     process: cleanPairs(parsed?.process, limits.process, 'title', 'body'),
     faq: cleanPairs(parsed?.faq, limits.faq, 'question', 'answer'),
+    showcase: cleanShowcase(parsed?.showcase, limits.showcase),
     closing: { title: cleanText(closing.title, 90), body: cleanText(closing.body, 320), cta: cleanText(closing.cta, 32) },
     disclaimer: cleanText(parsed?.disclaimer, 240),
   };
@@ -120,25 +153,27 @@ export async function generateDemoContent(lead: DemoLead, templateKey: string, p
   const apiKey = process.env.DEMO_AI_API_KEY || process.env.GEMINI_API_KEY;
   if (provider === 'fallback' || !apiKey) return null;
 
-  const model = process.env.DEMO_AI_MODEL || 'gemini-2.0-flash';
+  const model = process.env.DEMO_AI_MODEL || (provider === 'gemini' ? 'gemini-3.5-flash-lite' : '');
+  if (!model) throw new Error('Set DEMO_AI_MODEL to the model you want to use with this provider');
   const instruction = `${prompt}\n\nReturn only valid JSON with this shape: ${tierShape(styleLevel)}. Use the existing website profile colors when provided. Do not invent reviews, awards, prices, licences, statistics or medical, legal or financial claims. Business: ${lead.business_name}. Template: ${templateKey}.`;
   let response: Response;
+  const signal = AbortSignal.timeout(40000);
 
   if (provider === 'gemini') {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({ contents: [{ parts: [{ text: instruction }] }], generationConfig: { responseMimeType: 'application/json' } }),
     });
   } else if (provider === 'openrouter') {
     response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: 'user', content: instruction }] }),
     });
   } else {
     throw new Error(`Unsupported DEMO_AI_PROVIDER: ${provider}`);
   }
 
-  if (!response.ok) throw new Error(`Demo AI provider returned HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Demo AI provider returned HTTP ${response.status} for model ${model}`);
   const body = await response.json();
   const text = provider === 'gemini' ? body.candidates?.[0]?.content?.parts?.[0]?.text : body.choices?.[0]?.message?.content;
   if (!text) throw new Error('Demo AI provider returned no content');
