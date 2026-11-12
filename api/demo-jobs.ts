@@ -1,8 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { processDemoJob } from './lib/demo-job-process.js';
+import { normalizeStyleLevel, tierRules } from './lib/demo-ai.js';
+import type { DemoStyleLevel } from './lib/demo-ai.js';
 
-function buildPrompt(lead: any, templateKey: string) {
+const TEMPLATE_KEYS = ['auto', 'dental', 'restaurant', 'real-estate', 'salon', 'professional-services'];
+
+function buildPrompt(lead: any, templateKey: string, styleLevel: DemoStyleLevel) {
   return [
     'Create a polished, mobile-first demo website for this business.',
     `Business name: ${lead.business_name}`,
@@ -13,8 +17,8 @@ function buildPrompt(lead: any, templateKey: string) {
     `Instagram: ${lead.instagram || 'Not provided'}`,
     `Website status: ${lead.website ? 'Existing website' : 'No website found'}`,
     `Template: ${templateKey}`,
-    'Include a hero, services, about, trust points, contact section, and a clear call to action.',
-    'Do not invent medical, legal, financial, awards, pricing, or performance claims.',
+    ...tierRules(styleLevel),
+    'Do not invent medical, legal, financial, awards, pricing, review, or performance claims.',
     'Return structured website content only; the template controls layout and code.',
   ].join('\n');
 }
@@ -38,7 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'POST') {
-      const { leadId, templateKey = 'auto', jobId, action } = req.body || {};
+      const { leadId, jobId, action } = req.body || {};
+      const templateKey = TEMPLATE_KEYS.includes(req.body?.templateKey) ? req.body.templateKey : 'auto';
+      const styleLevel = normalizeStyleLevel(req.body?.styleLevel);
       if (action === 'process' && jobId) {
         const data = await processDemoJob(supabase, jobId);
         return res.status(200).json({ success: true, data });
@@ -48,8 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (leadError || !lead) return res.status(404).json({ success: false, error: 'Lead not found' });
       const { data: activeJob } = await supabase.from('demo_jobs').select('id,status').eq('lead_id', leadId).in('status', ['queued', 'generating']).maybeSingle();
       if (activeJob) return res.status(409).json({ success: false, error: 'This lead already has a demo job in progress.', data: activeJob });
-      const prompt = buildPrompt(lead, templateKey);
-      const { data, error } = await supabase.from('demo_jobs').insert({ lead_id: leadId, template_key: templateKey, status: 'queued', prompt }).select().single();
+      const prompt = buildPrompt(lead, templateKey, styleLevel);
+      const { data, error } = await supabase.from('demo_jobs').insert({ lead_id: leadId, template_key: `${templateKey}:${styleLevel}`, status: 'queued', prompt }).select().single();
       if (error) return res.status(500).json({ success: false, error: error.message });
       await supabase.from('leads').update({ demo_status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', leadId);
       return res.status(201).json({ success: true, data });
