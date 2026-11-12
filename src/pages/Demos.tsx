@@ -3,7 +3,7 @@ import { useLeads } from '../context/LeadContext';
 import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
-import { demoTemplates, mapDemoJob } from '../lib/demo-factory';
+import { demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
 
 const parseDemoResponse = async (response: Response) => {
   const text = await response.text();
@@ -16,6 +16,16 @@ const Demos = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [templateKey, setTemplateKey] = useState('auto');
+  const [styleLevel, setStyleLevel] = useState('mid');
+  const [suggestedLevel, setSuggestedLevel] = useState('');
+
+  const handleSelectLead = (leadId: string) => {
+    setSelectedLeadId(leadId);
+    const lead = leads.find((item: any) => item.id === leadId);
+    const suggestion = lead ? suggestStyleLevel(lead) : '';
+    setSuggestedLevel(suggestion);
+    if (suggestion) setStyleLevel(suggestion);
+  };
   const [demoJobs, setDemoJobs] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
   const [jobError, setJobError] = useState('');
@@ -39,7 +49,7 @@ const Demos = () => {
     try {
       const response = await fetch('/api/demo-jobs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId: selectedLeadId, templateKey }),
+        body: JSON.stringify({ leadId: selectedLeadId, templateKey, styleLevel }),
       });
       const result = await parseDemoResponse(response);
       if (!response.ok) throw new Error(result.error || 'Could not queue demo.');
@@ -50,6 +60,7 @@ const Demos = () => {
       await refreshLeads();
       await refreshJobs();
       setSelectedLeadId('');
+      setSuggestedLevel('');
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not queue demo.');
     } finally {
@@ -121,20 +132,24 @@ const Demos = () => {
           <Rocket className="text-[var(--accent)]" size={20} />
           <div><h2 className="font-bold text-[var(--text-primary)]">Demo Factory</h2><p className="text-sm text-[var(--text-secondary)]">Queue a website demo for one lead. The worker will generate the preview later.</p></div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3">
-          <select value={selectedLeadId} onChange={(event) => setSelectedLeadId(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] gap-3">
+          <select value={selectedLeadId} onChange={(event) => handleSelectLead(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             <option value="">Choose a lead without a demo</option>
             {leads.filter((lead: any) => !lead.demoLink && lead.demoStatus !== 'In Progress').map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} - {lead.category || 'Business'}</option>)}
           </select>
           <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             {demoTemplates.map((template) => <option key={template.key} value={template.key}>{template.label}</option>)}
           </select>
+          <select value={styleLevel} onChange={(event) => setStyleLevel(event.target.value)} aria-label="Demo style level" className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+            {demoStyleLevels.map((level) => <option key={level.key} value={level.key}>{level.label} - {level.hint}</option>)}
+          </select>
           <button type="button" onClick={() => void handleCreateDemo()} disabled={creating || !selectedLeadId} className="btn-neumorph-primary px-5 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-50"><Plus size={16} />{creating ? 'Queueing...' : 'Generate Demo'}</button>
         </div>
+        {suggestedLevel && <p className="text-xs text-[var(--text-secondary)]">Suggested level for this lead: <span className="font-bold text-[var(--text-primary)]">{styleLevelLabel(suggestedLevel)}</span> (from its priority and deal value). You can change it.</p>}
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 
-      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{job.templateKey} - {job.status} - attempt {job.attempts}</p></div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}</div></div>; })}</div></section>}
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : ' - built-in text') : ''}</p></div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}</div></div>; })}</div></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
