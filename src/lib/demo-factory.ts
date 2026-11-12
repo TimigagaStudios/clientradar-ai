@@ -2,10 +2,14 @@ import type { Lead } from '../types';
 
 export type DemoJobStatus = 'queued' | 'generating' | 'ready' | 'failed';
 
+export type DemoStyleLevel = 'mid' | 'hybrid' | 'ultra';
+
 export type DemoJob = {
   id: string;
   leadId: string;
   templateKey: string;
+  styleLevel: DemoStyleLevel;
+  generatedBy: 'ai' | 'fallback' | null;
   status: DemoJobStatus;
   prompt: string;
   demoUrl: string | null;
@@ -23,6 +27,30 @@ export const demoTemplates = [
   { key: 'salon', label: 'Salon or beauty' },
   { key: 'professional-services', label: 'Professional services' },
 ] as const;
+
+export const demoStyleLevels = [
+  { key: 'mid', label: 'Mid-Level', hint: 'One clean page' },
+  { key: 'hybrid', label: 'Hybrid', hint: 'Longer page with process' },
+  { key: 'ultra', label: 'Ultra Premium', hint: 'Multi-page with FAQ' },
+] as const;
+
+export function styleLevelLabel(level: string) {
+  return demoStyleLevels.find((item) => item.key === level)?.label || 'Mid-Level';
+}
+
+// Suggests a level from the lead's value and priority. The user can always override it.
+export function suggestStyleLevel(lead?: Pick<Lead, 'priority' | 'dealValue'> | null): DemoStyleLevel {
+  const value = Number(lead?.dealValue) || 0;
+  if (lead?.priority === 'High' || value >= 5000) return 'ultra';
+  if (lead?.priority === 'Medium' || value >= 1000) return 'hybrid';
+  return 'mid';
+}
+
+// template_key is stored as "template:level"; older jobs have no level and count as Mid-Level.
+export function splitTemplateKey(value: unknown): { template: string; level: DemoStyleLevel } {
+  const [template, level] = String(value || 'auto').split(':');
+  return { template: template || 'auto', level: level === 'hybrid' || level === 'ultra' ? level : 'mid' };
+}
 
 export function buildDemoPrompt(lead: Lead, templateKey = 'auto') {
   return [
@@ -42,10 +70,14 @@ export function buildDemoPrompt(lead: Lead, templateKey = 'auto') {
 }
 
 export function mapDemoJob(row: any): DemoJob {
+  const { template, level } = splitTemplateKey(row.template_key);
+  const generatedBy = row.content?.generatedBy;
   return {
     id: row.id,
     leadId: row.lead_id,
-    templateKey: row.template_key,
+    templateKey: template,
+    styleLevel: level,
+    generatedBy: generatedBy === 'ai' || generatedBy === 'fallback' ? generatedBy : null,
     status: row.status,
     prompt: row.prompt,
     demoUrl: row.demo_url || null,
