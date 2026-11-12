@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ArrowRight, CheckCircle2, ChevronDown, Instagram, Mail, MapPin, Phone, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CalendarCheck, CheckCircle2, ChevronDown, Home, Instagram, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Sparkles, UtensilsCrossed, X } from 'lucide-react';
 
 type Pair = { title: string; body: string };
 type Faq = { question: string; answer: string };
-type PageKey = 'home' | 'about' | 'services' | 'faq' | 'contact';
+type PageKey = 'home' | 'about' | 'services' | 'showcase' | 'faq' | 'contact';
+type ShowcaseKind = 'listings' | 'menu' | 'products' | 'booking';
+type ShowcaseItem = { title: string; subtitle?: string; detail: string };
+
+const SHOWCASE_TEXT: Record<ShowcaseKind, { nav: string; eyebrow: string; action: string; formTitle: string; formButton: string; extra: 'message' | 'date' | 'guests' | 'none' }> = {
+  listings: { nav: 'Listings', eyebrow: 'Listings', action: 'Enquire', formTitle: 'Property enquiry', formButton: 'Send enquiry', extra: 'message' },
+  menu: { nav: 'Menu', eyebrow: 'Menu', action: 'View', formTitle: 'Reserve a table', formButton: 'Request reservation', extra: 'guests' },
+  products: { nav: 'Shop', eyebrow: 'Shop', action: 'Add to cart', formTitle: 'Checkout', formButton: 'Place order', extra: 'none' },
+  booking: { nav: 'Book', eyebrow: 'Booking', action: 'Book this', formTitle: 'Request an appointment', formButton: 'Request booking', extra: 'date' },
+};
+const SHOWCASE_ICON = { listings: Home, menu: UtensilsCrossed, products: ShoppingBag, booking: CalendarCheck };
 
 const DEFAULT_THEME = { background: '#0b1026', surface: '#131d3d', accent: '#ff7a00', text: '#f8fafc', muted: '#b6c0d9' };
 
@@ -39,6 +49,10 @@ export default function DemoPreview() {
   const [error, setError] = useState('');
   const [page, setPage] = useState<PageKey>('home');
   const [openFaq, setOpenFaq] = useState(0);
+  const [activeItem, setActiveItem] = useState(-1);
+  const [cart, setCart] = useState<Record<number, number>>({});
+  const [formChoice, setFormChoice] = useState('');
+  const [formNotice, setFormNotice] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -76,6 +90,11 @@ export default function DemoPreview() {
   const highlights = asPairs(content.highlights);
   const process = asPairs(content.process);
   const faq: Faq[] = Array.isArray(content.faq) ? content.faq.filter((item: any) => item && item.question && item.answer) : [];
+  const showcaseKind: ShowcaseKind = ['listings', 'menu', 'products', 'booking'].includes(content.showcase?.kind) ? content.showcase.kind : 'booking';
+  const showcaseItems: ShowcaseItem[] = Array.isArray(content.showcase?.items) ? content.showcase.items.filter((item: any) => item && item.title && item.detail) : [];
+  const showcaseText = SHOWCASE_TEXT[showcaseKind];
+  const ShowcaseIcon = SHOWCASE_ICON[showcaseKind];
+  const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const contact = content.contact || {};
   const instagram = typeof contact.instagram === 'string' ? contact.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') : '';
 
@@ -90,6 +109,7 @@ export default function DemoPreview() {
     { key: 'home', label: 'Home' },
     { key: 'about', label: 'About' },
     { key: 'services', label: 'Services' },
+    ...(showcaseItems.length ? [{ key: 'showcase' as PageKey, label: showcaseText.nav }] : []),
     ...(faq.length ? [{ key: 'faq' as PageKey, label: 'FAQ' }] : []),
     { key: 'contact', label: 'Contact' },
   ];
@@ -98,6 +118,20 @@ export default function DemoPreview() {
   const contactAction = () => {
     if (multiPage) return goTo('contact');
     document.getElementById('demo-contact')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const field: CSSProperties = { backgroundColor: theme.background, color: theme.text, border, borderRadius: 14 };
+  const changeCart = (index: number, amount: number) => setCart((current) => {
+    const next = { ...current, [index]: Math.max(0, (current[index] || 0) + amount) };
+    if (!next[index]) delete next[index];
+    return next;
+  });
+  const chooseItem = (index: number) => {
+    setFormNotice(false);
+    if (showcaseKind === 'products') return changeCart(index, 1);
+    setFormChoice(showcaseItems[index]?.title || '');
+    if (multiPage) setActiveItem(index);
+    if (showcaseKind !== 'menu') document.getElementById('demo-showcase-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const heading = (eyebrow: string, title: string) => (
@@ -114,7 +148,7 @@ export default function DemoPreview() {
         <span className="inline-flex items-center gap-1 align-middle" style={accentText}><Sparkles size={12} /> Demo concept</span>
       </div>
 
-      <header className="sticky top-0 z-20" style={{ backgroundColor: `${theme.background}f2`, borderBottom: border }}>
+      <header className="sticky top-0 z-20" style={{ backgroundColor: theme.background, borderBottom: border }}>
         <div className={`${wrap} flex items-center justify-between gap-4 py-4`}>
           <button type="button" onClick={() => goTo('home')} className="min-w-0 truncate text-left text-lg font-black tracking-tight">{businessName}</button>
           {multiPage && (
@@ -179,6 +213,79 @@ export default function DemoPreview() {
               </Reveal>
             ))}
           </div>
+        </section>
+      )}
+
+      {show('showcase') && showcaseItems.length > 0 && (
+        <section className={`${wrap} pb-16 sm:pb-24 ${multiPage ? 'pt-14' : ''}`}>
+          {heading(showcaseText.eyebrow, content.showcase?.title || showcaseText.nav)}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {showcaseItems.map((item, index) => (
+              <Reveal key={`${item.title}-${index}`} animated={animated} className="flex flex-col overflow-hidden" style={card}>
+                <div className="relative grid h-36 place-items-center" style={{ background: `linear-gradient(135deg, ${theme.accent}55, ${theme.background})` }}>
+                  <ShowcaseIcon size={40} style={accentText} />
+                  <span className="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em]" style={{ backgroundColor: theme.background, color: theme.muted }}>Sample</span>
+                </div>
+                <div className="flex flex-1 flex-col p-5">
+                  {item.subtitle && <p className="text-xs font-bold uppercase tracking-[0.16em]" style={accentText}>{item.subtitle}</p>}
+                  <h3 className="mt-2 text-lg font-bold">{item.title}</h3>
+                  <p className="mt-2 flex-1 leading-7" style={muted}>{item.detail}</p>
+                  {showcaseKind === 'products' && cart[index] ? (
+                    <div className="mt-4 inline-flex items-center gap-3 self-start rounded-full px-2 py-1.5" style={{ border }}>
+                      <button type="button" aria-label={`Remove one ${item.title}`} onClick={() => changeCart(index, -1)} className="grid h-8 w-8 place-items-center rounded-full" style={primaryButton}><Minus size={14} /></button>
+                      <span className="min-w-5 text-center font-bold">{cart[index]}</span>
+                      <button type="button" aria-label={`Add one ${item.title}`} onClick={() => changeCart(index, 1)} className="grid h-8 w-8 place-items-center rounded-full" style={primaryButton}><Plus size={14} /></button>
+                    </div>
+                  ) : (showcaseKind !== 'menu' || multiPage) && (
+                    <button type="button" onClick={() => chooseItem(index)} className="mt-4 self-start rounded-full px-4 py-2 text-sm font-bold" style={primaryButton}>{showcaseText.action}</button>
+                  )}
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          {multiPage && activeItem >= 0 && showcaseItems[activeItem] && (
+            <div className="mt-6 p-6 sm:p-8" style={{ ...card, borderColor: theme.accent }}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em]" style={accentText}>Sample {showcaseItems[activeItem].subtitle ? `- ${showcaseItems[activeItem].subtitle}` : 'details'}</p>
+                  <h3 className="mt-2 text-2xl font-black">{showcaseItems[activeItem].title}</h3>
+                </div>
+                <button type="button" aria-label="Close details" onClick={() => setActiveItem(-1)} className="grid h-9 w-9 shrink-0 place-items-center rounded-full" style={{ border, color: theme.text }}><X size={16} /></button>
+              </div>
+              <p className="mt-4 max-w-2xl text-lg leading-8" style={muted}>{showcaseItems[activeItem].detail}</p>
+              <p className="mt-4 text-sm" style={muted}>Photos, full details and live availability are added when the real site is built.</p>
+            </div>
+          )}
+
+          <form id="demo-showcase-form" onSubmit={(event) => { event.preventDefault(); setFormNotice(true); }} className="mt-6 grid gap-4 p-6 sm:p-8 md:grid-cols-2" style={card}>
+            <div className="md:col-span-2">
+              <h3 className="text-2xl font-black">{showcaseText.formTitle}</h3>
+              {showcaseKind === 'products' && <p className="mt-2" style={muted}>{cartCount ? `${cartCount} item${cartCount === 1 ? '' : 's'} in your cart.` : 'Your cart is empty. Add a product above.'}</p>}
+            </div>
+            {showcaseKind === 'products' && cartCount > 0 && (
+              <ul className="space-y-2 md:col-span-2">
+                {Object.keys(cart).map((key) => <li key={key} className="flex items-center justify-between gap-4 px-4 py-3" style={field}><span className="min-w-0 truncate">{showcaseItems[Number(key)]?.title}</span><span className="font-bold">x {cart[Number(key)]}</span></li>)}
+              </ul>
+            )}
+            {showcaseKind !== 'products' && showcaseKind !== 'menu' && (
+              <label className="text-sm font-semibold md:col-span-2">{showcaseKind === 'listings' ? 'Listing' : 'Service'}
+                <select value={formChoice} onChange={(event) => setFormChoice(event.target.value)} className="mt-2 w-full px-4 py-3 outline-none" style={field}>
+                  <option value="">Choose one</option>
+                  {showcaseItems.map((item, index) => <option key={`${item.title}-${index}`} value={item.title}>{item.title}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="text-sm font-semibold">Your name<input type="text" autoComplete="name" className="mt-2 w-full px-4 py-3 outline-none" style={field} /></label>
+            <label className="text-sm font-semibold">Phone or email<input type="text" className="mt-2 w-full px-4 py-3 outline-none" style={field} /></label>
+            {(showcaseText.extra === 'date' || showcaseText.extra === 'guests') && <label className="text-sm font-semibold">Preferred date<input type="date" className="mt-2 w-full px-4 py-3 outline-none" style={field} /></label>}
+            {showcaseText.extra === 'guests' && <label className="text-sm font-semibold">Guests<input type="number" min={1} max={20} defaultValue={2} className="mt-2 w-full px-4 py-3 outline-none" style={field} /></label>}
+            {showcaseText.extra === 'message' && <label className="text-sm font-semibold md:col-span-2">Message<textarea rows={3} className="mt-2 w-full px-4 py-3 outline-none" style={field} /></label>}
+            <div className="flex flex-wrap items-center gap-4 md:col-span-2">
+              <button type="submit" disabled={showcaseKind === 'products' && !cartCount} className="rounded-2xl px-6 py-3 font-bold disabled:opacity-50" style={primaryButton}>{showcaseText.formButton}</button>
+              {formNotice && <p role="status" className="text-sm font-semibold" style={accentText}>This is a demo. Nothing was sent - this form is connected when the site goes live.</p>}
+            </div>
+          </form>
         </section>
       )}
 
