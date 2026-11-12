@@ -10,6 +10,7 @@ export type DemoJob = {
   templateKey: string;
   styleLevel: DemoStyleLevel;
   generatedBy: 'ai' | 'fallback' | null;
+  aiError: string | null;
   status: DemoJobStatus;
   prompt: string;
   demoUrl: string | null;
@@ -30,8 +31,8 @@ export const demoTemplates = [
 
 export const demoStyleLevels = [
   { key: 'mid', label: 'Mid-Level', hint: 'One clean page' },
-  { key: 'hybrid', label: 'Hybrid', hint: 'Longer page with process' },
-  { key: 'ultra', label: 'Ultra Premium', hint: 'Multi-page with FAQ' },
+  { key: 'hybrid', label: 'Hybrid', hint: 'Longer page with sample screens' },
+  { key: 'ultra', label: 'Ultra Premium', hint: 'Multi-page with full sample flow' },
 ] as const;
 
 export function styleLevelLabel(level: string) {
@@ -78,6 +79,7 @@ export function mapDemoJob(row: any): DemoJob {
     templateKey: template,
     styleLevel: level,
     generatedBy: generatedBy === 'ai' || generatedBy === 'fallback' ? generatedBy : null,
+    aiError: typeof row.content?.aiError === 'string' ? row.content.aiError : null,
     status: row.status,
     prompt: row.prompt,
     demoUrl: row.demo_url || null,
