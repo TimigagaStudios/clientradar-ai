@@ -1,5 +1,5 @@
-import { generateDemoContent, splitTemplateKey, TIER_LIMITS } from './demo-ai.js';
-import type { DemoStyleLevel } from './demo-ai.js';
+import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, TIER_LIMITS } from './demo-ai.js';
+import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { inspectPublicWebsite } from './website-profile.js';
 
 function fallbackContent(lead: any, level: DemoStyleLevel) {
@@ -47,6 +47,45 @@ function fallbackContent(lead: any, level: DemoStyleLevel) {
   };
 }
 
+function fallbackShowcase(kind: DemoShowcaseKind, lead: any, limit: number) {
+  const city = lead.city || 'the local area';
+  const sets: Record<DemoShowcaseKind, { title: string; items: { title: string; subtitle: string; detail: string }[] }> = {
+    listings: { title: 'Featured listings', items: [
+      { title: 'Modern one-bedroom apartment', subtitle: city, detail: '1 bedroom, 1 bathroom, open-plan living space.' },
+      { title: 'Spacious two-bedroom home', subtitle: city, detail: '2 bedrooms, 2 bathrooms, private outdoor area.' },
+      { title: 'Bright studio', subtitle: city, detail: 'Compact studio layout with fitted kitchen.' },
+      { title: 'Family three-bedroom residence', subtitle: city, detail: '3 bedrooms, 2 bathrooms, parking space.' },
+      { title: 'Top-floor apartment', subtitle: city, detail: '2 bedrooms, 1 bathroom, balcony.' },
+      { title: 'Garden-level flat', subtitle: city, detail: '1 bedroom, 1 bathroom, shared garden.' },
+    ] },
+    menu: { title: 'From the menu', items: [
+      { title: 'House special', subtitle: 'Mains', detail: 'The signature dish, prepared fresh to order.' },
+      { title: 'Seasonal starter', subtitle: 'Starters', detail: 'A light plate built around seasonal ingredients.' },
+      { title: 'Grilled favourite', subtitle: 'Mains', detail: 'A grilled classic served with a choice of sides.' },
+      { title: 'Fresh salad bowl', subtitle: 'Light bites', detail: 'Crisp greens with a house dressing.' },
+      { title: 'Homemade dessert', subtitle: 'Desserts', detail: 'A sweet finish made in-house.' },
+      { title: 'Signature drink', subtitle: 'Drinks', detail: 'A refreshing house blend.' },
+    ] },
+    products: { title: 'Featured products', items: [
+      { title: 'Best seller', subtitle: 'Popular', detail: 'A customer favourite from the main range.' },
+      { title: 'New arrival', subtitle: 'Just in', detail: 'The latest addition to the collection.' },
+      { title: 'Everyday essential', subtitle: 'Essentials', detail: 'A dependable choice for daily use.' },
+      { title: 'Gift pick', subtitle: 'Gifts', detail: 'A thoughtful option for someone special.' },
+      { title: 'Premium selection', subtitle: 'Premium', detail: 'A higher-end option with extra detail.' },
+      { title: 'Bundle set', subtitle: 'Sets', detail: 'A matching set that works together.' },
+    ] },
+    booking: { title: 'Book a service', items: [
+      { title: 'Initial consultation', subtitle: 'New customers', detail: 'A first conversation to understand what you need.' },
+      { title: 'Standard appointment', subtitle: 'All customers', detail: 'The most requested service, by appointment.' },
+      { title: 'Follow-up visit', subtitle: 'Returning customers', detail: 'A shorter visit to review progress.' },
+      { title: 'Extended session', subtitle: 'All customers', detail: 'Extra time for more detailed work.' },
+      { title: 'Group booking', subtitle: 'Families and teams', detail: 'One booking for several people.' },
+      { title: 'Priority slot', subtitle: 'Urgent requests', detail: 'Ask the team about the earliest available time.' },
+    ] },
+  };
+  return { title: sets[kind].title, items: sets[kind].items.slice(0, limit) };
+}
+
 function fallbackTheme(lead: any) {
   const palettes = [
     { background: '#0b1026', surface: '#131d3d', accent: '#ff7a00', text: '#f8fafc', muted: '#b6c0d9' },
@@ -90,7 +129,19 @@ export async function processDemoJob(supabase: any, id: string) {
     const stylePrompt = websiteProfile
       ? `${job.prompt}\nExisting website profile: ${JSON.stringify(websiteProfile)}\nPreserve the recognizable brand direction while improving clarity, hierarchy, mobile layout, and conversion flow.`
       : `${job.prompt}\nNo existing website was found. Create a distinctive brand direction based on the business name, category, city, and template. Avoid generic copy and vary palette, tone, layout emphasis, and visual mood between businesses.`;
-    const generated = await generateDemoContent(lead, template, stylePrompt, level);
+    const kind = showcaseKind(template, lead.category);
+    const showcaseLimit = TIER_LIMITS[level].showcase;
+    const fullPrompt = showcaseLimit > 0 ? `${stylePrompt}\n${showcaseRule(kind, showcaseLimit)}` : stylePrompt;
+    // If the AI provider fails, the demo still completes with built-in text and records the reason.
+    let generated: Awaited<ReturnType<typeof generateDemoContent>> = null;
+    let aiError: string | null = null;
+    try {
+      generated = await generateDemoContent(lead, template, fullPrompt, level);
+    } catch (reason) {
+      aiError = reason instanceof Error ? reason.message.slice(0, 200) : 'AI provider failed';
+    }
+    const baseShowcase = showcaseLimit > 0 ? fallbackShowcase(kind, lead, showcaseLimit) : null;
+    const showcase = baseShowcase ? { kind, title: generated?.showcase?.title || baseShowcase.title, items: generated?.showcase?.items || baseShowcase.items, sample: true } : null;
     const content = {
       businessName: lead.business_name || 'Your Business',
       category: lead.category || 'Business',
@@ -98,6 +149,8 @@ export async function processDemoJob(supabase: any, id: string) {
       templateKey: template,
       styleLevel: level,
       generatedBy: generated ? 'ai' : 'fallback',
+      aiError,
+      showcase,
       ...mergeContent(fallbackContent(lead, level), generated),
       contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null },
       theme: generated?.theme || { ...fallbackTheme(lead), source: websiteProfile ? 'website-profile' : 'generated-fallback', websiteProfile },
