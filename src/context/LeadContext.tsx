@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 import { Lead, ActivityLog, LeadStatus, OutreachLog, DemoStatus } from '../types';
 
 interface LeadContextType {
@@ -75,6 +76,18 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     refreshLeads();
+
+    // The API needs a login. Reload the leads when the owner signs in, and
+    // clear them on sign-out. The reload is deferred because Supabase must not
+    // be called from inside this callback.
+    let signedIn: boolean | null = null;
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      const next = Boolean(session);
+      if (signedIn === false && next) window.setTimeout(() => void refreshLeads(), 0);
+      if (signedIn === true && !next) setLeads([]);
+      signedIn = next;
+    });
+    return () => data.subscription.unsubscribe();
   }, []);
 
   const updateLead = async (id: string, updates: Partial<Lead>) => {
