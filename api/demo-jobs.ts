@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireUser } from './lib/auth.js';
 import { processDemoJob } from './lib/demo-job-process.js';
 import { normalizeStyleLevel, tierRules } from './lib/demo-ai.js';
 import type { DemoStyleLevel } from './lib/demo-ai.js';
@@ -33,13 +34,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'GET') {
       const jobId = typeof req.query.jobId === 'string' ? req.query.jobId : '';
-      let query = supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).limit(100);
-      if (jobId) query = query.eq('id', jobId).limit(1);
-      const { data, error } = await query;
+      if (jobId) {
+        // Public: this is what a client sees when opening a demo link. Only the demo itself is returned, never the lead record.
+        const { data, error } = await supabase.from('demo_jobs').select('id, status, template_key, content, demo_url').eq('id', jobId).limit(1);
+        if (error) return res.status(500).json({ success: false, error: error.message });
+        if (!data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
+        return res.status(200).json({ success: true, data: data[0] });
+      }
+      if (!(await requireUser(req, res))) return;
+      const { data, error } = await supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).limit(100);
       if (error) return res.status(500).json({ success: false, error: error.message });
-      if (jobId && !data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
-      return res.status(200).json({ success: true, data: jobId ? data[0] : data });
+      return res.status(200).json({ success: true, data });
     }
+    if (!(await requireUser(req, res))) return;
 
     if (req.method === 'POST') {
       const { leadId, jobId, action } = req.body || {};

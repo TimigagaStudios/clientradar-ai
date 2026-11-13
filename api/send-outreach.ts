@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireUser } from './lib/auth.js';
 
 const BREVO_API_KEY = process.env.BREVO_API_KEY as string;
 const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME as string;
@@ -7,6 +8,7 @@ const BREVO_REPLY_TO_EMAIL = process.env.BREVO_REPLY_TO_EMAIL as string;
 const BREVO_REPLY_TO_NAME = process.env.BREVO_REPLY_TO_NAME as string;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!(await requireUser(req, res))) return;
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,

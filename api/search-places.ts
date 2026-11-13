@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireUser } from './lib/auth.js';
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY as string;
 
@@ -27,6 +28,7 @@ async function fetchPlaceDetails(placeId: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!(await requireUser(req, res))) return;
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,
