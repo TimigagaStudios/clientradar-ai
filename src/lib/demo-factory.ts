@@ -39,6 +39,15 @@ export function styleLevelLabel(level: string) {
   return demoStyleLevels.find((item) => item.key === level)?.label || 'Mid-Level';
 }
 
+// Deletes all demo jobs of one lead and clears its demo link and status.
+export async function deleteLeadDemo(leadId: string): Promise<void> {
+  const response = await fetch(`/api/demo-jobs?leadId=${encodeURIComponent(leadId)}`, { method: 'DELETE' });
+  const text = await response.text();
+  let result: any = null;
+  try { result = JSON.parse(text); } catch { result = null; }
+  if (!response.ok || !result?.success) throw new Error(result?.error || `Could not delete demo (${response.status}).`);
+}
+
 // Suggests a level from the lead's value and priority. The user can always override it.
 export function suggestStyleLevel(lead?: Pick<Lead, 'priority' | 'dealValue'> | null): DemoStyleLevel {
   const value = Number(lead?.dealValue) || 0;
