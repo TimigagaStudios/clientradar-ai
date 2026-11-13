@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { processDemoJob } from './lib/demo-job-process.js';
+import { handleSpeak } from './lib/assistant-voice.js';
 import { normalizeStyleLevel, tierRules } from './lib/demo-ai.js';
 import type { DemoStyleLevel } from './lib/demo-ai.js';
 
@@ -63,6 +64,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true });
     }
     if (!(await requireUser(req, res))) return;
+
+    // Master Agent voice (kept here so no extra server function is needed).
+    if (req.method === 'POST' && req.body?.action === 'speak') return handleSpeak(req, res);
 
     if (req.method === 'POST') {
       const { leadId, jobId, action } = req.body || {};
