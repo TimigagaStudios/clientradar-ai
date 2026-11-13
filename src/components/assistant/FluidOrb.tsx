@@ -29,7 +29,7 @@ const LABELS: Record<OrbState, string> = {
  * Master Agent presence: fluid blue-white orb with an animated face.
  * Falls back to the previous particle presence if WebGL is unavailable.
  */
-const FluidOrb: React.FC<FluidOrbProps> = ({ state = 'idle', size = 340, level = null, className = '' }) => {
+const FluidOrb: React.FC<FluidOrbProps> = ({ state = 'idle', size = 408, level = null, className = '' }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const orbRef = useRef<OrbHandle | null>(null);
   const stateRef = useRef<OrbState>(state);
