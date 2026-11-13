@@ -30,6 +30,8 @@ const uid = () => Math.random().toString(36).slice(2, 9);
 
 const VOICE_KEY = 'cr-voice-on';
 const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const audioContextClass = () => (typeof window === 'undefined' ? null : window.AudioContext || (window as any).webkitAudioContext || null);
+const canVoice = () => canSpeak() || Boolean(audioContextClass());
 
 // Turns a chat reply (which may contain markup) into plain sentences for speech.
 const toSpeech = (html: string) =>
@@ -171,10 +173,98 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     try { localStorage.setItem(VOICE_KEY, on ? '1' : '0'); } catch { /* storage blocked */ }
   };
 
+  // Natural voice (server) with real loudness; the device voice is the fallback.
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const audioCacheRef = useRef<{ text: string; buffer: AudioBuffer } | null>(null);
+  const speakSeqRef = useRef(0);
+  const loadingVoiceRef = useRef(false);
+  const levelFrameRef = useRef(0);
+  const [voiceNote, setVoiceNote] = useState('');
+
+  // Must run inside a tap or key press so the phone allows sound.
+  const unlockAudio = () => {
+    try {
+      const AudioContextCtor = audioContextClass();
+      if (!AudioContextCtor) return null;
+      if (!audioContextRef.current) audioContextRef.current = new AudioContextCtor();
+      if (audioContextRef.current.state === 'suspended') void audioContextRef.current.resume();
+      return audioContextRef.current;
+    } catch {
+      return null;
+    }
+  };
+
   const stopSpeaking = () => {
+    speakSeqRef.current += 1;
+    loadingVoiceRef.current = false;
     if (canSpeak()) window.speechSynthesis.cancel();
     utteranceRef.current = null;
+    const source = audioSourceRef.current;
+    audioSourceRef.current = null;
+    if (source) {
+      try { source.stop(); } catch { /* already stopped */ }
+    }
+    if (levelFrameRef.current) cancelAnimationFrame(levelFrameRef.current);
+    levelFrameRef.current = 0;
     setVoiceLevel(null);
+  };
+
+  // Plays the natural voice. Resolves false when it is not possible on this device; throws with the reason when the server cannot do it.
+  const speakNatural = async (text: string, seq: number): Promise<boolean> => {
+    const context = unlockAudio();
+    if (!context) return false;
+    let buffer = audioCacheRef.current?.text === text ? audioCacheRef.current.buffer : null;
+    if (!buffer) {
+      const response = await fetch('/api/demo-jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'speak', text }),
+      });
+      if (!response.ok || !(response.headers.get('content-type') || '').startsWith('audio/')) {
+        let reason = `error ${response.status}`;
+        try { reason = (await response.json()).error || reason; } catch { /* not JSON */ }
+        throw new Error(reason);
+      }
+      buffer = await context.decodeAudioData(await response.arrayBuffer());
+      audioCacheRef.current = { text, buffer };
+    }
+    if (seq !== speakSeqRef.current) return true;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyser.connect(context.destination);
+    const samples = new Uint8Array(analyser.fftSize);
+    let lastPush = 0;
+    const tick = (now: number) => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (let index = 0; index < samples.length; index += 1) {
+        const value = (samples[index] - 128) / 128;
+        sum += value * value;
+      }
+      if (now - lastPush > 60) {
+        lastPush = now;
+        setVoiceLevel(Math.min(1, Math.sqrt(sum / samples.length) * 4.5));
+      }
+      levelFrameRef.current = requestAnimationFrame(tick);
+    };
+    source.onended = () => {
+      if (audioSourceRef.current !== source) return;
+      audioSourceRef.current = null;
+      if (levelFrameRef.current) cancelAnimationFrame(levelFrameRef.current);
+      levelFrameRef.current = 0;
+      setVoiceLevel(null);
+      setPresenceState((current) => (current === 'speaking' ? 'idle' : current));
+    };
+    audioSourceRef.current = source;
+    setPresenceState('speaking');
+    source.start();
+    levelFrameRef.current = requestAnimationFrame(tick);
+    return true;
   };
 
   // Returns true when speech started. The orb stays in the speaking state until the voice ends.
@@ -209,16 +299,38 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     }
   };
 
+  // Natural voice first; if it cannot be used, the device voice reads the text.
+  const say = async (text: string) => {
+    stopSpeaking();
+    const seq = speakSeqRef.current;
+    loadingVoiceRef.current = true;
+    setPresenceState('thinking');
+    let reason = '';
+    try {
+      if (await speakNatural(text, seq)) {
+        if (seq === speakSeqRef.current) { loadingVoiceRef.current = false; setVoiceNote(''); }
+        return;
+      }
+    } catch (error) {
+      reason = error instanceof Error ? error.message : 'unknown reason';
+    }
+    if (seq !== speakSeqRef.current) return;
+    loadingVoiceRef.current = false;
+    if (reason) setVoiceNote(`Natural voice not used: ${reason}. Using the phone voice.`);
+    if (!speak(text)) setPresenceState('idle');
+  };
+
   const handleOrbTap = () => {
-    if (!canSpeak()) return;
-    if (utteranceRef.current) {
+    if (!canVoice()) return;
+    if (utteranceRef.current || audioSourceRef.current || loadingVoiceRef.current) {
       stopSpeaking();
       setPresenceState('idle');
       rememberVoice(false);
       return;
     }
     rememberVoice(true);
-    speak(`Good ${greeting()}, Timothy. ${briefingText}`);
+    unlockAudio();
+    void say(`Good ${greeting()}, Timothy. ${briefingText}`);
   };
 
   useEffect(() => {
@@ -243,6 +355,9 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         window.clearTimeout(levelTimerRef.current);
       }
       if (canSpeak()) window.speechSynthesis.cancel();
+      if (levelFrameRef.current) cancelAnimationFrame(levelFrameRef.current);
+      try { audioSourceRef.current?.stop(); } catch { /* already stopped */ }
+      void audioContextRef.current?.close().catch(() => undefined);
     },
     []
   );
@@ -273,7 +388,10 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       ]);
       agentTimerRef.current = null;
 
-      if (voiceOn && speak(toSpeech(reply))) return;
+      if (voiceOn) {
+        void say(toSpeech(reply));
+        return;
+      }
 
       // Voice off: stay in the responding state for a reading-time estimate.
       speakTimerRef.current = window.setTimeout(() => {
@@ -292,6 +410,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       { id: uid(), side: 'me', html: value },
     ]);
     setInput('');
+    if (voiceOn) unlockAudio();
     runAgent(value);
   };
 
@@ -353,15 +472,16 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
               state={orbState}
               size={408}
               level={voiceLevel}
-              onTap={canSpeak() ? handleOrbTap : undefined}
-              tapLabel={utteranceRef.current ? 'Stop speaking' : 'Hear your briefing'}
+              onTap={canVoice() ? handleOrbTap : undefined}
+              tapLabel={presenceState === 'speaking' ? 'Stop speaking' : 'Hear your briefing'}
             />
           </div>
 
           <div className="cr-greet">
-            {canSpeak() && !voiceUsed && (
+            {canVoice() && !voiceUsed && (
               <p className="fluid-orb-hint">Tap the orb to hear your briefing</p>
             )}
+            {voiceNote && <p className="fluid-orb-hint" role="status">{voiceNote}</p>}
             <h1>
               Good {greeting()}, <b>Timothy</b>.
             </h1>
