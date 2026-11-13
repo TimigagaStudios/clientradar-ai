@@ -1,7 +1,8 @@
 // Fluid orb engine for the Master Agent presence.
 // Plain WebGL (no extra dependency): one full-screen quad, one fragment shader.
-// The fluid surface and the face are separate sets of uniforms, so blinking,
-// gaze and expression change without restarting the fluid animation.
+// The fluid surface, the face, the lighting and the atmosphere are separate
+// blocks with their own controls, so blinking, gaze and expression change
+// without restarting the fluid animation.
 
 export type OrbState =
   | 'boot'
@@ -34,19 +35,20 @@ interface Look {
   happy: number;
   concern: number;
   face: number;
+  atmo: number;
 }
 
-const BASE: Look = { speed: 0.55, bright: 1, deep: 0, orange: 0.04, scale: 1, flash: 0, warn: 0, open: 1, narrow: 0, happy: 0, concern: 0, face: 1 };
+const BASE: Look = { speed: 0.55, bright: 1, deep: 0, orange: 0.04, scale: 1, flash: 0, warn: 0, open: 1, narrow: 0, happy: 0, concern: 0, face: 1, atmo: 1 };
 
 const LOOKS: Record<OrbState, Look> = {
-  boot: { ...BASE, speed: 0.4, bright: 0.72, open: 0, face: 0 },
+  boot: { ...BASE, speed: 0.4, bright: 0.72, open: 0, face: 0, atmo: 0.35 },
   idle: BASE,
-  listening: { ...BASE, speed: 0.7, bright: 1.16, scale: 1.035, open: 1.12 },
-  thinking: { ...BASE, speed: 1.9, bright: 0.96, deep: 0.6, narrow: 0.3 },
-  delegating: { ...BASE, speed: 1.35, bright: 1.04, orange: 1 },
+  listening: { ...BASE, speed: 0.7, bright: 1.16, scale: 1.035, open: 1.12, atmo: 1.4 },
+  thinking: { ...BASE, speed: 1.9, bright: 0.96, deep: 0.6, narrow: 0.3, atmo: 1.15 },
+  delegating: { ...BASE, speed: 1.35, bright: 1.04, orange: 1, atmo: 1.2 },
   speaking: { ...BASE, speed: 1, bright: 1.08 },
-  success: { ...BASE, speed: 0.8, bright: 1.12, flash: 1, happy: 1 },
-  error: { ...BASE, speed: 0.38, bright: 0.86, warn: 1, concern: 1, narrow: 0.25 },
+  success: { ...BASE, speed: 0.8, bright: 1.12, flash: 1, happy: 1, atmo: 1.45 },
+  error: { ...BASE, speed: 0.38, bright: 0.86, warn: 1, concern: 1, narrow: 0.25, atmo: 0.75 },
 };
 
 const VERTEX = `
@@ -74,6 +76,7 @@ uniform float uNarrow;
 uniform float uHappy;
 uniform float uConcern;
 uniform float uFace;
+uniform float uAtmo;
 uniform vec2 uGaze;
 
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -150,17 +153,59 @@ float eyeShape(vec2 p, float side) {
   return mix(capsule, arc, uHappy);
 }
 
+// ---- Lighting layer -------------------------------------------------------
+// Uneven light along the silhouette: a strong lobe on the shadow side, a
+// weaker one on the lit side, both drifting slowly. Never a uniform ring.
+float rimLobes(float ang, float t) {
+  float drift = 0.28 * sin(t * 0.13) + 0.12 * sin(t * 0.31 + 1.7);
+  float back = pow(0.5 + 0.5 * cos(ang + 0.85 - drift), 3.0);
+  float key = pow(0.5 + 0.5 * cos(ang - 2.25 - drift * 0.6), 5.0);
+  float shimmer = 0.82 + 0.18 * sin(ang * 3.0 + t * 0.45);
+  return (back + key * 0.55) * shimmer;
+}
+
+// ---- Atmosphere layer -----------------------------------------------------
+// Light behind the orb: soft back light, faint wisps, a few motes.
+vec3 atmosphere(vec2 p, float r, float ang, float lobes, float t) {
+  float d = max(r - 1.0, 0.0);
+  vec3 blue = vec3(0.08, 0.36, 1.0);
+  vec3 cyan = vec3(0.16, 0.78, 1.0);
+  vec3 orange = vec3(1.0, 0.5, 0.14);
+  vec3 tint = mix(blue, orange, uOrange * 0.3);
+  tint = mix(tint, vec3(0.95, 0.3, 0.16), uWarn * 0.4);
+
+  vec3 a = tint * exp(-d * 2.4) * 0.2;
+  a += mix(tint, cyan, 0.55) * exp(-d * 9.0) * (0.12 + 0.62 * lobes);
+
+  vec2 dir = p / max(r, 0.001);
+  float wisp = snoise(vec3(dir * 1.35 + vec2(t * 0.03, 0.0), r * 1.5 - t * 0.2));
+  wisp = smoothstep(0.1, 0.85, wisp * 0.5 + 0.5);
+  float ember = smoothstep(0.55, 0.95, sin(ang * 2.0 + t * 0.3) * 0.5 + 0.5);
+  a += mix(cyan, orange, ember * uOrange * 0.75) * wisp * exp(-d * 3.2) * 0.2;
+
+  for (int i = 0; i < 6; i++) {
+    float k = float(i);
+    float pa = k * 1.047 + 0.6 * sin(k * 12.9) + t * (0.02 + 0.012 * sin(k * 4.1));
+    float pr = 1.24 + 0.2 * sin(k * 7.3) + 0.05 * sin(t * 0.22 + k * 2.0);
+    vec2 pp = vec2(cos(pa), sin(pa)) * pr;
+    float twinkle = 0.45 + 0.55 * sin(t * 0.9 + k * 2.4);
+    vec2 q = p - pp;
+    a += vec3(0.6, 0.9, 1.0) * exp(-dot(q, q) * 2600.0) * twinkle * 0.7;
+  }
+  return a * uAtmo * clamp(uBright + uFlash * 0.4, 0.0, 1.6);
+}
+
 void main() {
   vec2 uv = (gl_FragCoord.xy / uRes) * 2.0 - 1.0;
-  float R = 0.72 * uScale;
+  float R = 0.6 * uScale;
   vec2 p = uv / R;
   float r = length(p);
   float px = 2.0 / (R * uRes.x);
 
-  vec3 haloTint = mix(vec3(0.10, 0.42, 1.0), vec3(1.0, 0.5, 0.14), uOrange * 0.3);
-  haloTint = mix(haloTint, vec3(0.95, 0.3, 0.16), uWarn * 0.45);
-  float halo = exp(-max(r - 1.0, 0.0) * 6.0) * 0.5 * clamp(uBright + uFlash * 0.4, 0.0, 1.6);
-  halo *= smoothstep(1.0, 0.84, length(uv));
+  float ang = atan(p.y, p.x);
+  float lobes = rimLobes(ang, uTime);
+  vec3 air = vec3(0.0);
+  if (r > 1.0 - px) air = atmosphere(p, r, ang, lobes, uTime) * smoothstep(1.0, 0.8, length(uv));
 
   vec3 col = vec3(0.0);
   if (r < 1.0 + px) {
@@ -185,11 +230,13 @@ void main() {
     col = mix(col, vec3(1.0, 0.5, 0.12), ember * uOrange * 0.42);
 
     vec3 n = vec3(p, z);
-    float light = dot(n, normalize(vec3(-0.35, 0.5, 0.8)));
-    col *= 0.68 + 0.42 * light;
+    vec3 L = normalize(vec3(-0.5, 0.58, 0.64));
+    float diffuse = dot(n, L);
+    col *= mix(0.06, 1.16, smoothstep(-0.3, 0.82, diffuse));
+    float gloss = max(dot(n, normalize(L + vec3(0.0, 0.0, 1.0))), 0.0);
+    col += vec3(0.62, 0.82, 1.0) * (pow(gloss, 42.0) * 0.38 + pow(gloss, 7.0) * 0.1);
     float fres = pow(1.0 - z, 2.5);
-    col += vec3(0.35, 0.65, 1.0) * fres * 0.55;
-    col += vec3(0.5, 0.7, 1.0) * smoothstep(0.55, 0.0, length(p - vec2(-0.38, 0.45))) * 0.12;
+    col += vec3(0.14, 0.72, 1.0) * fres * (0.14 + 1.05 * lobes);
 
     col = mix(col, vec3(dot(col, vec3(0.3, 0.6, 0.1))), uWarn * 0.22);
     col += vec3(0.95, 0.28, 0.12) * fres * uWarn * 0.75;
@@ -206,13 +253,13 @@ void main() {
   }
 
   float inside = smoothstep(1.0 + px, 1.0 - px, r);
-  vec3 outCol = mix(haloTint * halo, col, inside);
-  float alpha = mix(halo, 1.0, inside);
+  vec3 outCol = mix(air, col, inside);
+  float alpha = mix(clamp(max(air.r, max(air.g, air.b)), 0.0, 1.0), 1.0, inside);
   gl_FragColor = vec4(outCol, alpha);
 }
 `;
 
-const UNIFORMS = ['uRes', 'uTime', 'uBright', 'uDeep', 'uOrange', 'uScale', 'uFlash', 'uWarn', 'uOpen', 'uNarrow', 'uHappy', 'uConcern', 'uFace', 'uGaze'] as const;
+const UNIFORMS = ['uRes', 'uTime', 'uBright', 'uDeep', 'uOrange', 'uScale', 'uFlash', 'uWarn', 'uOpen', 'uNarrow', 'uHappy', 'uConcern', 'uFace', 'uAtmo', 'uGaze'] as const;
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
@@ -348,12 +395,14 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
 
     let scale = current.scale;
     let bright = current.bright;
+    let atmo = current.atmo;
     if (!reduced) {
       if (state === 'listening') scale += 0.008 * Math.sin(clock * 2.2);
       if (state === 'speaking') {
         const voice = level !== null ? Math.max(0, Math.min(1, level)) : (0.5 + 0.5 * Math.sin(clock * 7.3)) * (0.55 + 0.45 * Math.sin(clock * 2.1 + 1));
         scale += 0.032 * voice;
         bright += 0.09 * voice;
+        atmo += 0.35 * voice;
       }
     }
 
@@ -372,6 +421,7 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
     gl.uniform1f(locations.uHappy, current.happy);
     gl.uniform1f(locations.uConcern, current.concern);
     gl.uniform1f(locations.uFace, current.face);
+    gl.uniform1f(locations.uAtmo, atmo);
     gl.uniform2f(locations.uGaze, gaze.x, gaze.y);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     frame = requestAnimationFrame(render);
