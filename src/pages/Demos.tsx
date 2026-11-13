@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3 } from 'lucide-react';
+import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
-import { demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
+import { deleteLeadDemo, demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
 
 const parseDemoResponse = async (response: Response) => {
   const text = await response.text();
@@ -81,6 +81,25 @@ const Demos = () => {
     }
   };
 
+  const [deletingLeadId, setDeletingLeadId] = useState('');
+  const handleDeleteDemo = async (leadId: string, name: string) => {
+    if (!leadId || deletingLeadId) return;
+    if (!window.confirm(`Delete the demo for ${name}? Its preview link will stop working. The lead itself is kept.`)) return;
+    setDeletingLeadId(leadId);
+    setJobError('');
+    try {
+      await deleteLeadDemo(leadId);
+      await refreshLeads();
+      await refreshJobs();
+      handleSelectLead(leadId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      setJobError(error instanceof Error ? error.message : 'Could not delete demo.');
+    } finally {
+      setDeletingLeadId('');
+    }
+  };
+
   const demoLeads = useMemo(() => {
     return leads.filter((lead: any) => lead.demoLink || lead.demoStatus);
   }, [leads]);
@@ -149,7 +168,7 @@ const Demos = () => {
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 
-      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : ' - built-in text') : ''}</p>{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}</div></div>; })}</div></section>}
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : ' - built-in text') : ''}</p>{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}<button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button></div></div>; })}</div></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
@@ -257,6 +276,15 @@ const Demos = () => {
                       Open Demo
                     </a>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteDemo(lead.id, lead.businessName)}
+                    disabled={deletingLeadId === lead.id}
+                    className="btn-neumorph px-4 py-2 text-sm gap-2 inline-flex items-center text-red-500 disabled:opacity-50"
+                  >
+                    <Trash2 size={14} />
+                    {deletingLeadId === lead.id ? 'Deleting...' : 'Delete Demo'}
+                  </button>
                 </div>
               </div>
             </div>
