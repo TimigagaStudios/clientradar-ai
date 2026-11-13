@@ -39,12 +39,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { data, error } = await supabase.from('demo_jobs').select('id, status, template_key, content, demo_url').eq('id', jobId).limit(1);
         if (error) return res.status(500).json({ success: false, error: error.message });
         if (!data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
-        return res.status(200).json({ success: true, data: data[0] });
+        const { stats: _stats, aiError: _aiError, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
+        return res.status(200).json({ success: true, data: { ...data[0], content: publicContent } });
       }
       if (!(await requireUser(req, res))) return;
       const { data, error } = await supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).limit(100);
       if (error) return res.status(500).json({ success: false, error: error.message });
       return res.status(200).json({ success: true, data });
+    }
+    if (req.method === 'POST' && req.body?.action === 'view') {
+      // Public: the demo page reports that a visitor opened it. Counted in content.stats; views closer than 5 seconds apart count once.
+      const viewId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
+      if (!/^[0-9a-f-]{36}$/i.test(viewId)) return res.status(400).json({ success: false, error: 'jobId is required' });
+      const { data: row } = await supabase.from('demo_jobs').select('id, status, content').eq('id', viewId).maybeSingle();
+      if (row && row.status === 'ready' && row.content) {
+        const stats = row.content.stats || {};
+        const now = new Date();
+        if (now.getTime() - (Date.parse(stats.lastViewedAt || '') || 0) > 5000) {
+          const next = { views: (Number(stats.views) || 0) + 1, firstViewedAt: stats.firstViewedAt || now.toISOString(), lastViewedAt: now.toISOString() };
+          await supabase.from('demo_jobs').update({ content: { ...row.content, stats: next } }).eq('id', viewId);
+        }
+      }
+      return res.status(200).json({ success: true });
     }
     if (!(await requireUser(req, res))) return;
 
