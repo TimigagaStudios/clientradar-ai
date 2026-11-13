@@ -28,6 +28,7 @@ import {
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
 import { cn } from '../utils/cn';
+import { deleteLeadDemo } from '../lib/demo-factory';
 
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -39,9 +40,12 @@ const LeadDetail = () => {
     addDemoLink,
     updateLead,
     deleteLead,
+    refreshLeads,
   } = useLeads() as any;
 
   const [demoUrl, setDemoUrl] = useState('');
+  const [deletingDemo, setDeletingDemo] = useState(false);
+  const [demoError, setDemoError] = useState('');
   const [fetchedLead, setFetchedLead] = useState<any | null>(null);
   const [fetchingSingle, setFetchingSingle] = useState(false);
 
@@ -211,6 +215,22 @@ const LeadDetail = () => {
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!lead) return;
     updateLeadStatus(lead.id, e.target.value as LeadStatus);
+  };
+
+  const handleDeleteDemo = async () => {
+    if (!lead || deletingDemo) return;
+    if (!window.confirm(`Delete the demo for ${lead.businessName}? Its preview link will stop working. The lead itself is kept.`)) return;
+    setDeletingDemo(true);
+    setDemoError('');
+    try {
+      await deleteLeadDemo(lead.id);
+      if (fetchedLead) setFetchedLead({ ...fetchedLead, demoLink: undefined, demoStatus: 'Not Started' });
+      await refreshLeads();
+    } catch (error) {
+      setDemoError(error instanceof Error ? error.message : 'Could not delete demo.');
+    } finally {
+      setDeletingDemo(false);
+    }
   };
 
   const handleDemoSubmit = (e: React.FormEvent) => {
@@ -728,6 +748,27 @@ const LeadDetail = () => {
                 </button>
               </form>
             )}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              {lead.demoLink || (lead.demoStatus && lead.demoStatus !== 'Not Started') ? (
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteDemo()}
+                  disabled={deletingDemo}
+                  className="btn-neumorph px-4 py-2 text-sm font-semibold inline-flex items-center gap-2 text-red-500 disabled:opacity-50"
+                >
+                  <Trash2 size={15} /> {deletingDemo ? 'Deleting...' : 'Delete demo'}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate('/demos')}
+                  className="btn-neumorph px-4 py-2 text-sm font-semibold inline-flex items-center gap-2"
+                >
+                  <Globe size={15} /> Create demo in Demo Factory
+                </button>
+              )}
+              {demoError && <p className="text-sm text-red-500">{demoError}</p>}
+            </div>
           </div>
 
           {/* Notes (Original) */}
