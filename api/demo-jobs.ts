@@ -60,6 +60,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await supabase.from('leads').update({ demo_status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', leadId);
       return res.status(201).json({ success: true, data });
     }
+    if (req.method === 'DELETE') {
+      // Removes every demo job of one lead and clears the lead's demo link, so a new demo can be made.
+      const leadId = typeof req.query.leadId === 'string' ? req.query.leadId : (typeof req.body?.leadId === 'string' ? req.body.leadId : '');
+      if (!leadId) return res.status(400).json({ success: false, error: 'leadId is required' });
+      const { data: removed, error } = await supabase.from('demo_jobs').delete().eq('lead_id', leadId).select('id');
+      if (error) return res.status(500).json({ success: false, error: error.message });
+      const { error: leadError } = await supabase.from('leads').update({ demo_status: 'Not Started', demo_link: null, updated_at: new Date().toISOString() }).eq('id', leadId);
+      if (leadError) return res.status(500).json({ success: false, error: leadError.message });
+      return res.status(200).json({ success: true, data: { leadId, removedJobs: removed?.length || 0 } });
+    }
     return res.status(405).json({ success: false, error: 'Method not allowed' });
   } catch (error) {
     console.error('demo-jobs API error:', error);
