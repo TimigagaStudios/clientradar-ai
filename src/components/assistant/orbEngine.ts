@@ -19,6 +19,12 @@ export interface OrbHandle {
   /** Voice loudness 0..1 while speaking. Pass null when no audio data exists. */
   setLevel: (level: number | null) => void;
   setReducedMotion: (reduced: boolean) => void;
+  /** Point the eyes at something: x and y from -1 to 1 (right and up are positive). Pass null to release. */
+  setLook: (x: number | null, y?: number) => void;
+  /** A touch: quick blink and a soft flash. */
+  poke: () => void;
+  /** Resting: eyes closed, light dimmed. */
+  setAsleep: (asleep: boolean) => void;
   destroy: () => void;
 }
 
@@ -315,6 +321,12 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
   let level: number | null = null;
   const current: Look = { ...LOOKS.boot };
   const gaze = { x: 0, y: 0, targetX: 0, targetY: 0 };
+  let lookX = 0;
+  let lookY = 0;
+  let lookUntil = -1;
+  let pokeAmount = 0;
+  let asleep = false;
+  let sleep = 0;
   let extraNarrow = 0;
   let extraNarrowTarget = 0;
   let fluidTime = rand(0, 400);
@@ -363,7 +375,7 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
 
   const blinkAmount = () => {
     if (reduced || state === 'boot') return 0;
-    if (blinkStart < 0 && clock >= nextBlink) blinkStart = clock;
+    if (blinkStart < 0 && clock >= nextBlink && sleep < 0.3) blinkStart = clock;
     if (blinkStart < 0) return 0;
     const progress = (clock - blinkStart) / 0.17;
     if (progress >= 1) {
@@ -385,9 +397,15 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
     const target = LOOKS[state];
     const ease = 1 - Math.exp(-dt * 4.2);
     (Object.keys(current) as (keyof Look)[]).forEach((key) => { current[key] += (target[key] - current[key]) * ease; });
-    fluidTime += dt * current.speed * (reduced ? 0.2 : 1);
+    fluidTime += dt * current.speed * (reduced ? 0.2 : 1) * (1 - 0.5 * sleep);
 
     if (clock >= nextGaze) pickGaze();
+    sleep += ((asleep && state === 'idle' ? 1 : 0) - sleep) * (1 - Math.exp(-dt * 1.6));
+    pokeAmount *= Math.exp(-dt * 3.2);
+    const following = lookUntil > clock && !reduced && (state === 'idle' || state === 'listening' || state === 'speaking' || state === 'success');
+    if (sleep > 0.5) { gaze.targetX = 0; gaze.targetY = -0.3; }
+    else if (following) { gaze.targetX = lookX; gaze.targetY = lookY; }
+    else if (lookUntil > 0 && lookUntil <= clock) { lookUntil = -1; nextGaze = clock; }
     const gazeEase = 1 - Math.exp(-dt * 6.5);
     gaze.x += (gaze.targetX - gaze.x) * gazeEase;
     gaze.y += (gaze.targetY - gaze.y) * gazeEase;
@@ -395,7 +413,9 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
 
     let scale = current.scale;
     let bright = current.bright;
-    let atmo = current.atmo;
+    let atmo = current.atmo * (1 - 0.55 * sleep);
+    bright *= 1 - 0.3 * sleep;
+    scale += 0.018 * pokeAmount;
     if (!reduced) {
       if (state === 'listening') scale += 0.008 * Math.sin(clock * 2.2);
       if (state === 'speaking') {
@@ -414,9 +434,9 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
     gl.uniform1f(locations.uDeep, current.deep);
     gl.uniform1f(locations.uOrange, current.orange);
     gl.uniform1f(locations.uScale, scale);
-    gl.uniform1f(locations.uFlash, current.flash);
+    gl.uniform1f(locations.uFlash, Math.min(1, current.flash + 0.45 * pokeAmount));
     gl.uniform1f(locations.uWarn, current.warn);
-    gl.uniform1f(locations.uOpen, current.open * (1 - blinkAmount()));
+    gl.uniform1f(locations.uOpen, current.open * (1 - blinkAmount()) * (1 - 0.97 * sleep));
     gl.uniform1f(locations.uNarrow, Math.min(1, current.narrow + extraNarrow));
     gl.uniform1f(locations.uHappy, current.happy);
     gl.uniform1f(locations.uConcern, current.concern);
@@ -457,6 +477,20 @@ export function createOrb(canvas: HTMLCanvasElement, options: { reducedMotion?: 
     },
     setLevel: (next) => { level = next; },
     setReducedMotion: (next) => { reduced = next; },
+    setLook: (x, y = 0) => {
+      if (x === null) { lookUntil = Math.min(lookUntil, clock); return; }
+      lookX = Math.max(-1, Math.min(1, x));
+      lookY = Math.max(-1, Math.min(1, y));
+      lookUntil = clock + 2.6;
+    },
+    poke: () => {
+      pokeAmount = 1;
+      if (blinkStart < 0) blinkStart = clock;
+    },
+    setAsleep: (next) => {
+      if (asleep && !next) { nextBlink = clock + 0.35; nextGaze = clock; }
+      asleep = next;
+    },
     destroy: () => {
       destroyed = true;
       if (frame) cancelAnimationFrame(frame);

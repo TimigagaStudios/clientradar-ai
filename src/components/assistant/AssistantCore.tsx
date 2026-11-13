@@ -28,6 +28,21 @@ interface Msg {
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
+const VOICE_KEY = 'cr-voice-on';
+const canSpeak = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+
+// Turns a chat reply (which may contain markup) into plain sentences for speech.
+const toSpeech = (html: string) =>
+  html
+    .replace(/<button[\s\S]*?<\/button>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '. ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s*\.(\s*\.)+/g, '.')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const greeting = () => {
   const hour = new Date().getHours();
 
@@ -93,7 +108,24 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     return () => window.clearTimeout(timeout);
   }, []);
 
-  const briefingText = `You have ${metrics.needsOutreach} leads needing first outreach, ${metrics.awaitingReply} awaiting reply, and ${metrics.readyDemos} demos ready to send. Pipeline value is $${metrics.revenue.toLocaleString()}. Want the daily brief?`;
+  // Real number from the Demo Factory: how many demos clients have opened.
+  const [openedDemos, setOpenedDemos] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/demo-jobs')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (cancelled || !Array.isArray(result?.data)) return;
+        setOpenedDemos(result.data.filter((row: any) => Number(row?.content?.stats?.views) > 0).length);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openedText = openedDemos > 0 ? ` ${openedDemos} of your demos ${openedDemos === 1 ? 'has' : 'have'} been opened by a client.` : '';
+  const briefingText = `You have ${metrics.needsOutreach} leads needing first outreach, ${metrics.awaitingReply} awaiting reply, and ${metrics.readyDemos} demos ready to send.${openedText} Pipeline value is $${metrics.revenue.toLocaleString()}. Want the daily brief?`;
   const [typed, setTyped] = useState('');
 
   useEffect(() => {
@@ -122,6 +154,73 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   const microphoneTimerRef = useRef<number | null>(null);
   const speakTimerRef = useRef<number | null>(null);
 
+  // Voice: tap the orb to hear the briefing; replies are then spoken too.
+  const [voiceOn, setVoiceOn] = useState(() => {
+    try { return localStorage.getItem(VOICE_KEY) === '1'; } catch { return false; }
+  });
+  const [voiceUsed, setVoiceUsed] = useState(() => {
+    try { return localStorage.getItem(VOICE_KEY) !== null; } catch { return false; }
+  });
+  const [voiceLevel, setVoiceLevel] = useState<number | null>(null);
+  const levelTimerRef = useRef<number | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  const rememberVoice = (on: boolean) => {
+    setVoiceOn(on);
+    setVoiceUsed(true);
+    try { localStorage.setItem(VOICE_KEY, on ? '1' : '0'); } catch { /* storage blocked */ }
+  };
+
+  const stopSpeaking = () => {
+    if (canSpeak()) window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setVoiceLevel(null);
+  };
+
+  // Returns true when speech started. The orb stays in the speaking state until the voice ends.
+  const speak = (text: string) => {
+    if (!canSpeak() || !text) return false;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 1;
+      utterance.onstart = () => setPresenceState('speaking');
+      // Word boundaries stand in for loudness, where the browser reports them.
+      utterance.onboundary = () => {
+        setVoiceLevel(1);
+        if (levelTimerRef.current !== null) window.clearTimeout(levelTimerRef.current);
+        levelTimerRef.current = window.setTimeout(() => setVoiceLevel(0.15), 130);
+      };
+      const finish = () => {
+        if (utteranceRef.current !== utterance) return;
+        utteranceRef.current = null;
+        setVoiceLevel(null);
+        setPresenceState((current) => (current === 'speaking' ? 'idle' : current));
+      };
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      utteranceRef.current = utterance;
+      setPresenceState('speaking');
+      window.speechSynthesis.speak(utterance);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleOrbTap = () => {
+    if (!canSpeak()) return;
+    if (utteranceRef.current) {
+      stopSpeaking();
+      setPresenceState('idle');
+      rememberVoice(false);
+      return;
+    }
+    rememberVoice(true);
+    speak(`Good ${greeting()}, Timothy. ${briefingText}`);
+  };
+
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
@@ -140,6 +239,10 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       if (speakTimerRef.current !== null) {
         window.clearTimeout(speakTimerRef.current);
       }
+      if (levelTimerRef.current !== null) {
+        window.clearTimeout(levelTimerRef.current);
+      }
+      if (canSpeak()) window.speechSynthesis.cancel();
     },
     []
   );
@@ -156,6 +259,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       speakTimerRef.current = null;
     }
 
+    stopSpeaking();
     setPresenceState('thinking');
     setThinking(true);
 
@@ -169,7 +273,9 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       ]);
       agentTimerRef.current = null;
 
-      // No voice yet: stay in the responding state for a reading-time estimate.
+      if (voiceOn && speak(toSpeech(reply))) return;
+
+      // Voice off: stay in the responding state for a reading-time estimate.
       speakTimerRef.current = window.setTimeout(() => {
         setPresenceState('idle');
         speakTimerRef.current = null;
@@ -243,10 +349,19 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       {mode === 'full' && (
         <div className="cr-hero flex flex-col items-center text-center">
           <div className="cr-presence-stage">
-            <FluidOrb state={orbState} size={408} />
+            <FluidOrb
+              state={orbState}
+              size={408}
+              level={voiceLevel}
+              onTap={canSpeak() ? handleOrbTap : undefined}
+              tapLabel={utteranceRef.current ? 'Stop speaking' : 'Hear your briefing'}
+            />
           </div>
 
           <div className="cr-greet">
+            {canSpeak() && !voiceUsed && (
+              <p className="fluid-orb-hint">Tap the orb to hear your briefing</p>
+            )}
             <h1>
               Good {greeting()}, <b>Timothy</b>.
             </h1>
@@ -307,7 +422,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         {conversation.map((message) => (
           <div key={message.id} className={`cr-msg ${message.side}`}>
             <div className={`cr-av ${message.side}`}>
-              {message.side === 'ai' ? 'AI' : 'T'}
+              {message.side === 'ai' ? <span className="mini-orb" aria-hidden="true" /> : 'T'}
             </div>
             <div>
               <div
@@ -320,7 +435,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
 
         {thinking && (
           <div className="cr-msg ai">
-            <div className="cr-av ai">AI</div>
+            <div className="cr-av ai"><span className="mini-orb" aria-hidden="true" /></div>
             <div className="cr-bubble cr-typing">
               <span>
                 <i />
