@@ -18,6 +18,8 @@ export type DemoJob = {
   attempts: number;
   createdAt: string;
   completedAt: string | null;
+  views: number;
+  lastViewedAt: string | null;
 };
 
 export const demoTemplates = [
@@ -37,6 +39,30 @@ export const demoStyleLevels = [
 
 export function styleLevelLabel(level: string) {
   return demoStyleLevels.find((item) => item.key === level)?.label || 'Mid-Level';
+}
+
+// "Opened 2 times - last 14 Nov, 09:30" or "Not opened yet".
+export function describeDemoViews(job?: Pick<DemoJob, 'views' | 'lastViewedAt'> | null): string {
+  if (!job || !job.views) return 'Not opened yet';
+  const when = job.lastViewedAt ? new Date(job.lastViewedAt) : null;
+  const last = when && !Number.isNaN(when.getTime()) ? ` - last ${when.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : '';
+  return `Opened ${job.views} time${job.views === 1 ? '' : 's'}${last}`;
+}
+
+// Message the owner sends with a demo link. The owner always sends it personally.
+export function buildDemoShare(lead: Pick<Lead, 'businessName' | 'phone' | 'email'>, demoLink: string) {
+  const url = /^https?:/i.test(demoLink) ? demoLink : `${window.location.origin}${demoLink}`;
+  const subject = `A website concept for ${lead.businessName}`;
+  const text = `Hello, this is Timothy from Timigaga Studios. I put together a sample website concept for ${lead.businessName}. You can view it here: ${url}\n\nIt is only a sample and can be changed to fit you. Would you like me to walk you through it?`;
+  const phone = String(lead.phone || '').trim();
+  const digits = phone.startsWith('+') ? phone.replace(/\D/g, '') : '';
+  return {
+    url,
+    subject,
+    text,
+    whatsapp: `https://wa.me/${digits}?text=${encodeURIComponent(text)}`,
+    email: lead.email ? `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}` : '',
+  };
 }
 
 // Deletes all demo jobs of one lead and clears its demo link and status.
@@ -96,5 +122,7 @@ export function mapDemoJob(row: any): DemoJob {
     attempts: row.attempts || 0,
     createdAt: row.created_at,
     completedAt: row.completed_at || null,
+    views: Number(row.content?.stats?.views) || 0,
+    lastViewedAt: typeof row.content?.stats?.lastViewedAt === 'string' ? row.content.stats.lastViewedAt : null,
   };
 }
