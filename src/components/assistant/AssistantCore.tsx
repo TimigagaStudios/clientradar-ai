@@ -14,9 +14,7 @@ import {
   Send,
   Zap,
 } from 'lucide-react';
-import AgentPresence, {
-  type AgentPresenceState,
-} from './AgentPresence';
+import FluidOrb, { type OrbState } from './FluidOrb';
 import { useLeads } from '../../context/LeadContext';
 import './assistant.css';
 
@@ -88,8 +86,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     };
   }, [leads]);
 
-  const [presenceState, setPresenceState] =
-    useState<AgentPresenceState>('boot');
+  const [presenceState, setPresenceState] = useState<OrbState>('boot');
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setPresenceState('idle'), 2200);
@@ -123,6 +120,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const agentTimerRef = useRef<number | null>(null);
   const microphoneTimerRef = useRef<number | null>(null);
+  const speakTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -139,6 +137,9 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       if (microphoneTimerRef.current !== null) {
         window.clearTimeout(microphoneTimerRef.current);
       }
+      if (speakTimerRef.current !== null) {
+        window.clearTimeout(speakTimerRef.current);
+      }
     },
     []
   );
@@ -150,17 +151,29 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       window.clearTimeout(agentTimerRef.current);
     }
 
+    if (speakTimerRef.current !== null) {
+      window.clearTimeout(speakTimerRef.current);
+      speakTimerRef.current = null;
+    }
+
     setPresenceState('thinking');
     setThinking(true);
 
     agentTimerRef.current = window.setTimeout(() => {
+      const reply = brain(text);
       setThinking(false);
-      setPresenceState('idle');
+      setPresenceState('speaking');
       setConversation((current) => [
         ...current,
-        { id: uid(), side: 'ai', html: brain(text) },
+        { id: uid(), side: 'ai', html: reply },
       ]);
       agentTimerRef.current = null;
+
+      // No voice yet: stay in the responding state for a reading-time estimate.
+      speakTimerRef.current = window.setTimeout(() => {
+        setPresenceState('idle');
+        speakTimerRef.current = null;
+      }, Math.min(4200, 1200 + reply.length * 9));
     }, 850);
   };
 
@@ -191,6 +204,10 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       microphoneTimerRef.current = null;
     }, 1600);
   };
+
+  // While the owner is typing to the assistant, the orb pays attention.
+  const orbState: OrbState =
+    presenceState === 'idle' && input.trim() ? 'listening' : presenceState;
 
   const quickActions = [
     {
@@ -226,7 +243,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       {mode === 'full' && (
         <div className="cr-hero flex flex-col items-center text-center">
           <div className="cr-presence-stage">
-            <AgentPresence state={presenceState} size={300} />
+            <FluidOrb state={orbState} size={340} />
           </div>
 
           <div className="cr-greet">
