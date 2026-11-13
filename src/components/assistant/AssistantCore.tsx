@@ -243,7 +243,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       {mode === 'full' && (
         <div className="cr-hero flex flex-col items-center text-center">
           <div className="cr-presence-stage">
-            <FluidOrb state={orbState} size={340} />
+            <FluidOrb state={orbState} size={408} />
           </div>
 
           <div className="cr-greet">
