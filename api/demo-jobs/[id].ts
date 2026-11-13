@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { requireUser } from '../lib/auth.js';
 import { generateDemoContent } from '../lib/demo-ai';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
@@ -31,6 +32,7 @@ function makeContent(lead: any, templateKey: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!(await requireUser(req, res))) return;
   const id = typeof req.query.id === 'string' ? req.query.id : '';
   if (!id) return res.status(400).json({ success: false, error: 'Demo job id is required' });
   if (!supabaseUrl || !serviceRoleKey) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
