@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { supabase } from '../lib/supabase';
 import { ArrowLeft, ArrowRight, CalendarCheck, CheckCircle2, ChevronDown, Home, Instagram, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Sparkles, UtensilsCrossed, X } from 'lucide-react';
 
 type Pair = { title: string; body: string };
@@ -64,6 +65,17 @@ export default function DemoPreview() {
       setJob(result.data);
     }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Demo not found'));
   }, [id]);
+
+  // Tell the server a visitor opened this demo: once per browser session, and never for the logged-in owner.
+  useEffect(() => {
+    if (!id || !job) return;
+    const key = `demo-viewed-${id}`;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch { /* storage blocked: still count */ }
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) return;
+      void fetch('/api/demo-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'view', jobId: id }), keepalive: true }).catch(() => undefined);
+    }).catch(() => undefined);
+  }, [id, job]);
 
   if (error) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] p-6 text-[var(--text-primary)]"><div className="neo-card p-8 text-center"><p className="text-red-500">{error}</p><Link to="/demos" className="btn-neumorph mt-5 inline-flex">Back to demos</Link></div></div>;
   if (!job) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] text-[var(--text-secondary)]">Loading demo...</div>;

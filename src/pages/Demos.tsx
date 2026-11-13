@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2 } from 'lucide-react';
+import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2, Share2, Mail, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
-import { deleteLeadDemo, demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
+import { buildDemoShare, deleteLeadDemo, describeDemoViews, demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
 
 const parseDemoResponse = async (response: Response) => {
   const text = await response.text();
@@ -78,6 +78,25 @@ const Demos = () => {
       await refreshJobs();
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not retry demo.');
+    }
+  };
+
+  const [shareNote, setShareNote] = useState<{ leadId: string; text: string } | null>(null);
+  const markSent = (lead: any) => {
+    if (lead.demoStatus !== 'Sent') void updateDemoStatus(lead.id, 'Sent').catch(() => undefined);
+  };
+  const handleShare = async (lead: any) => {
+    const share = buildDemoShare(lead, lead.demoLink);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: share.subject, text: share.text });
+        markSent(lead);
+        return;
+      }
+      await navigator.clipboard.writeText(share.text);
+      setShareNote({ leadId: lead.id, text: 'Message copied. Paste it wherever you want to send it.' });
+    } catch (error) {
+      if ((error as any)?.name !== 'AbortError') setShareNote({ leadId: lead.id, text: `Could not share. Link: ${share.url}` });
     }
   };
 
@@ -168,7 +187,7 @@ const Demos = () => {
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 
-      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : ' - built-in text') : ''}</p>{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}<button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button></div></div>; })}</div></section>}
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : ' - built-in text') : ''}</p>{job.status === 'ready' && <p className={cn('text-xs font-semibold', job.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>{describeDemoViews(job)}</p>}{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}<button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button></div></div>; })}</div></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
@@ -206,6 +225,8 @@ const Demos = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredDemos.map((lead: any) => {
           const demoStatus = lead.demoStatus || 'Not Started';
+          const readyJob = demoJobs.find((job: any) => job.leadId === lead.id && job.status === 'ready');
+          const share = lead.demoLink ? buildDemoShare(lead, lead.demoLink) : null;
           return (
             <div key={lead.id} className="neo-card p-6 hover:-translate-y-1 transition-all duration-300">
               <div className="flex items-start justify-between gap-4 mb-4">
@@ -240,6 +261,39 @@ const Demos = () => {
                     <p className="text-sm text-[var(--text-secondary)]">No demo link saved yet</p>
                   )}
                 </div>
+
+                {readyJob && (
+                  <div className="neo-in p-4 rounded-2xl">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
+                      Client Views
+                    </p>
+                    <p className={cn('text-sm font-bold', readyJob.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>
+                      {describeDemoViews(readyJob)}
+                    </p>
+                  </div>
+                )}
+
+                {share && (
+                  <div className="neo-in p-4 rounded-2xl">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-3">
+                      Send To Client
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void handleShare(lead)} className="btn-neumorph px-3 py-2 text-sm gap-2 inline-flex items-center">
+                        <Share2 size={14} /> Share
+                      </button>
+                      <a href={share.whatsapp} target="_blank" rel="noopener noreferrer" onClick={() => markSent(lead)} className="btn-neumorph px-3 py-2 text-sm gap-2 inline-flex items-center">
+                        <MessageCircle size={14} /> WhatsApp
+                      </a>
+                      {share.email && (
+                        <a href={share.email} onClick={() => markSent(lead)} className="btn-neumorph px-3 py-2 text-sm gap-2 inline-flex items-center">
+                          <Mail size={14} /> Email
+                        </a>
+                      )}
+                    </div>
+                    {shareNote?.leadId === lead.id && <p className="mt-2 text-xs text-[var(--text-secondary)] break-all">{shareNote?.text}</p>}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="neo-in p-4 rounded-2xl">
