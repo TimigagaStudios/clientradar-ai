@@ -1,10 +1,11 @@
-/* Master Agent fluid orb. The canvas is square; the orb fills about 72% of it
-   and the rest is the soft glow. */
+/* Master Agent fluid orb. The canvas is square; the orb fills about 60% of it
+   and the rest is the atmosphere, so the box overlaps its neighbours a little. */
 .fluid-orb {
   position: relative;
-  width: min(100%, var(--fluid-orb-size, 340px));
+  width: min(92vw, var(--fluid-orb-size, 408px));
+  justify-self: center;
   aspect-ratio: 1 / 1;
-  margin-inline: auto;
+  margin: -34px auto;
   pointer-events: none;
 }
 
@@ -17,6 +18,7 @@
 
 @media (max-width: 640px) {
   .fluid-orb {
-    width: min(100%, 270px);
+    width: min(92vw, 324px);
+    margin-block: -28px;
   }
 }
