@@ -74,11 +74,26 @@ export async function deleteLeadDemo(leadId: string): Promise<void> {
   if (!response.ok || !result?.success) throw new Error(result?.error || `Could not delete demo (${response.status}).`);
 }
 
+// Estimated project value per website level, in US dollars. One place to change the price ranges.
+export const VALUE_RANGES: Record<DemoStyleLevel, { min: number; max: number; label: string }> = {
+  mid: { min: 1500, max: 3000, label: 'Mid-Level' },
+  hybrid: { min: 3000, max: 6000, label: 'Hybrid' },
+  ultra: { min: 6000, max: 15000, label: 'Ultra Premium' },
+};
+
+// An estimate inside the lead's level range: a higher lead score and a missing website push it up. Not a quote.
+export function estimateLeadValue(lead: Pick<Lead, 'priority' | 'dealValue' | 'website'> | null | undefined, score: number): { value: number; level: DemoStyleLevel } {
+  const level = suggestStyleLevel(lead ? { priority: lead.priority, dealValue: undefined } : null);
+  const range = VALUE_RANGES[level];
+  const position = Math.max(0, Math.min(1, (Number(score) || 0) / 100 * 0.8 + (lead?.website ? 0 : 0.2)));
+  return { value: Math.round((range.min + (range.max - range.min) * position) / 250) * 250, level };
+}
+
 // Suggests a level from the lead's value and priority. The user can always override it.
 export function suggestStyleLevel(lead?: Pick<Lead, 'priority' | 'dealValue'> | null): DemoStyleLevel {
   const value = Number(lead?.dealValue) || 0;
-  if (lead?.priority === 'High' || value >= 5000) return 'ultra';
-  if (lead?.priority === 'Medium' || value >= 1000) return 'hybrid';
+  if (lead?.priority === 'High' || value >= 6000) return 'ultra';
+  if (lead?.priority === 'Medium' || value >= 3000) return 'hybrid';
   return 'mid';
 }
 
