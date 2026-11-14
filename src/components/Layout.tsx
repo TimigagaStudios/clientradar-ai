@@ -20,6 +20,7 @@ import {
   Sparkles,
   FileText,
   Bot,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -88,6 +89,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: Sparkles, label: 'AI Outreach', path: '/ai-outreach' },
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
+    { icon: Wallet, label: 'Tracker', path: '/tracker' },
     { icon: FileText, label: 'Invoices', path: '/invoices' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ Invoices
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
   ];
