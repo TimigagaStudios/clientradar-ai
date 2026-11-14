@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Images, Loader2, Pencil, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
-import { mergeDuplicates, sameBusiness } from '../lib/importMatch';
+import { foldIncoming, mergeDuplicates, sameBusiness } from '../lib/importMatch';
 
 // AI Screenshot Import. Many screenshots in, one record per business out, reviewed by the
 // owner, then saved into the normal leads list. Images are shrunk on the device and sent
@@ -13,12 +13,13 @@ const IMAGE_LIMIT_MB = 30;
 const FORMATS = /\.(jpe?g|png|webp|heic|heif)$/i;
 const LOW_CONFIDENCE = 0.6;
 
-type Shot = { id: string; file: File; batchId: string; url: string; status: 'waiting' | 'reading' | 'done' | 'failed'; found: number; error: string };
+type Shot = { id: string; file: File; batchId: string; url: string; status: 'waiting' | 'reading' | 'done' | 'failed'; found: number; error: string; joined?: number };
 type ImportRecord = {
   id: string; batchId: string; fileName: string; extractedAt: string; saved: boolean; confidence: number;
   name: string; category: string; address: string; city: string; country: string; phone: string; website: string; email: string;
-  rating: number | null; reviewCount: number | null; description: string;
+  rating: number | null; reviewCount: number | null; description: string; merged?: number;
 };
+const MERGE_FIELDS = ['name', 'category', 'address', 'city', 'country', 'phone', 'website', 'email', 'rating', 'reviewCount', 'description'];
 
 const uid = () => `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;
 const megabytes = (bytes: number) => (bytes / 1048576).toFixed(bytes > 10485760 ? 0 : 1);
@@ -71,6 +72,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
   const stopRef = useRef(false);
   const [shots, setShots] = useState<Shot[]>([]);
   const [records, setRecords] = useState<ImportRecord[]>([]);
+  const recordsRef = useRef<ImportRecord[]>([]);
+  useEffect(() => { recordsRef.current = records; }, [records]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState('');
   const [rejected, setRejected] = useState<string[]>([]);
@@ -165,8 +168,13 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
         }
         const found: ImportRecord[] = data?.records || [];
         if (data && data.saved === false && found.length) setStoreReady(false);
-        setRecords((current) => [...current, ...found]);
-        patchShot(shot.id, { status: 'done', found: found.length });
+        // Screenshots of the same business in one batch (top of the card + its details page) join into one record.
+        const folded = foldIncoming(recordsRef.current, found, MERGE_FIELDS);
+        recordsRef.current = folded.records;
+        setRecords(folded.records);
+        if (folded.removedIds.length) void postTeam({ action: 'import-update', removeIds: folded.removedIds }).catch(() => undefined);
+        folded.changed.forEach((record) => { void postTeam({ action: 'import-update', id: record.id, data: record }).catch(() => undefined); });
+        patchShot(shot.id, { status: 'done', found: found.length, joined: folded.removedIds.length });
       } catch (error) {
         patchShot(shot.id, { status: 'failed', error: error instanceof Error ? error.message : 'Could not read this screenshot' });
       }
@@ -205,7 +213,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
   // address); records that match a lead you already have are removed.
   const mergeAndRemove = () => {
     const saved = (record: ImportRecord) => (leads || []).some((lead: any) => sameBusiness(record, { name: lead.businessName, website: lead.website, phone: lead.phone, city: lead.city }));
-    const result = mergeDuplicates(records, saved, ['name', 'category', 'address', 'city', 'country', 'phone', 'website', 'email', 'rating', 'reviewCount', 'description']);
+    const result = mergeDuplicates(records, saved, MERGE_FIELDS);
     if (!result.removedIds.length) return;
     setRecords(result.kept);
     setSelected((current) => { const next = new Set(current); result.removedIds.forEach((id) => next.delete(id)); return next; });
@@ -272,7 +280,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
           <Upload size={24} className="mx-auto mb-2 text-[var(--text-secondary)]" />
           <input ref={picker} type="file" accept="image/*,.heic,.heif" multiple className="hidden" onChange={(event) => addFiles(event.target.files)} />
           <button type="button" onClick={() => picker.current?.click()} disabled={running} className="px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white font-medium disabled:opacity-50">{shots.length ? 'Add another batch' : 'Choose screenshots'}</button>
-          <p className="text-[11px] text-[var(--text-secondary)] mt-3">JPG, PNG, WebP or HEIC. Up to {BATCH_LIMIT_MB} MB per batch, any number of batches.</p>
+          <p className="text-[11px] text-[var(--text-secondary)] mt-3">Tip: for each business add two screenshots, the top of its card and its details page. They are joined into one lead.</p>
+          <p className="text-[11px] text-[var(--text-secondary)] mt-1">JPG, PNG, WebP or HEIC. Up to {BATCH_LIMIT_MB} MB per batch, any number of batches.</p>
         </div>
 
         {rejected.length > 0 && (
@@ -302,7 +311,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
                   <div className="px-1.5 py-1 text-[10px] leading-tight text-[var(--text-secondary)]">
                     {shot.status === 'waiting' && 'Waiting'}
                     {shot.status === 'reading' && <span className="inline-flex items-center gap-1 text-[var(--accent)]"><Loader2 size={10} className="animate-spin" />Reading</span>}
-                    {shot.status === 'done' && <span className="text-emerald-500">{shot.found} found</span>}
+                    {shot.status === 'done' && <span className="text-emerald-500">{shot.found} found{shot.joined ? `, ${shot.joined} joined` : ''}</span>}
                     {shot.status === 'failed' && <span className="text-red-500">Failed: {shot.error.slice(0, 60)}</span>}
                   </div>
                   {shot.status !== 'reading' && <button type="button" onClick={() => removeShot(shot.id)} aria-label={`Remove ${shot.file.name}`} className="absolute top-1 right-1 grid place-items-center w-6 h-6 rounded-full bg-black/70 text-white"><X size={12} /></button>}
@@ -338,6 +347,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
                         <p className="text-xs text-[var(--text-secondary)] break-words">{[record.category, record.city || record.address, record.phone, record.website, record.email, record.rating !== null ? `${record.rating} stars${record.reviewCount !== null ? ` (${record.reviewCount})` : ''}` : ''].filter(Boolean).join(' | ') || 'No other details visible'}</p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <span className={`${chip} ${flag.low ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'}`}>{Math.round(record.confidence * 100)}% sure</span>
+                          {(record.merged || 0) > 1 && <span className={`${chip} bg-emerald-500/15 text-emerald-500`}>Joined from {record.merged} screenshots</span>}
                           {flag.duplicate && <span className={`${chip} bg-red-500/15 text-red-500`}><AlertTriangle size={11} />{flag.duplicate}</span>}
                           {flag.missing.length > 0 && <span className={`${chip} bg-black/10 dark:bg-white/10 text-[var(--text-secondary)]`}>Missing: {flag.missing.join(', ')}</span>}
                           <span className={`${chip} bg-black/10 dark:bg-white/10 text-[var(--text-secondary)]`}>{record.fileName}</span>
