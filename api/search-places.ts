@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { recordTask } from './lib/_team.js';
-import { osmSearch, plainPlacesError } from './lib/_places.js';
+import { checkWebsite, osmSearch, plainPlacesError } from './lib/_places.js';
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY as string;
 
@@ -52,7 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // OpenStreetMap search answers instead: fewer listings, no ratings, nothing invented.
     const useFreeSearch = async (reason: string) => {
       const found = await osmSearch(String(category), String(city));
-      const results = found.map((item) => ({ ...item, website: item.website || undefined, phone: item.phone || undefined, outdatedWebsite: false }));
+      const results = await Promise.all(found.map(async (item) => {
+        const check = await checkWebsite(item.website);
+        return { ...item, website: item.website || undefined, phone: item.phone || undefined, outdatedWebsite: check.outdated, websiteNote: check.note || undefined };
+      }));
       await recordTask({
         agentKey: 'lead-research',
         title: `Find ${category} in ${city}`,
@@ -89,7 +92,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const website = details.website || undefined;
           const phone = details.formatted_phone_number || undefined;
 
-          const outdatedWebsite = website ? Math.random() > 0.7 : false;
+          const websiteCheck = await checkWebsite(website);
+          const outdatedWebsite = websiteCheck.outdated;
 
           return {
             businessName: place.name,
@@ -101,6 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             website,
             phone,
             outdatedWebsite,
+            websiteNote: websiteCheck.note || undefined,
             mapLink: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
           };
         } catch (detailsError) {
