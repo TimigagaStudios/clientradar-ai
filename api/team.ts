@@ -3,6 +3,7 @@ import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
+import { outdatedDemos } from './lib/demo-job-process.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
@@ -256,6 +257,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
         return res.status(out.status).json(out.json);
       }
+      if (action === 'demo-refresh-start') {
+        // The owner said yes to the orb's offer: one queued update task per outdated demo.
+        const found = await outdatedDemos(supabase, MAX_BATCH);
+        if (!found.length) return res.status(200).json({ success: true, data: { queue: [] } });
+        const title = `Update ${found.length} ${found.length === 1 ? 'demo' : 'demos'} with the new sections`;
+        const { data: parent } = await supabase.from('agent_tasks').insert({ agent_key: 'master', title, status: 'running', requested_by: 'records-upkeep', input: { demos: found.length }, attempts: 1, started_at: new Date().toISOString() }).select('id').single();
+        if (!parent) return res.status(500).json({ success: false, error: 'Could not record the task' });
+        const { data: created, error } = await supabase.from('agent_tasks').insert(found.map((demo) => ({
+          agent_key: 'demo-creation', title: `Update demo for ${demo.name}`, status: 'queued', lead_id: demo.leadId, parent_task_id: parent.id, requested_by: 'master', input: { refresh: true, jobId: demo.id },
+        }))).select('id, title');
+        if (error || !created) return res.status(500).json({ success: false, error: error?.message || 'Could not queue the updates' });
+        await note(supabase, 'records-upkeep', 'handoff', `Found ${found.length} ${found.length === 1 ? 'demo' : 'demos'} built before the latest upgrade; you approved the update.`, parent.id);
+        return res.status(200).json({ success: true, data: { queue: created.map((row: any) => ({ id: row.id, title: row.title })) } });
+      }
       if (action === 'upkeep') {
         // The Records Upkeep Agent: one small batch per call; the app sends one summary at the end.
         if (req.body?.summary) {
@@ -291,6 +306,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  if (req.query?.view === 'demo-updates') {
+    // Records Upkeep Agent check: finished demos that were built before new sections existed.
+    const supabase = teamClient();
+    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+    const found = await outdatedDemos(supabase, MAX_BATCH);
+    return res.status(200).json({ success: true, data: { count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
+  }
   if (req.query?.view === 'tracker') {
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
