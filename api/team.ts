@@ -1,9 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
-import { AGENTS, teamClient } from './lib/_team.js';
+import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio } from './lib/_master.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
+import { scanLead } from './lib/_website.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
 
 // AI team endpoint.
@@ -17,6 +18,7 @@ import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports
 // POST action "import-update" saves an edit or removes records waiting for review.
 // POST action "import-save"   reviewed records become leads in the normal leads table.
 // GET  ?view=imports          records still waiting for review.
+// POST action "scan-site"     Lead Research reads ONE lead's own website: fills a missing email, phone or Instagram and notes the brand colours.
 
 // Reading a screenshot with the AI can take longer than the default time allowed for a server call.
 export const config = { maxDuration: 60 };
@@ -187,6 +189,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'extract' || action === 'import-update' || action === 'import-save') {
         const out = action === 'extract' ? await handleExtract(supabase, req.body) : action === 'import-update' ? await handleImportUpdate(supabase, req.body) : await handleImportSave(supabase, req.body);
         return res.status(out.status).json(out.json);
+      }
+      if (action === 'scan-site') {
+        // After a bulk run the browser sends one summary so the activity log gets a single honest line.
+        if (req.body?.summary) {
+          const scanned = Math.max(0, Number(req.body.summary.scanned) || 0);
+          const emails = Math.max(0, Number(req.body.summary.emails) || 0);
+          if (scanned) await recordTask({ agentKey: 'lead-research', title: `Scan ${scanned} lead websites`, status: 'done', summary: `Scanned ${scanned} lead ${scanned === 1 ? 'website' : 'websites'} and found ${emails} ${emails === 1 ? 'email' : 'emails'}.`, output: { scanned, emails } });
+          return res.status(200).json({ success: true });
+        }
+        const leadId = String(req.body?.leadId || '');
+        if (!leadId) return res.status(400).json({ success: false, error: 'leadId is required' });
+        const startedAt = new Date();
+        const result = await scanLead(supabase, leadId);
+        if (!result.ok) return res.status(200).json({ success: true, data: { read: false, reason: result.error } });
+        const scan = result.scan;
+        if (req.body?.quiet !== true) await recordTask({ agentKey: 'lead-research', title: `Scan the website of ${result.businessName}`, status: 'done', summary: `Scanned the website of ${result.businessName}: ${scan.emails.length ? `email ${scan.emails[0]}` : 'no email on the site'}${scan.accent ? `, brand colour ${scan.accent}` : ''}.`, leadId, output: { filled: result.filled, emails: scan.emails, accent: scan.accent }, startedAt });
+        return res.status(200).json({ success: true, data: { read: true, filled: result.filled, emails: scan.emails, phones: scan.phones, accent: scan.accent, colors: scan.colors, darkDesign: scan.darkDesign, fonts: scan.fonts, platform: scan.platform, mobileReady: scan.mobileReady, pagesRead: scan.pagesRead } });
       }
       return res.status(400).json({ success: false, error: 'Unknown action' });
     } catch (error) {
