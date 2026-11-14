@@ -80,6 +80,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
   const [running, setRunning] = useState(false);
   const [importing, setImporting] = useState(false);
   const [notice, setNotice] = useState('');
+  const [scanNote, setScanNote] = useState('');
   const [storeReady, setStoreReady] = useState(true);
 
   // Carry on with records left waiting from an earlier visit or another device.
@@ -237,17 +238,36 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
     if (!chosen.length || importing) return;
     setImporting(true);
     let imported = 0;
+    const toScan: { id: string }[] = [];
     try {
       for (let index = 0; index < chosen.length; index += 100) {
         const part = chosen.slice(index, index + 100);
         const data = await postTeam({ action: 'import-save', records: part });
         imported += Number(data?.imported || 0);
+        (data?.leads || []).forEach((lead: any) => { if (lead?.id && lead.website && !lead.email) toScan.push({ id: lead.id }); });
         const ids = part.map((record) => record.id);
         setRecords((current) => current.filter((record) => !ids.includes(record.id)));
         setSelected((current) => { const next = new Set(current); ids.forEach((id) => next.delete(id)); return next; });
       }
       await refreshLeads();
-      showToast({ type: 'success', title: `${imported} ${imported === 1 ? 'lead' : 'leads'} imported`, message: 'They are in your leads list now.' });
+      showToast({ type: 'success', title: `${imported} ${imported === 1 ? 'lead' : 'leads'} imported`, message: toScan.length ? 'Now checking their websites for emails.' : 'They are in your leads list now.' });
+      // Screenshots rarely show an email, so each new lead's own website is read for one (one site at a time).
+      if (toScan.length) {
+        let emails = 0;
+        let scanned = 0;
+        for (const lead of toScan) {
+          if (stopRef.current) break;
+          setScanNote(`Checking websites for emails: ${scanned + 1} of ${toScan.length} (${emails} found)`);
+          try {
+            const data = await postTeam({ action: 'scan-site', leadId: lead.id, quiet: true });
+            if (data?.read && (data.filled || []).includes('email')) emails += 1;
+          } catch { /* one unreadable site must not stop the rest */ }
+          scanned += 1;
+        }
+        void postTeam({ action: 'scan-site', summary: { scanned, emails } }).catch(() => undefined);
+        await refreshLeads();
+        setScanNote(`Website check finished: ${emails} ${emails === 1 ? 'email' : 'emails'} found on ${scanned} ${scanned === 1 ? 'website' : 'websites'}.`);
+      }
     } catch (error) {
       if (imported) await refreshLeads();
       showToast({ type: 'error', title: 'Import stopped', message: `${imported} imported. ${error instanceof Error ? error.message : 'Please try again.'}` });
@@ -377,6 +397,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
             {running && <p className="text-[11px] text-[var(--text-secondary)] mt-2 text-center">Still reading screenshots. You can review while it works; import when it finishes.</p>}
           </div>
         )}
+
+        {scanNote && <p className="text-sm text-[var(--accent)] mt-4">{scanNote}</p>}
 
         {!shots.length && !records.length && (
           <p className="text-xs text-[var(--text-secondary)] mt-4 inline-flex items-start gap-2"><RotateCcw size={14} className="mt-0.5 shrink-0" />Keep this window open while screenshots are being read. Records already read are kept for review if you come back later.</p>
