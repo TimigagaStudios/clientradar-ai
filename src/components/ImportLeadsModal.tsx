@@ -6,6 +6,7 @@ import { useToast } from './ui/useToast';
 interface ImportLeadsModalProps {
   open: boolean;
   onClose: () => void;
+  onScreenshots?: () => void;
 }
 
 type CsvRow = Record<string, string>;
@@ -51,7 +52,7 @@ const normKey = (row: CsvRow, keys: string[]) => {
   return '';
 };
 
-const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) => {
+const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose, onScreenshots }) => {
   const { addLead } = useLeads() as any;
   const { showToast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -160,6 +161,12 @@ const ImportLeadsModal: React.FC<ImportLeadsModalProps> = ({ open, onClose }) =>
             <X size={16} />
           </button>
         </div>
+
+        {onScreenshots && !rows.length && (
+          <button type="button" onClick={onScreenshots} className="w-full mb-4 px-5 py-3 rounded-xl bg-[var(--accent)] text-white font-semibold">
+            Import from screenshots with AI
+          </button>
+        )}
 
         {!rows.length ? (
           <div className="neo-in rounded-2xl p-8 text-center">

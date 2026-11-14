@@ -25,6 +25,7 @@ import { cn } from '../utils/cn';
 import Button from './Button';
 import AddLeadModal from './AddLeadModal';
 import ImportLeadsModal from './ImportLeadsModal';
+import ScreenshotImportModal from './ScreenshotImportModal';
 import Logo from './Logo';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -35,6 +36,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAddLeadOpen, setIsAddLeadOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isShotImportOpen, setIsShotImportOpen] = useState(false);
   const [isAdminMenuOpen, setIsAdminMenuOpen] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -141,7 +143,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <AddLeadModal open={isAddLeadOpen} onClose={() => setIsAddLeadOpen(false)} />
-      <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} />
+      <ImportLeadsModal open={isImportOpen} onClose={() => setIsImportOpen(false)} onScreenshots={() => { setIsImportOpen(false); setIsShotImportOpen(true); }} />
+      <ScreenshotImportModal open={isShotImportOpen} onClose={() => setIsShotImportOpen(false)} />
 
       {isSidebarOpen && (
         <div
