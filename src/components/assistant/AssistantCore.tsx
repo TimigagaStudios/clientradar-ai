@@ -20,11 +20,47 @@ import './assistant.css';
 
 type Mode = 'full' | 'compact';
 
+interface ChatTask {
+  id: string;
+  agentKey: string;
+  agentName: string;
+  title: string;
+  status: string;
+  summary?: string;
+  error?: string | null;
+  output?: any;
+}
+
 interface Msg {
   id: string;
   side: 'ai' | 'me';
   html: string;
+  tasks?: ChatTask[];
+  note?: string;
 }
+
+const TASK_STATUS: Record<string, string> = {
+  queued: 'Queued',
+  waiting_approval: 'Needs approval',
+  running: 'Working',
+  done: 'Done',
+  failed: 'Failed',
+  cancelled: 'Declined',
+};
+
+// Text from the server is shown as text, never as markup.
+const esc = (text: string) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// One call to the AI team endpoint; throws with a plain reason.
+const postTeam = async (body: Record<string, unknown>) => {
+  const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let result: any = null;
+  try { result = await response.json(); } catch { /* not JSON */ }
+  if (!response.ok || !result?.success) {
+    throw new Error(result?.error || (response.status === 404 ? 'the team server is not deployed yet' : `server error ${response.status}`));
+  }
+  return result.data;
+};
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -61,7 +97,7 @@ const greeting = () => {
  *   (B) dedicated /assistant route
  *   (C) floating dock using compact mode
  *
- * Chat remains mocked until the confirmed agentService API is supplied.
+ * Chat is real: the Master Agent (POST /api/team) answers and hands tasks to specialists.
  * Briefing and metrics already use live LeadContext data.
  */
 const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
@@ -385,13 +421,56 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     []
   );
 
-  // Mock agent response. Replace only after the current complete agentService
-  // file confirms the real API contract.
-  const runAgent = (text: string) => {
-    if (agentTimerRef.current !== null) {
-      window.clearTimeout(agentTimerRef.current);
-    }
+  const patchTask = (taskId: string, patch: Partial<ChatTask>) =>
+    setConversation((current) =>
+      current.map((message) =>
+        message.tasks ? { ...message, tasks: message.tasks.map((task) => (task.id === taskId ? { ...task, ...patch } : task)) } : message
+      )
+    );
 
+  // One specialist runs one task in its own server call.
+  const runTask = async (task: ChatTask, approve = false): Promise<ChatTask> => {
+    patchTask(task.id, { status: 'running', error: null });
+    try {
+      const data = await postTeam({ action: 'run', taskId: task.id, approve });
+      patchTask(task.id, { status: data.status, summary: data.summary, error: data.error, output: data.output });
+      return { ...task, ...data };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown reason';
+      patchTask(task.id, { status: 'failed', error: reason });
+      return { ...task, status: 'failed', error: reason, summary: `Could not finish "${task.title}": ${reason}` };
+    }
+  };
+
+  // The Master Agent reports the results; the orb shows success or concern first.
+  const reportResults = (results: ChatTask[]) => {
+    const text = results.map((result) => result.summary || '').join(' ').trim();
+    setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(text) }]);
+    setPresenceState(results.every((result) => result.status === 'done') ? 'success' : 'error');
+    speakTimerRef.current = window.setTimeout(() => {
+      speakTimerRef.current = null;
+      if (voiceOn) void say(toSpeech(esc(text)).slice(0, 600));
+      else setPresenceState('idle');
+    }, 1400);
+  };
+
+  const approveTask = async (task: ChatTask) => {
+    if (voiceOn) unlockAudio();
+    stopSpeaking();
+    setPresenceState('delegating');
+    reportResults([await runTask(task, true)]);
+  };
+
+  const declineTask = async (task: ChatTask) => {
+    try {
+      await postTeam({ action: 'cancel', taskId: task.id });
+      patchTask(task.id, { status: 'cancelled' });
+    } catch (error) {
+      patchTask(task.id, { error: error instanceof Error ? error.message : 'Could not decline' });
+    }
+  };
+
+  const runAgent = async (text: string) => {
     if (speakTimerRef.current !== null) {
       window.clearTimeout(speakTimerRef.current);
       speakTimerRef.current = null;
@@ -401,27 +480,49 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     setPresenceState('thinking');
     setThinking(true);
 
-    agentTimerRef.current = window.setTimeout(() => {
-      const reply = brain(text);
+    const history = conversation.slice(-6).map((message) => `${message.side === 'me' ? 'Timothy' : 'Master Agent'}: ${toSpeech(message.html)}`);
+    let data: any;
+    try {
+      data = await postTeam({ action: 'chat', message: text, history });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown reason';
       setThinking(false);
-      setPresenceState('speaking');
-      setConversation((current) => [
-        ...current,
-        { id: uid(), side: 'ai', html: reply },
-      ]);
-      agentTimerRef.current = null;
-
-      if (voiceOn) {
-        void say(toSpeech(reply));
-        return;
-      }
-
-      // Voice off: stay in the responding state for a reading-time estimate.
+      setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(`I could not reach the team server: ${reason}.`) }]);
+      setPresenceState('error');
       speakTimerRef.current = window.setTimeout(() => {
         setPresenceState('idle');
         speakTimerRef.current = null;
-      }, Math.min(4200, 1200 + reply.length * 9));
-    }, 850);
+      }, 2600);
+      return;
+    }
+
+    const reply = String(data.reply || '');
+    const tasks: ChatTask[] = Array.isArray(data.tasks) ? data.tasks : [];
+    const note = data.source === 'rules' ? (data.aiError ? `AI not used: ${data.aiError}. Simple mode answered.` : 'Simple mode: no AI key is set.') : undefined;
+    setThinking(false);
+    setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(reply), tasks, note }]);
+
+    // Tasks that need no approval start straight away, one after another.
+    const ready = tasks.filter((task) => task.status === 'queued');
+    if (ready.length) {
+      setPresenceState('delegating');
+      const results: ChatTask[] = [];
+      for (const task of ready) results.push(await runTask(task));
+      reportResults(results);
+      return;
+    }
+
+    setPresenceState('speaking');
+    if (voiceOn) {
+      void say(toSpeech(esc(reply)));
+      return;
+    }
+
+    // Voice off: stay in the responding state for a reading-time estimate.
+    speakTimerRef.current = window.setTimeout(() => {
+      setPresenceState('idle');
+      speakTimerRef.current = null;
+    }, Math.min(4200, 1200 + reply.length * 9));
   };
 
   const send = (text?: string) => {
@@ -434,7 +535,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     ]);
     setInput('');
     if (voiceOn) unlockAudio();
-    runAgent(value);
+    void runAgent(value);
   };
 
   const startSimulatedListening = () => {
@@ -572,6 +673,47 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
                 className="cr-bubble"
                 dangerouslySetInnerHTML={{ __html: message.html }}
               />
+              {message.note && <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{message.note}</p>}
+              {message.tasks?.map((task) => (
+                <div key={task.id} className="mt-2 neo-in rounded-2xl p-3 text-sm" data-task-status={task.status}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-[var(--text-primary)]">{task.agentName}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${task.status === 'failed' ? 'text-red-400' : task.status === 'done' ? 'text-green-500' : 'text-[var(--text-secondary)]'}`}>
+                      {TASK_STATUS[task.status] || task.status}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-[var(--text-secondary)] break-words">{task.title}</p>
+                  {task.status === 'waiting_approval' && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" className="cr-chip primary" onClick={() => void approveTask(task)}>Approve</button>
+                      <button type="button" className="cr-chip" onClick={() => void declineTask(task)}>Not now</button>
+                    </div>
+                  )}
+                  {task.status === 'failed' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button type="button" className="cr-chip" onClick={() => void approveTask(task)}>Try again</button>
+                    </div>
+                  )}
+                  {task.error && <p className="mt-1 text-xs text-red-400 break-words">{task.error}</p>}
+                  {Array.isArray(task.output?.businesses) && task.output.businesses.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {task.output.businesses.map((business: any, index: number) => (
+                        <li key={index} className="text-xs text-[var(--text-primary)] break-words">
+                          <b>{business.businessName}</b>
+                          <span className="text-[var(--text-secondary)]">
+                            {' '}- {business.rating ? `${business.rating} stars (${business.reviewCount})` : 'no rating'} - {business.website ? 'has website' : 'no website'}{' '}
+                          </span>
+                          <a href={business.mapLink} target="_blank" rel="noreferrer" className="underline">Map</a>
+                        </li>
+                      ))}
+                      <li className="text-[11px] text-[var(--text-secondary)]">Nothing was saved. To keep any of these, save them from Lead Finder.</li>
+                    </ul>
+                  )}
+                  {task.output?.demoUrl && (
+                    <a href={task.output.demoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold underline text-[var(--text-primary)]">Open demo</a>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         ))}
@@ -623,22 +765,5 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   );
 };
 
-function brain(text: string): string {
-  const normalisedText = text.toLowerCase();
-
-  if (normalisedText.includes('brief')) {
-    return `Here's your day, Timothy.<br />
-• A few leads still need first outreach<br />
-• Some are awaiting your reply<br />
-• Demos are ready to send<br /><br />
-Recommendation: clear outreach first, then chase replies. <span class="cr-row"><button class="cr-mini go" data-go="/outreach">Go to Outreach</button></span>`;
-  }
-
-  if (normalisedText.includes('scan')) {
-    return `Scan for new businesses on the Lead Finder. I've pre-loaded your filters (no website · services). <span class="cr-row"><button class="cr-mini go" data-go="/finder">Open Finder</button></span>`;
-  }
-
-  return `I'm your Executive Agent — I can scan leads, draft and send outreach, track your pipeline, and create invoices. What would you like to do?`;
-}
 
 export default AssistantCore;
