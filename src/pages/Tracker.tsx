@@ -8,14 +8,12 @@ import { cn } from '../utils/cn';
 // Business Tracker: every tool, subscription and domain the studio uses, what it costs, when it is due,
 // and how the running costs compare with closed deals. Card numbers are never stored.
 
-type Item = { id?: string; name: string; kind: string; status: string; amount: number; currency: string; cycle: string; nextDue: string | null; paidWith: string; notes: string };
+type Item = { id?: string; name: string; kind: string; status: string; amount: number; currency: string; cycle: string; nextDue: string | null; paidWith: string; notes: string; auto?: boolean; upgradePrice?: number | null; upgradeNote?: string };
 
 const EMPTY: Item = { name: '', kind: 'tool', status: 'paid', amount: 0, currency: 'USD', cycle: 'monthly', nextDue: null, paidWith: '', notes: '' };
 const KIND_LABEL: Record<string, string> = { tool: 'Tool', subscription: 'Subscription', domain: 'Domain', other: 'Other' };
 const STATUS_LABEL: Record<string, string> = { paid: 'Paying', free: 'Free tier', paused: 'Paused', cancelled: 'Cancelled' };
 const STATUS_TONE: Record<string, string> = { paid: 'text-orange-400 bg-orange-400/10', free: 'text-green-500 bg-green-500/10', paused: 'text-yellow-500 bg-yellow-500/10', cancelled: 'text-gray-400 bg-gray-400/10' };
-// The services ClientRadar itself is built on. Added only when you press the button, all as free tier for you to confirm.
-const STARTERS = ['Vercel (hosting)', 'Supabase (database)', 'GitHub (code)', 'Geoapify (business search)', 'Google Gemini API (AI)', 'Brevo (email sending)'];
 
 const money = (value: number, currency: string) => {
   try { return new Intl.NumberFormat('en', { style: 'currency', currency, maximumFractionDigits: value % 1 ? 2 : 0 }).format(value); } catch { return `${currency} ${value.toLocaleString()}`; }
@@ -82,6 +80,10 @@ const Tracker = () => {
   const stage = priceStage(closed.length);
   const usdYear = totals.USD?.yearly || 0;
   const otherCurrencies = Object.keys(totals).filter((code) => code !== 'USD');
+  // What the free services would cost each month if every one moved to its paid plan (only confirmed prices).
+  const freeItems = items.filter((item) => item.status === 'free');
+  const upgradeTotal = freeItems.reduce((sum, item) => sum + (item.upgradePrice || 0), 0);
+  const unpriced = freeItems.filter((item) => item.auto && !item.upgradePrice).length;
   const shown = items.filter((item) => filter === 'all' || item.status === filter || item.kind === filter);
 
   const save = async (item: Item) => {
@@ -101,21 +103,6 @@ const Tracker = () => {
     if (!item.id || !window.confirm(`Remove ${item.name} from the tracker?`)) return;
     try { await call('POST', { action: 'tracker-delete', id: item.id }); await load(); } catch (error) { showToast({ type: 'error', title: 'Not removed', message: error instanceof Error ? error.message : 'Please try again.' }); }
   };
-  const addStarters = async () => {
-    setSaving(true);
-    try {
-      for (const name of STARTERS) {
-        if (items.some((item) => item.name.toLowerCase() === name.toLowerCase())) continue;
-        await call('POST', { action: 'tracker-save', item: { ...EMPTY, name, status: 'free', notes: 'Added as free tier. Change it if you pay for this.' } });
-      }
-      await load();
-    } catch (error) {
-      showToast({ type: 'error', title: 'Could not add them', message: error instanceof Error ? error.message : 'Please try again.' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const inputClasses = 'w-full rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none px-4 py-3';
   const labelClasses = 'text-[11px] font-bold text-[var(--text-secondary)] uppercase tracking-[0.16em] ml-1';
 
@@ -124,7 +111,7 @@ const Tracker = () => {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-black tracking-tight mb-2 text-[var(--text-primary)]">Business Tracker</h1>
-          <p className="text-[var(--text-secondary)] font-medium">Everything the studio pays for or uses free: tools, subscriptions and domains, with due dates and running costs.</p>
+          <p className="text-[var(--text-secondary)] font-medium">Everything the studio pays for or uses free. The agent lists the services ClientRadar runs on by itself, with what each would cost on a paid plan.</p>
         </div>
         <button type="button" onClick={() => setEditing({ ...EMPTY })} className="btn-neumorph-primary px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] inline-flex items-center justify-center gap-2 self-start">
           <Plus size={16} /> Add item
@@ -158,6 +145,15 @@ const Tracker = () => {
           <p className="mt-1 text-xs text-[var(--text-secondary)]">Closed deals minus one year of USD costs.{otherCurrencies.length ? ' Other currencies are not included.' : ''}</p>
         </div>
       </section>
+
+      {freeItems.length > 0 && (
+        <section className="neo-card p-5 sm:p-6" data-upgrade-total>
+          <h2 className="text-lg font-bold text-[var(--text-primary)]">If you started paying for everything</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            You pay {money(totals.USD?.monthly || 0, 'USD')} a month now. Moving all {freeItems.length} free services to their first paid plan would add about <b className="text-[var(--text-primary)]">{money(upgradeTotal, 'USD')} a month</b>{unpriced ? `, plus ${unpriced} with pay-per-use or unconfirmed prices` : ''}. You do not need to upgrade anything until a free limit is reached.
+          </p>
+        </section>
+      )}
 
       <section className="neo-card p-5 sm:p-6" data-price-stage>
         <h2 className="text-lg font-bold text-[var(--text-primary)]">Your prices right now: {stage.name}</h2>
@@ -197,12 +193,7 @@ const Tracker = () => {
         </div>
         {loading ? <p className="mt-4 text-sm text-[var(--text-secondary)]">Loading...</p> : shown.length === 0 ? (
           <div className="mt-4 text-sm text-[var(--text-secondary)]">
-            <p>Nothing here yet. Add your first tool, subscription or domain.</p>
-            {items.length === 0 && !setupNeeded && (
-              <button type="button" disabled={saving} onClick={() => void addStarters()} className="mt-3 neo-button px-4 py-2 rounded-full text-sm font-semibold text-[var(--text-primary)]">
-                {saving ? 'Adding...' : 'Add the 6 services ClientRadar runs on (as free tier)'}
-              </button>
-            )}
+            <p>Nothing here yet. The services ClientRadar runs on are added by the agent automatically; add your own subscriptions and domains with Add item.</p>
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-slate-500/15" data-tracker-list>
@@ -213,10 +204,15 @@ const Tracker = () => {
                   <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
                     <span className={cn('px-2 py-0.5 rounded-full font-semibold', STATUS_TONE[item.status])}>{STATUS_LABEL[item.status] || item.status}</span>
                     <span>{KIND_LABEL[item.kind] || item.kind}</span>
+                    {item.auto && <span className="px-2 py-0.5 rounded-full font-semibold text-blue-400 bg-blue-400/10">Added by the agent</span>}
                     {item.status !== 'free' && <span>{money(item.amount, item.currency)} {item.cycle === 'one-time' ? 'once' : item.cycle}</span>}
+                    {item.status === 'free' && <span>{money(0, 'USD')} now</span>}
                     {item.nextDue && <span>{dueText(item.nextDue)}</span>}
                     {item.paidWith && <span>Paid with {item.paidWith}</span>}
                   </p>
+                  {(item.upgradePrice || item.upgradeNote) && item.status !== 'paid' && (
+                    <p className="mt-1 text-xs text-[var(--text-primary)] break-words">Paid plan: {item.upgradePrice ? `${money(item.upgradePrice, 'USD')} - ` : ''}{item.upgradeNote}</p>
+                  )}
                   {item.notes && <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">{item.notes}</p>}
                 </div>
                 <div className="flex shrink-0 gap-1">
