@@ -16,6 +16,10 @@ create table if not exists public.business_expenses (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Added for automatic entries: which known service this is, and what its paid plan costs if you upgrade.
+alter table public.business_expenses add column if not exists service_key text;
+alter table public.business_expenses add column if not exists upgrade_price numeric;
+alter table public.business_expenses add column if not exists upgrade_note text;
 create index if not exists idx_business_expenses_due on public.business_expenses (next_due);
 
 -- Locked by default: only the server (after the login check) can read or write.
