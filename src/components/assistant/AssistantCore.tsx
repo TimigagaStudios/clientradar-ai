@@ -17,6 +17,7 @@ import {
 import FluidOrb, { type OrbState } from './FluidOrb';
 import { useLeads } from '../../context/LeadContext';
 import FoundBusinesses from './FoundBusinesses';
+import { enqueueWork, pauseWork, resumeWork, workActive, getWork } from '../../lib/workQueue';
 import './assistant.css';
 
 type Mode = 'full' | 'compact';
@@ -466,6 +467,8 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     try {
       const data = await postTeam({ action: 'run', taskId: task.id, approve });
       patchTask(task.id, { status: data.status, summary: data.summary, error: data.error, output: data.output });
+      // An approved batch hands its tasks to the work queue, which runs them one by one on any page.
+      if (Array.isArray(data.output?.queue) && data.output.queue.length) enqueueWork(data.output.queue);
       return { ...task, ...data };
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'unknown reason';
@@ -509,6 +512,18 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     }
 
     stopSpeaking();
+    // "Hold on" and "continue" control the running work queue directly; no AI call is needed.
+    const word = text.trim().toLowerCase().replace(/[.!?]+$/, '');
+    if (/^(hold on|hold up|pause|wait|stop|stop for now|not now)( please)?$/.test(word) && workActive() && !getWork().paused) {
+      pauseWork();
+      setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc('Paused. The demo being built right now will finish, then I wait. Say continue when you are ready.') }]);
+      return;
+    }
+    if (/^(continue|resume|go on|go ahead|carry on|ok continue)( please)?$/.test(word) && getWork().paused) {
+      resumeWork();
+      setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc('Continuing with the rest of the queue.') }]);
+      return;
+    }
     setPresenceState('thinking');
     setThinking(true);
 
