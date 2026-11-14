@@ -168,11 +168,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           backdropFilter: 'blur(26px)',
         }}
       >
-        <div className="flex flex-col h-full p-6">
-          <div className="mb-10">
+        <div className="flex flex-col h-full p-6 pb-0">
+          <div className="mb-6 shrink-0">
             <Logo size={44} />
           </div>
-          <nav className="flex-1 space-y-3">
+          {/* The menu scrolls on its own when it is taller than the screen (phones). */}
+          <nav
+            data-side-menu
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-2 -mx-2 px-2"
+            style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+          >
             {menuItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
@@ -181,7 +186,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
                   to={item.path}
                   onClick={() => setIsSidebarOpen(false)}
                   className={cn(
-                    'flex items-center gap-3 px-5 py-4 rounded-2xl transition-all duration-200',
+                    'flex items-center gap-3 px-5 py-3.5 rounded-2xl transition-all duration-200',
                     isActive
                       ? 'bg-[var(--accent)] text-white'
                       : 'text-[var(--text-secondary)] hover:bg-black/[0.025] dark:hover:bg-white/[0.04]'
