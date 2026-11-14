@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 import {
   Search,
@@ -10,46 +11,66 @@ import {
   AlertCircle,
   XCircle,
 } from 'lucide-react';
-import { SearchResult, LeadPriority } from '../types';
+import { SearchResult } from '../types';
 import { cn } from '../utils/cn';
 import { useToast } from '../components/ui/useToast';
+import FinderMap, { type MapArea } from '../components/FinderMap';
+import { existingLeadFor, foundKey, saveFoundBusiness, scoreFound } from '../lib/saveFound';
+
+type LastSearch = { category: string; city: string; bounds: MapArea | null };
 
 const LeadFinder = () => {
-  const { addLead } = useLeads();
+  const { leads, refreshLeads } = useLeads();
   const { showToast } = useToast();
+  const navigate = useNavigate();
 
   const [isSearching, setIsSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Record<string, string>>({}); // result key -> new lead id
+  const [area, setArea] = useState<MapArea | null>(null);
+  const [last, setLast] = useState<LastSearch | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [source, setSource] = useState('');
+  const [note, setNote] = useState('');
+  const [onlyNoSite, setOnlyNoSite] = useState(false);
+  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
 
   const [searchParams, setSearchParams] = useState({
     category: '',
     city: '',
   });
+  const [howMany, setHowMany] = useState(20);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const runSearch = async (query: LastSearch, offset: number) => {
+    if (!query.category.trim()) {
+      showToast({ type: 'error', title: 'Business type needed', message: 'Type a category first, for example Dentist.' });
+      return;
+    }
     setIsSearching(true);
-
     try {
       const response = await fetch('/api/search-places', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: searchParams.category, city: searchParams.city }),
+        body: JSON.stringify({ category: query.category, city: query.city, bounds: query.bounds, limit: howMany, offset }),
       });
-
-      const result = await response.json();
-
-      if (!response.ok) {
+      const text = await response.text();
+      let result: any = null;
+      try { result = JSON.parse(text); } catch { /* not JSON */ }
+      if (!response.ok || !result?.success) {
         throw new Error(result?.error || 'Search failed');
       }
-
-      setResults(result.data || []);
-
+      const found: SearchResult[] = result.data || [];
+      const merged = offset > 0 ? [...results, ...found.filter((item) => !results.some((old) => foundKey(old) === foundKey(item)))] : found;
+      setResults(merged);
+      setLast(query);
+      setHasMore(Boolean(result.hasMore));
+      setSource(String(result.source || 'google'));
+      setNote(String(result.note || ''));
+      if (offset === 0 && result.area && !query.bounds) setArea(result.area);
       showToast({
         type: 'success',
         title: 'Search complete',
-        message: `${result.data?.length || 0} business result(s) loaded.`,
+        message: offset > 0 ? `${found.length} more loaded (${merged.length} in total).` : `${found.length} business result(s) loaded.`,
       });
     } catch (error) {
       console.error(error);
@@ -58,55 +79,38 @@ const LeadFinder = () => {
         title: 'Search failed',
         message: error instanceof Error ? error.message : 'Failed to fetch business results.',
       });
-      setResults([]);
+      if (offset === 0) { setResults([]); setHasMore(false); }
     } finally {
       setIsSearching(false);
     }
   };
 
-  const calculateScore = (result: SearchResult): { score: number; priority: LeadPriority } => {
-    let score = 0;
-
-    if (!result.website) score += 40;
-    else if (result.outdatedWebsite) score += 25;
-
-    if (result.rating > 4) score += 20;
-    if (result.reviewCount > 20) score += 15;
-
-    let priority: LeadPriority = 'Low';
-    if (score >= 70) priority = 'High';
-    else if (score >= 40) priority = 'Medium';
-
-    return { score, priority };
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runSearch({ category: searchParams.category, city: searchParams.city, bounds: null }, 0);
   };
 
-  const handleSaveLead = async (result: SearchResult, index: number) => {
+  const searchArea = (bounds: MapArea) => { void runSearch({ category: searchParams.category, city: '', bounds }, 0); };
+
+  const calculateScore = scoreFound;
+
+  // Saved in this visit, or already in the lead list from before.
+  const stateOf = useCallback((result: SearchResult) => {
+    const key = foundKey(result);
+    if (key in savedIds) return { saved: true, leadId: savedIds[key] || undefined };
+    const existing = existingLeadFor(leads, result);
+    return existing ? { saved: true, leadId: existing.id } : { saved: false };
+  }, [savedIds, leads]);
+
+  const saveOne = async (result: SearchResult) => {
+    const id = await saveFoundBusiness(result, { category: last?.category || searchParams.category, city: last?.city || searchParams.city });
+    setSavedIds((prev) => ({ ...prev, [foundKey(result)]: id }));
+  };
+
+  const handleSaveLead = async (result: SearchResult) => {
     try {
-      const { score, priority } = calculateScore(result);
-
-      await addLead({
-        businessName: result.businessName,
-        category: searchParams.category || 'General',
-        city: searchParams.city || 'Unknown',
-        rating: result.rating,
-        reviewCount: result.reviewCount,
-        phone: result.phone,
-        email: undefined,
-        instagram: undefined,
-        website: result.website,
-        outdatedWebsite: result.outdatedWebsite,
-        leadScore: score,
-        priority,
-        status: 'New',
-        demoStatus: 'Not Started',
-        notes: `Found via Lead Finder. Address: ${result.address}`,
-        demoLink: undefined,
-        dealValue: undefined,
-        outreachHistory: [],
-      });
-
-      setSavedIds((prev) => new Set(prev).add(`${index}`));
-
+      await saveOne(result);
+      await refreshLeads();
       showToast({
         type: 'success',
         title: 'Lead saved',
@@ -122,6 +126,29 @@ const LeadFinder = () => {
     }
   };
 
+  const shown = useMemo(() => (onlyNoSite ? results.filter((item) => !item.website) : results), [results, onlyNoSite]);
+  const unsaved = shown.filter((item) => !stateOf(item).saved);
+
+  const saveAll = async () => {
+    const list = unsaved;
+    if (!list.length || bulk) return;
+    let done = 0;
+    let failed = 0;
+    setBulk({ done: 0, total: list.length });
+    for (const item of list) {
+      try { await saveOne(item); } catch { failed += 1; }
+      done += 1;
+      setBulk({ done, total: list.length });
+    }
+    await refreshLeads();
+    setBulk(null);
+    showToast({
+      type: failed ? 'error' : 'success',
+      title: failed ? 'Some leads were not saved' : 'Leads saved',
+      message: `${done - failed} saved${failed ? `, ${failed} failed` : ''}.`,
+    });
+  };
+
   const inputClasses =
     'w-full rounded-2xl neo-in text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none px-4 py-3.5';
 
@@ -132,14 +159,14 @@ const LeadFinder = () => {
           Lead Finder
         </h1>
         <p className="text-[var(--text-secondary)] font-medium">
-          Search local business opportunities and convert them into qualified leads.
+          Search businesses in any country: type a city, or move the map and search what is on screen.
         </p>
       </header>
 
       <section className="neo-card p-6 md:p-8">
         <form
           onSubmit={handleSearch}
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
+          className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
         >
           <div className="space-y-2">
             <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] ml-1">
@@ -149,7 +176,7 @@ const LeadFinder = () => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
               <input
                 type="text"
-                placeholder="e.g. Dentist, Plumber"
+                placeholder="e.g. Dentist, Real estate"
                 className={`${inputClasses} pl-11`}
                 value={searchParams.category}
                 onChange={(e) =>
@@ -162,13 +189,13 @@ const LeadFinder = () => {
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] ml-1">
-              City
+              City (any country)
             </label>
             <div className="relative">
               <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={18} />
               <input
                 type="text"
-                placeholder="e.g. Austin, TX"
+                placeholder="e.g. Los Angeles, London, Dubai"
                 className={`${inputClasses} pl-11`}
                 value={searchParams.city}
                 onChange={(e) =>
@@ -177,6 +204,22 @@ const LeadFinder = () => {
                 required
               />
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="finder-how-many" className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] ml-1">
+              How many
+            </label>
+            <select
+              id="finder-how-many"
+              className={inputClasses}
+              value={howMany}
+              onChange={(e) => setHowMany(Number(e.target.value))}
+            >
+              <option value={20}>20 at a time</option>
+              <option value={50}>50 at a time</option>
+              <option value={100}>100 at a time</option>
+            </select>
           </div>
 
           <button
@@ -189,15 +232,54 @@ const LeadFinder = () => {
         </form>
       </section>
 
+      <section className="neo-card p-4 md:p-6">
+        <div className="mb-3">
+          <h2 className="text-lg font-bold text-[var(--text-primary)]">World map</h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">
+            Type a category above, move and zoom the map to any city or region, then press Search this area. Tap a pin to save it.
+          </p>
+        </div>
+        <FinderMap
+          results={shown}
+          area={area}
+          searching={isSearching}
+          stateOf={stateOf}
+          onSearchArea={searchArea}
+          onSave={(result) => void handleSaveLead(result)}
+          onOpenLead={(leadId) => navigate(`/leads/${leadId}`)}
+        />
+        <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+          Business search{' '}
+          <a href="https://www.geoapify.com/" target="_blank" rel="noopener noreferrer" className="underline">Powered by Geoapify</a>
+          {' '}-{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="underline">&copy; OpenStreetMap contributors</a>
+        </p>
+      </section>
+
       {results.length > 0 && (
         <section className="neo-card overflow-hidden">
           <div className="px-6 py-5 border-b border-black/8 dark:border-white/8 transition-colors duration-300">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
-              Search Results
+              Search Results ({shown.length})
             </h2>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               Review and save high-value opportunities into your lead database.
             </p>
+            {note && <p className="text-xs text-[var(--text-secondary)] mt-2" data-finder-note>{note}</p>}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+                <input type="checkbox" checked={onlyNoSite} onChange={(e) => setOnlyNoSite(e.target.checked)} />
+                Only without a website ({results.filter((item) => !item.website).length})
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveAll()}
+                disabled={!unsaved.length || Boolean(bulk)}
+                className="neo-button px-4 py-2 rounded-full text-sm font-semibold text-[var(--text-primary)] disabled:opacity-50"
+              >
+                {bulk ? `Saving ${bulk.done} of ${bulk.total}...` : unsaved.length ? `Save all ${unsaved.length} shown` : 'All shown are saved'}
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -213,13 +295,14 @@ const LeadFinder = () => {
               </thead>
 
               <tbody className="divide-y divide-black/8 dark:divide-white/8">
-                {results.map((result, idx) => {
+                {shown.map((result) => {
                   const { score, priority } = calculateScore(result);
-                  const isSaved = savedIds.has(`${idx}`);
+                  const state = stateOf(result);
+                  const isSaved = state.saved;
 
                   return (
                     <tr
-                      key={idx}
+                      key={foundKey(result)}
                       className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
                     >
                       <td className="p-4">
@@ -229,6 +312,9 @@ const LeadFinder = () => {
                         <p className="text-sm text-[var(--text-secondary)] mt-1">
                           {result.phone || 'Phone not available'}
                         </p>
+                        {result.category && (
+                          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{result.category}</p>
+                        )}
                       </td>
 
                       <td className="p-4 text-[var(--text-secondary)]">
@@ -238,15 +324,15 @@ const LeadFinder = () => {
                       <td className="p-4">
                         {!result.website ? (
                           <span className="flex items-center gap-1.5 text-red-400 bg-red-400/10 px-2.5 py-1 rounded-full text-xs w-fit">
-                            <XCircle size={14} /> No Website
+                            <XCircle size={14} /> {source === 'google' ? 'No Website' : 'No website listed'}
                           </span>
                         ) : result.outdatedWebsite ? (
                           <span className="flex items-center gap-1.5 text-orange-400 bg-orange-400/10 px-2.5 py-1 rounded-full text-xs w-fit">
-                            <AlertCircle size={14} /> Outdated
+                            <AlertCircle size={14} /> {result.websiteNote || 'Outdated'}
                           </span>
                         ) : (
                           <a
-                            href={result.website}
+                            href={/^https?:\/\//i.test(result.website) ? result.website : `https://${result.website}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1.5 text-blue-400 bg-blue-400/10 px-2.5 py-1 rounded-full text-xs w-fit hover:underline"
@@ -289,26 +375,35 @@ const LeadFinder = () => {
                       </td>
 
                       <td className="p-4 text-right">
-                        <button
-                          onClick={() => handleSaveLead(result, idx)}
-                          disabled={isSaved}
-                          className={cn(
-                            'px-4 py-2 rounded-full text-sm font-semibold transition-all inline-flex items-center gap-2',
-                            isSaved
-                              ? 'bg-green-500/10 text-green-500 cursor-default'
-                              : 'neo-button text-[var(--text-primary)] hover:text-[var(--accent)]'
-                          )}
-                        >
-                          {isSaved ? (
-                            <>
-                              <Check size={14} /> Saved
-                            </>
-                          ) : (
-                            <>
-                              <Plus size={14} /> Save Lead
-                            </>
-                          )}
-                        </button>
+                        {state.leadId ? (
+                          <Link
+                            to={`/leads/${state.leadId}`}
+                            className="px-4 py-2 rounded-full text-sm font-semibold inline-flex items-center gap-2 bg-green-500/10 text-green-500 hover:underline"
+                          >
+                            <Check size={14} /> Open lead
+                          </Link>
+                        ) : (
+                          <button
+                            onClick={() => handleSaveLead(result)}
+                            disabled={isSaved || Boolean(bulk)}
+                            className={cn(
+                              'px-4 py-2 rounded-full text-sm font-semibold transition-all inline-flex items-center gap-2',
+                              isSaved
+                                ? 'bg-green-500/10 text-green-500 cursor-default'
+                                : 'neo-button text-[var(--text-primary)] hover:text-[var(--accent)]'
+                            )}
+                          >
+                            {isSaved ? (
+                              <>
+                                <Check size={14} /> Saved
+                              </>
+                            ) : (
+                              <>
+                                <Plus size={14} /> Save Lead
+                              </>
+                            )}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -316,6 +411,19 @@ const LeadFinder = () => {
               </tbody>
             </table>
           </div>
+
+          {hasMore && last && (
+            <div className="px-6 py-5 border-t border-black/8 dark:border-white/8 text-center">
+              <button
+                type="button"
+                onClick={() => void runSearch(last, results.length)}
+                disabled={isSearching}
+                className="neo-button px-5 py-2.5 rounded-full text-sm font-semibold text-[var(--text-primary)]"
+              >
+                {isSearching ? 'Loading...' : `Load ${howMany} more`}
+              </button>
+            </div>
+          )}
         </section>
       )}
 
@@ -325,7 +433,7 @@ const LeadFinder = () => {
             Start a lead search
           </h3>
           <p className="text-[var(--text-secondary)] max-w-2xl mx-auto leading-8">
-            Search by category and city to discover local businesses, identify
+            Search by category and city, or use the world map, to discover businesses anywhere, identify
             weak digital presence, and save qualified opportunities into your lead engine.
           </p>
         </div>
