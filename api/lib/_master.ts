@@ -38,6 +38,20 @@ export function statusLine(context: MasterContext) {
   return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.`;
 }
 
+// Read straight from the owner's own words (not from the AI): how many businesses, and whether only
+// those without a website are wanted. "Find 100 real estate companies in Los Angeles without websites".
+export function searchWishes(message: string): { count?: number; noWebsite?: boolean } {
+  const text = clean(message, 400);
+  const number = text.match(/\b(\d{1,4})\b(?!\s*(?:km|miles?|stars?|%))/);
+  const count = number ? Math.max(1, Math.min(100, Number(number[1]))) : undefined;
+  const noWebsite = /\b(?:without|with no|no|lacking|don'?t have|do not have|has no|have no|missing)\b[^.]{0,30}\b(?:web ?sites?|sites?)\b/i.test(text);
+  return { ...(count ? { count } : {}), ...(noWebsite ? { noWebsite: true } : {}) };
+}
+
+// Removes the number and the "without a website" wording so only the business type and the place remain.
+export const tidyCategory = (value: string) => clean(value.replace(/^\s*(?:about|around|up to|at least)?\s*\d{1,4}\s+/i, '').replace(/\s+(?:that|which|who)\b.*$/i, '').replace(/\s+(?:without|with no|with)\b.*$/i, ''), 60);
+export const tidyCity = (value: string) => clean(value.replace(/[,;]?\s+(?:without|with no|with|that|which|who|and)\b.*$/i, ''), 60);
+
 // Used when no AI key is set or the AI call fails. Understands two plain requests.
 export function planByRules(message: string, context: MasterContext): Omit<MasterPlan, 'source' | 'aiError'> {
   const text = clean(message, 400);
@@ -47,7 +61,9 @@ export function planByRules(message: string, context: MasterContext): Omit<Maste
   }
   const find = text.match(/\b(?:find|search for|search|look for|get me|scan for)\s+(?:me\s+)?(?:some\s+|new\s+)?(.+?)\s+(?:in|around|near)\s+(.+?)[.?!]*$/i);
   if (find) {
-    return { reply: `I will ask the Lead Research Agent to look for ${clean(find[1], 60)} in ${clean(find[2], 60)}.`, tasks: [{ agent: 'lead-research', category: clean(find[1], 60), city: clean(find[2], 60) }] };
+    const category = tidyCategory(find[1]);
+    const city = tidyCity(find[2]);
+    if (category && city) return { reply: `I will ask the Lead Research Agent to look for ${category} in ${city}.`, tasks: [{ agent: 'lead-research', category, city }] };
   }
   const recent = context.recentActivity.length ? ` Latest team activity: ${context.recentActivity.slice(0, 3).join(' ')}` : '';
   return { reply: `${statusLine(context)}${recent} You can ask me to find businesses in a city or to build a demo for a lead.`, tasks: [] };
@@ -58,8 +74,8 @@ function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
   if (!reply) return null;
   const tasks: PlannedTask[] = [];
   for (const raw of Array.isArray(parsed?.tasks) ? parsed.tasks.slice(0, MAX_TASKS) : []) {
-    if (raw?.agent === 'lead-research' && clean(raw.category, 60) && clean(raw.city, 60)) {
-      tasks.push({ agent: 'lead-research', category: clean(raw.category, 60), city: clean(raw.city, 60) });
+    if (raw?.agent === 'lead-research' && tidyCategory(String(raw.category || '')) && tidyCity(String(raw.city || ''))) {
+      tasks.push({ agent: 'lead-research', category: tidyCategory(String(raw.category)), city: tidyCity(String(raw.city)) });
     } else if (raw?.agent === 'demo-creation' && clean(raw.leadName, 80)) {
       tasks.push({ agent: 'demo-creation', leadName: clean(raw.leadName, 80), level: ['mid', 'hybrid', 'ultra'].includes(raw.level) ? raw.level : 'mid' });
     }
@@ -77,10 +93,10 @@ export async function planRequest(message: string, history: string[], context: M
     'You are the Master Agent of ClientRadar AI, chief of staff to Timothy, owner of Timigaga Studios (a web design studio).',
     'You coordinate a team of specialist agents. You never do their work yourself and you never invent results, numbers, leads, prices or promises.',
     'Specialists you may hand tasks to right now:',
-    '- "lead-research": searches public business listings. Needs "category" (type of business) and "city".',
+    '- "lead-research": searches public business listings in ANY country. Needs "category" (only the type of business, no numbers) and "city" (only the place, any city in the world). How many and "without a website" are read from the owner message automatically.',
     '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (use "mid" unless told otherwise).',
     'Outreach, quality checks, reports, scheduling, client replies and social posts are planned agents that are NOT active yet. If asked for those, say so plainly and create no task.',
-    'You cannot send messages, save leads, delete anything or spend money.',
+    'You cannot send messages, save leads, delete anything or spend money. The owner saves found businesses himself with the Save buttons under the results.',
     'Answer questions about the business only from the records given below. If the records do not contain the answer, say you do not have it.',
     `Create at most ${MAX_TASKS} tasks. Create none when the request is only a question. If a needed detail is missing (for example the city), ask for it and create no task.`,
     'Reply in one to three short plain sentences, no markdown, no lists. When you create tasks, say which agent you are asking and for what; do not claim the work is already done.',

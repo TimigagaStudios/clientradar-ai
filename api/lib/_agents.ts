@@ -1,6 +1,6 @@
 import { buildDemoPrompt, processDemoJob } from './demo-job-process.js';
 import { normalizeStyleLevel } from './demo-ai.js';
-import { findBusinesses } from './_places.js';
+import { searchBusinesses, type FoundBusiness } from './_places.js';
 
 // Specialist agents. Each runner receives ONE task and only the tools listed for that agent:
 // it cannot reach another agent's tools or data. Each task runs in its own server call.
@@ -17,14 +17,33 @@ const runLeadResearch: Runner = async (_supabase, task) => {
   const category = String(task.input?.category || '').trim();
   const city = String(task.input?.city || '').trim();
   if (!category || !city) throw new Error('The task needs a business type and a city');
-  const found = await findBusinesses(category, city);
-  const withoutSite = found.businesses.filter((item) => !item.website).length;
-  const where = found.source === 'google' ? '' : ' Source: OpenStreetMap (free), so the list is shorter and has no ratings.';
+  const wanted = Math.max(1, Math.min(100, Math.round(Number(task.input?.count) || 8)));
+  const onlyWithoutSite = Boolean(task.input?.noWebsite);
+  // "Without a website" needs more reading: up to 4 pages of 100 are read and filtered, then it stops.
+  const pageSize = onlyWithoutSite ? 100 : wanted;
+  let businesses: FoundBusiness[] = [];
+  let looked = 0;
+  let credits = 0;
+  let found = await searchBusinesses({ category, city, limit: pageSize });
+  for (let page = 0; ; page += 1) {
+    looked += found.businesses.length;
+    credits += found.credits || 0;
+    businesses = businesses.concat(onlyWithoutSite ? found.businesses.filter((item) => !item.website) : found.businesses);
+    if (businesses.length >= wanted || !found.hasMore || found.source !== 'geoapify' || page >= 3) break;
+    found = await searchBusinesses({ category, city, limit: pageSize, offset: (page + 1) * pageSize });
+  }
+  businesses = businesses.slice(0, wanted);
+  const withoutSite = businesses.filter((item) => !item.website).length;
+  const where = found.source === 'google' ? '' : found.source === 'geoapify' ? ' Source: Geoapify (free map data, no ratings).' : ' Source: OpenStreetMap (free), so the list is shorter and has no ratings.';
+  const short = businesses.length < wanted && wanted > 8 ? ` You asked for ${wanted}; the free map data only had ${businesses.length}.` : '';
+  const summary = !businesses.length
+    ? `Found no ${category} in ${city}${onlyWithoutSite ? ` without a listed website (looked at ${looked})` : ''}.${where}`
+    : onlyWithoutSite
+      ? `Looked at ${looked} ${category} in ${city}; ${businesses.length} have no website listed in the map data (some may still have one).${short}${where}`
+      : `Found ${businesses.length} ${category} in ${city}; ${withoutSite} of them show no website.${short}${where}`;
   return {
-    summary: found.businesses.length
-      ? `Found ${found.businesses.length} ${category} in ${city}; ${withoutSite} of them show no website.${where}`
-      : `Found no ${category} in ${city}.${where}`,
-    output: { category, city, source: found.source, note: found.note, businesses: found.businesses },
+    summary,
+    output: { category, city, source: found.source, note: found.note, businesses, looked, noWebsiteOnly: onlyWithoutSite, credits: credits || null },
   };
 };
 
