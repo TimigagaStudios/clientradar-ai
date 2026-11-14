@@ -50,6 +50,18 @@ export const AGENTS: AgentProfile[] = [
     stageNote: 'Runs searches the Master Agent hands over; Lead Finder searches are recorded too.',
   },
   {
+    key: 'screenshot-intelligence',
+    name: 'Screenshot Intelligence Agent',
+    role: 'Turns screenshots into leads',
+    job: 'Reads screenshots of business listings, pulls out every business as its own record with a confidence mark, and keeps them for your review. Nothing becomes a lead until you import it.',
+    tools: ['Read one screenshot with the AI', 'Keep records for review', 'Save reviewed records as leads'],
+    dataAccess: ['Screenshots you upload', 'Records waiting for review', 'Leads (add only, after your review)'],
+    needsApproval: ['Importing any record as a lead'],
+    reportsTo: 'master',
+    stage: 'active',
+    stageNote: 'Bulk screenshot import with review, duplicate marks and source tracking is live from the Import button.',
+  },
+  {
     key: 'demo-creation',
     name: 'Demo Creation Agent',
     role: 'Builds the demo website for a lead',
