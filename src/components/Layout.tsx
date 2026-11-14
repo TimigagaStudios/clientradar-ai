@@ -27,6 +27,7 @@ import Button from './Button';
 import AddLeadModal from './AddLeadModal';
 import ImportLeadsModal from './ImportLeadsModal';
 import ScreenshotImportModal from './ScreenshotImportModal';
+import MasterFloat from './assistant/MasterFloat';
 import Logo from './Logo';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -330,6 +331,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <main className="lg:ml-72 min-h-screen pt-32">
         <div className="p-4 sm:p-6 lg:p-8 xl:p-10">
           <div className="max-w-[1600px] mx-auto">{children}</div>
+          <MasterFloat />
         </div>
       </main>
     </div>
