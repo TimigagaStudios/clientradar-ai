@@ -27,3 +27,27 @@ export function sameBusiness(first: Matchable, second: Matchable): string {
   }
   return '';
 }
+
+// Folds repeated records together instead of just deleting them. Useful when one screenshot is a
+// results list (name, category, rating) and another is the place card of the same business
+// (phone, website, address): the first record is kept and its empty fields are filled from the repeat.
+// Records that match a lead already saved are only removed; saved leads are never changed here.
+export function mergeDuplicates<T extends Matchable & { id: string } & Record<string, any>>(records: T[], alreadySaved: (record: T) => boolean, fields: string[]) {
+  const kept: T[] = [];
+  const removedIds: string[] = [];
+  const changedIds = new Set<string>();
+  records.forEach((record) => {
+    if (alreadySaved(record)) { removedIds.push(record.id); return; }
+    const index = kept.findIndex((earlier) => sameBusiness(record, earlier));
+    if (index < 0) { kept.push(record); return; }
+    const merged: Record<string, any> = { ...kept[index] };
+    fields.forEach((field) => {
+      const empty = merged[field] === null || merged[field] === undefined || merged[field] === '';
+      const value = record[field];
+      if (empty && value !== null && value !== undefined && value !== '') { merged[field] = value; changedIds.add(merged.id); }
+    });
+    kept[index] = merged as T;
+    removedIds.push(record.id);
+  });
+  return { kept, removedIds, changed: kept.filter((record) => changedIds.has(record.id)) };
+}
