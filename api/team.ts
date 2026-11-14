@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { AGENTS, teamClient } from './lib/_team.js';
-import { planRequest } from './lib/_master.js';
+import { planRequest, transcribeAudio } from './lib/_master.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 
@@ -10,6 +10,8 @@ import { canRun, runAgentTask } from './lib/_agents.js';
 // POST action "chat"       the Master Agent answers and hands tasks to specialists (records only, runs nothing).
 // POST action "run"        one specialist runs ONE task in this server call (approval checked here).
 // POST action "cancel"     the owner declines a waiting task.
+// POST action "transcribe" a short voice recording becomes text (nothing is stored).
+// GET  ?view=chat          the saved conversation, rebuilt from the task records.
 
 const MAX_ATTEMPTS = 3;
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
@@ -123,7 +125,9 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
   if (!canRun(task.agent_key)) return res.status(400).json({ success: false, error: 'This agent is not active yet' });
   if (task.status === 'waiting_approval' && req.body?.approve !== true) return res.status(403).json({ success: false, error: 'This task needs your approval first' });
-  if (!['queued', 'waiting_approval', 'failed'].includes(task.status)) return res.status(409).json({ success: false, error: `This task is already ${task.status}` });
+  // A task stuck on "running" for over two minutes was interrupted and may be tried again.
+  const stuck = task.status === 'running' && Date.now() - new Date(task.started_at || task.created_at).getTime() > 120000;
+  if (!stuck && !['queued', 'waiting_approval', 'failed'].includes(task.status)) return res.status(409).json({ success: false, error: `This task is already ${task.status}` });
   if ((task.attempts || 0) >= MAX_ATTEMPTS) return res.status(409).json({ success: false, error: 'This task has been tried 3 times. Ask again to start a new one.' });
 
   // Claim the task; if another call claimed it first, stop.
@@ -134,7 +138,7 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   let result: { status: string; summary: string; output: any; error: string | null };
   try {
     const done = await runAgentTask(supabase, task);
-    result = { status: 'done', summary: done.summary, output: done.output, error: null };
+    result = { status: 'done', summary: done.summary, output: { ...done.output, summary: done.summary }, error: null };
   } catch (error) {
     const message = (error instanceof Error ? error.message : 'The task failed').slice(0, 300);
     result = { status: 'failed', summary: `Could not finish "${task.title}": ${message}`, output: null, error: message };
@@ -164,12 +168,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'chat') return await handleChat(supabase, req, res);
       if (action === 'run') return await handleRun(supabase, req, res);
       if (action === 'cancel') return await handleCancel(supabase, req, res);
+      if (action === 'transcribe') {
+        const audio = String(req.body?.audio || '');
+        const mimeType = ['audio/wav', 'audio/mp3', 'audio/aac', 'audio/ogg', 'audio/flac'].includes(req.body?.mimeType) ? req.body.mimeType : 'audio/wav';
+        if (audio.length < 2000) return res.status(400).json({ success: false, error: 'The recording was too short' });
+        if (audio.length > 3_500_000) return res.status(413).json({ success: false, error: 'The recording was too long' });
+        const text = await transcribeAudio(audio, mimeType);
+        return res.status(200).json({ success: true, data: { text } });
+      }
       return res.status(400).json({ success: false, error: 'Unknown action' });
     } catch (error) {
       return res.status(500).json({ success: false, error: error instanceof Error ? error.message.slice(0, 200) : 'Team error' });
     }
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+  if (req.query?.view === 'chat') {
+    try {
+      const supabase = teamClient();
+      if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+      const { data: parents, error } = await supabase.from('agent_tasks').select('id, title, input, output, created_at').eq('agent_key', 'master').eq('requested_by', 'owner').order('created_at', { ascending: false }).limit(20);
+      if (error) return res.status(200).json({ success: true, data: { turns: [] } });
+      const ids = (parents || []).map((row: any) => row.id);
+      const { data: children } = ids.length
+        ? await supabase.from('agent_tasks').select('id, parent_task_id, agent_key, title, status, output, error, created_at').in('parent_task_id', ids).order('created_at', { ascending: true })
+        : { data: [] as any[] };
+      const turns = (parents || []).reverse().map((row: any) => ({
+        id: row.id,
+        createdAt: row.created_at,
+        message: String(row.input?.message || row.title || ''),
+        reply: String(row.output?.reply || ''),
+        tasks: (children || []).filter((child: any) => child.parent_task_id === row.id).map((child: any) => ({
+          id: child.id,
+          agentKey: child.agent_key,
+          agentName: nameOf(child.agent_key),
+          title: child.title,
+          // A task left "running" for over two minutes was interrupted; show it as failed so it can be retried.
+          status: child.status === 'running' && Date.now() - new Date(child.created_at).getTime() > 120000 ? 'failed' : child.status,
+          summary: child.output?.summary || (child.error ? `Could not finish "${child.title}": ${child.error}` : ''),
+          error: child.error,
+          output: child.output,
+        })),
+      }));
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ success: true, data: { turns } });
+    } catch {
+      return res.status(200).json({ success: true, data: { turns: [] } });
+    }
+  }
 
   const empty = { agents: AGENTS.map((agent) => ({ ...agent, done: 0, failed: 0, lastSummary: null, lastAt: null })), tasks: [], activity: [] };
   try {

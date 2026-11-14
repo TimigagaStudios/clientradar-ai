@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { recordTask } from './lib/_team.js';
+import { osmSearch, plainPlacesError } from './lib/_places.js';
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY as string;
 
@@ -38,13 +39,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    if (!GOOGLE_PLACES_API_KEY) {
-      return res.status(500).json({
-        success: false,
-        error: 'Missing GOOGLE_PLACES_API_KEY',
-      });
-    }
-
     const { category, city } = req.body;
 
     if (!category || !city) {
@@ -53,6 +47,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: 'Category and city are required',
       });
     }
+
+    // When Google Places cannot be used (no key, or billing not switched on), the free
+    // OpenStreetMap search answers instead: fewer listings, no ratings, nothing invented.
+    const useFreeSearch = async (reason: string) => {
+      const found = await osmSearch(String(category), String(city));
+      const results = found.map((item) => ({ ...item, website: item.website || undefined, phone: item.phone || undefined, outdatedWebsite: false }));
+      await recordTask({
+        agentKey: 'lead-research',
+        title: `Find ${category} in ${city}`,
+        status: 'done',
+        summary: `Searched "${category} in ${city}" with the free OpenStreetMap search and found ${results.length}.`,
+        input: { category, city },
+        output: { found: results.length, source: 'openstreetmap', googleError: reason },
+      });
+      return res.status(200).json({ success: true, data: results, source: 'openstreetmap', note: `${reason}; the free OpenStreetMap search was used.` });
+    };
+
+    if (!GOOGLE_PLACES_API_KEY) return await useFreeSearch('Google Places key is not set');
 
     const query = `${category} in ${city}`;
 
@@ -64,10 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json();
 
     if (!response.ok || data.status === 'REQUEST_DENIED') {
-      return res.status(500).json({
-        success: false,
-        error: data.error_message || 'Google Places search request failed',
-      });
+      return await useFreeSearch(plainPlacesError(data.error_message || 'Google Places search request failed'));
     }
 
     const rawResults: GoogleTextSearchResult[] = data.results || [];
