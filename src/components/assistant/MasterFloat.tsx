@@ -58,8 +58,9 @@ export default function MasterFloat() {
         const body = JSON.parse(await response.text());
         const count = Number(body?.data?.count) || 0;
         if (!body?.success || !count) return;
-        const sections = (body.data.sections || []).map((key: string) => (key === 'faq' ? 'Common questions' : 'How it works')).join(' and ');
-        addNotice({ action: 'refresh-demos', yes: `Yes, update ${count === 1 ? 'it' : 'them'}`, text: `The records agent found ${count} ${count === 1 ? 'demo' : 'demos'} built before the latest upgrade, missing the new "${sections}" ${sections.includes(' and ') ? 'sections' : 'section'}. Shall I add ${count === 1 ? 'it' : 'them'}? The design, wording and link stay the same.` });
+        const label: Record<string, string> = { faq: 'a "Common questions" section', process: 'a "How it works" section', photos: 'photos' };
+        const sections = (body.data.sections || []).map((key: string) => label[key] || key).join(', ');
+        addNotice({ action: 'refresh-demos', yes: `Yes, update ${count === 1 ? 'it' : 'them'}`, text: `The records agent found ${count} ${count === 1 ? 'demo' : 'demos'} built before the latest upgrade. What can be added: ${sections}. Shall I update ${count === 1 ? 'it' : 'them'}? The existing wording and the link stay the same.` });
       } catch { /* the check is optional */ }
     }, 7000);
     return () => { stop(); window.removeEventListener('cr-notice', onNotice); window.removeEventListener('resize', onResize); window.clearTimeout(timer); stopVoice(); };
@@ -95,9 +96,9 @@ export default function MasterFloat() {
     text = `Working: ${sum.done} of ${sum.total} done.${sum.running ? ` Now: ${sum.running.title}.` : ''}`;
     no = { label: 'Hold on', run: pauseWork };
   } else if (work.finished && sum.total) {
-    const written = sum.done ? ` (${sum.ai} written by the AI${sum.done - sum.ai ? `, ${sum.done - sum.ai} with built-in text` : ''})` : '';
+    const written = sum.done && !updating ? ` (${sum.ai} written by the AI${sum.done - sum.ai ? `, ${sum.done - sum.ai} with built-in text` : ''})` : '';
     const plural = sum.total === 1 ? 'demo is' : 'demos are';
-    text = `${sum.done} of ${sum.total} ${plural} ${updating ? 'updated' : 'ready'}${written}.${sum.failed ? ` ${sum.failed} could not be ${updating ? 'updated' : 'built'}; see AI Team.` : ''} Preview now?`;
+    text = `${sum.done} of ${sum.total} ${plural} ${updating ? 'updated' : 'ready'}${written}.${sum.failed ? ` ${sum.failed} could not be ${updating ? 'updated' : 'built'}; see AI Team.` : ''}${updating ? ' The AI Team page lists what was added to each.' : ''} Preview now?`;
     yes = { label: 'Yes, show me', run: () => { clearWork(); navigate('/demos'); } };
     no = { label: 'Later', run: clearWork };
   } else if (notice) {
