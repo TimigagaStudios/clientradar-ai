@@ -19,6 +19,7 @@ import {
   MonitorPlay,
   Sparkles,
   FileText,
+  Bot,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import Button from './Button';
@@ -75,6 +76,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
   const menuItems = [
     { icon: Sparkles, label: 'Assistant', path: '/' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ NEW ÃÂ¢Ã¢ÂÂ¬Ã¢ÂÂ Executive Agent home
+    { icon: Bot, label: 'AI Team', path: '/team' },
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ relocated
     { icon: Search, label: 'Lead Finder', path: '/finder' },
     { icon: Globe, label: 'Lead Globe', path: '/globe' },
