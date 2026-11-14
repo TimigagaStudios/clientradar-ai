@@ -3,6 +3,7 @@ import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio, searchWishes } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
+import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { scanLead } from './lib/_website.js';
@@ -65,7 +66,8 @@ async function masterContext(supabase: any): Promise<MasterContext> {
       demosReady: count((row) => row.demo_status === 'Ready'),
     },
     leadNames: rows.slice(0, 80).map((row) => String(row.business_name || '').slice(0, 60)).filter(Boolean),
-    recentActivity: (activity || []).map((row: any) => `${nameOf(row.agent_key)}: ${row.summary}`),
+    // Bills due within a week go first, so the Master Agent can mention them when asked how things stand.
+    recentActivity: [await billsLine(supabase), ...(activity || []).map((row: any) => `${nameOf(row.agent_key)}: ${row.summary}`)].filter(Boolean),
   };
 }
 
@@ -191,6 +193,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'extract' ? await handleExtract(supabase, req.body) : action === 'import-update' ? await handleImportUpdate(supabase, req.body) : await handleImportSave(supabase, req.body);
         return res.status(out.status).json(out.json);
       }
+      if (action === 'tracker-save' || action === 'tracker-delete') {
+        const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
+        return res.status(out.status).json(out.json);
+      }
       if (action === 'upkeep') {
         // The Records Upkeep Agent: one small batch per call; the app sends one summary at the end.
         if (req.body?.summary) {
@@ -225,6 +231,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+  if (req.query?.view === 'tracker') {
+    const supabase = teamClient();
+    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+    const out = await listTracker(supabase);
+    return res.status(out.status).json(out.json);
+  }
 
   if (req.query?.view === 'imports') {
     try {
