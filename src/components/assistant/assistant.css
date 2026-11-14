@@ -343,3 +343,9 @@
     animation: none !important;
   }
 }
+
+/* Long words and links wrap inside the chat instead of pushing it sideways. */
+.cr-msg { min-width: 0; }
+.cr-msg-body { min-width: 0; max-width: 100%; }
+.cr-bubble { overflow-wrap: anywhere; word-break: break-word; }
+.cr-icbtn.mic.live { box-shadow: 0 0 0 3px rgba(80, 150, 255, 0.45); }

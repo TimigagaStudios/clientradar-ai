@@ -51,6 +51,36 @@ const TASK_STATUS: Record<string, string> = {
 // Text from the server is shown as text, never as markup.
 const esc = (text: string) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+const CHAT_CLEARED_KEY = 'cr-chat-cleared-at';
+
+// Turns recorded microphone samples into a small 16 kHz mono WAV, as base64. Returns '' when too short.
+const encodeWav = (chunks: Float32Array[], sampleRate: number) => {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const step = Math.max(1, Math.round(sampleRate / 16000));
+  const length = Math.floor(total / step);
+  if (length < 16000 * 0.4) return '';
+  const all = new Float32Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.length; }
+  const view = new DataView(new ArrayBuffer(44 + length * 2));
+  const text = (at: number, value: string) => { for (let index = 0; index < value.length; index += 1) view.setUint8(at + index, value.charCodeAt(index)); };
+  const rate = Math.round(sampleRate / step);
+  text(0, 'RIFF'); view.setUint32(4, 36 + length * 2, true); text(8, 'WAVE'); text(12, 'fmt ');
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  text(36, 'data'); view.setUint32(40, length * 2, true);
+  for (let index = 0; index < length; index += 1) {
+    let sum = 0;
+    for (let inner = 0; inner < step; inner += 1) sum += all[index * step + inner];
+    const sample = Math.max(-1, Math.min(1, sum / step));
+    view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+  }
+  const bytes = new Uint8Array(view.buffer);
+  let binary = '';
+  for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  return btoa(binary);
+};
+
 // One call to the AI team endpoint; throws with a plain reason.
 const postTeam = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -404,6 +434,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       if (agentTimerRef.current !== null) {
         window.clearTimeout(agentTimerRef.current);
       }
+      releaseRecorder();
       if (microphoneTimerRef.current !== null) {
         window.clearTimeout(microphoneTimerRef.current);
       }
@@ -531,27 +562,119 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
 
     setConversation((current) => [
       ...current,
-      { id: uid(), side: 'me', html: value },
+      { id: uid(), side: 'me', html: esc(value) },
     ]);
     setInput('');
     if (voiceOn) unlockAudio();
     void runAgent(value);
   };
 
-  const startSimulatedListening = () => {
-    if (microphoneTimerRef.current !== null) {
-      window.clearTimeout(microphoneTimerRef.current);
-    }
+  // The saved conversation comes back from the task records, on any device.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/team?view=chat')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        const turns = result?.data?.turns;
+        if (cancelled || !Array.isArray(turns)) return;
+        let cutoff = 0;
+        try { cutoff = Number(localStorage.getItem(CHAT_CLEARED_KEY) || 0); } catch { /* storage blocked */ }
+        const restored: Msg[] = [];
+        for (const turn of turns) {
+          if (new Date(turn.createdAt).getTime() <= cutoff) continue;
+          const tasks: ChatTask[] = Array.isArray(turn.tasks) ? turn.tasks : [];
+          restored.push({ id: `${turn.id}-q`, side: 'me', html: esc(turn.message) });
+          restored.push({ id: `${turn.id}-a`, side: 'ai', html: esc(turn.reply), tasks });
+          const finished = tasks.filter((task) => (task.status === 'done' || task.status === 'failed') && task.summary);
+          if (finished.length) restored.push({ id: `${turn.id}-r`, side: 'ai', html: esc(finished.map((task) => task.summary).join(' ')) });
+        }
+        if (restored.length) setConversation((current) => [...restored, ...current]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    setListening(true);
-    setPresenceState('listening');
+  // Hides the conversation on this device. The task records stay on the AI Team page.
+  const clearChat = () => {
+    try { localStorage.setItem(CHAT_CLEARED_KEY, String(Date.now())); } catch { /* storage blocked */ }
+    setConversation([]);
+  };
 
-    microphoneTimerRef.current = window.setTimeout(() => {
-      setListening(false);
+  // Voice input: record from the microphone, turn it into text on the server, then send it.
+  const recorderRef = useRef<{ stream: MediaStream; source: MediaStreamAudioSourceNode; node: ScriptProcessorNode; chunks: Float32Array[]; rate: number; timer: number } | null>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [micNote, setMicNote] = useState('');
+
+  const releaseRecorder = () => {
+    const recorder = recorderRef.current;
+    if (!recorder) return null;
+    recorderRef.current = null;
+    window.clearTimeout(recorder.timer);
+    try { recorder.node.disconnect(); recorder.source.disconnect(); } catch { /* already disconnected */ }
+    recorder.stream.getTracks().forEach((track) => track.stop());
+    return recorder;
+  };
+
+  const finishRecording = async () => {
+    const recorder = releaseRecorder();
+    if (!recorder) return;
+    setListening(false);
+    const audio = encodeWav(recorder.chunks, recorder.rate);
+    if (!audio) {
+      setMicNote('I did not hear anything. Tap the microphone and try again.');
       setPresenceState('idle');
-      setInput('Scan for new leads');
-      microphoneTimerRef.current = null;
-    }, 1600);
+      return;
+    }
+    setTranscribing(true);
+    setPresenceState('thinking');
+    setMicNote('Writing down what you said...');
+    try {
+      const data = await postTeam({ action: 'transcribe', audio, mimeType: 'audio/wav' });
+      const heard = String(data?.text || '').trim();
+      if (!heard) {
+        setMicNote('I could not make out any words. Try again or type.');
+        setPresenceState('idle');
+      } else {
+        setMicNote('');
+        send(heard);
+      }
+    } catch (error) {
+      setMicNote(`Voice input failed: ${error instanceof Error ? error.message : 'unknown reason'}.`);
+      setPresenceState('idle');
+    } finally {
+      setTranscribing(false);
+    }
+  };
+
+  const toggleMic = async () => {
+    if (recorderRef.current) return void finishRecording();
+    if (transcribing) return;
+    const context = unlockAudio();
+    if (!context || !navigator.mediaDevices?.getUserMedia) {
+      setMicNote('Voice input is not available in this browser. Please type.');
+      return;
+    }
+    stopSpeaking();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const source = context.createMediaStreamSource(stream);
+      const node = context.createScriptProcessor(4096, 1, 1);
+      const silent = context.createGain();
+      silent.gain.value = 0;
+      const chunks: Float32Array[] = [];
+      node.onaudioprocess = (event) => { chunks.push(new Float32Array(event.inputBuffer.getChannelData(0))); };
+      source.connect(node);
+      node.connect(silent);
+      silent.connect(context.destination);
+      recorderRef.current = { stream, source, node, chunks, rate: context.sampleRate, timer: window.setTimeout(() => void finishRecording(), 30000) };
+      setListening(true);
+      setPresenceState('listening');
+      setMicNote('Listening... tap the microphone again when you finish.');
+    } catch {
+      setMicNote('The microphone was not allowed. Allow it for this site, or type instead.');
+    }
   };
 
   // While the owner is typing to the assistant, the orb pays attention.
@@ -661,6 +784,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         style={{
           maxHeight: mode === 'compact' ? 320 : 360,
           overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         {conversation.map((message) => (
@@ -668,7 +792,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
             <div className={`cr-av ${message.side}`}>
               {message.side === 'ai' ? <span className="mini-orb" aria-hidden="true" /> : 'T'}
             </div>
-            <div>
+            <div className="cr-msg-body">
               <div
                 className="cr-bubble"
                 dangerouslySetInnerHTML={{ __html: message.html }}
@@ -695,13 +819,14 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
                     </div>
                   )}
                   {task.error && <p className="mt-1 text-xs text-red-400 break-words">{task.error}</p>}
+                  {task.output?.note && <p className="mt-1 text-[11px] text-[var(--text-secondary)] break-words">{task.output.note}</p>}
                   {Array.isArray(task.output?.businesses) && task.output.businesses.length > 0 && (
                     <ul className="mt-2 space-y-1.5">
                       {task.output.businesses.map((business: any, index: number) => (
                         <li key={index} className="text-xs text-[var(--text-primary)] break-words">
                           <b>{business.businessName}</b>
                           <span className="text-[var(--text-secondary)]">
-                            {' '}- {business.rating ? `${business.rating} stars (${business.reviewCount})` : 'no rating'} - {business.website ? 'has website' : 'no website'}{' '}
+                            {' '}- {business.rating ? `${business.rating} stars (${business.reviewCount})` : 'no rating shown'} - {business.website ? 'has website' : 'no website listed'}{' '}
                           </span>
                           <a href={business.mapLink} target="_blank" rel="noreferrer" className="underline">Map</a>
                         </li>
@@ -732,6 +857,15 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         )}
       </div>
 
+      {(micNote || conversation.length > 0) && (
+        <div className="flex items-center justify-between gap-3 px-1 text-[11px] text-[var(--text-secondary)]">
+          <span role="status">{micNote}</span>
+          {conversation.length > 0 && (
+            <button type="button" className="underline shrink-0" onClick={clearChat}>Clear chat</button>
+          )}
+        </div>
+      )}
+
       <div className="cr-composer">
         <input
           value={input}
@@ -744,7 +878,9 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
 
         <button
           className={`cr-icbtn mic ${listening ? 'live' : ''}`}
-          onClick={startSimulatedListening}
+          onClick={() => void toggleMic()}
+          aria-pressed={listening}
+          disabled={transcribing}
           aria-label="Voice"
           type="button"
         >
