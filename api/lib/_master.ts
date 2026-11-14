@@ -115,3 +115,27 @@ export async function planRequest(message: string, history: string[], context: M
     return { ...planByRules(message, context), source: 'rules', aiError: reason };
   }
 }
+
+// Turns a short voice recording into text with the same AI key. Returns only what was said.
+export async function transcribeAudio(base64: string, mimeType: string): Promise<string> {
+  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
+  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
+  if (provider !== 'gemini' || !apiKey) throw new Error('voice input needs the AI key');
+  const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    signal: AbortSignal.timeout(25000),
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [
+        { inline_data: { mime_type: mimeType, data: base64 } },
+        { text: 'Write down exactly what the speaker says in this recording, in the language spoken. Output only the spoken words as plain text. If there is no clear speech, output nothing.' },
+      ] }],
+      generationConfig: { temperature: 0 },
+    }),
+  });
+  if (!response.ok) throw new Error(response.status === 429 ? 'free AI limit reached, type your message instead' : `AI service returned ${response.status}`);
+  const body: any = await response.json();
+  const text = body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || '';
+  return clean(text, 600);
+}

@@ -1,5 +1,6 @@
 import { buildDemoPrompt, processDemoJob } from './demo-job-process.js';
 import { normalizeStyleLevel } from './demo-ai.js';
+import { findBusinesses } from './_places.js';
 
 // Specialist agents. Each runner receives ONE task and only the tools listed for that agent:
 // it cannot reach another agent's tools or data. Each task runs in its own server call.
@@ -11,45 +12,19 @@ export interface AgentResult {
 
 type Runner = (supabase: any, task: any) => Promise<AgentResult>;
 
-// --- Lead Research Agent: one tool, the public Google Places search. Read-only. ---
-async function placesSearch(category: string, city: string) {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
-  if (!key) throw new Error('Google Places key is not set');
-  const search = await fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${category} in ${city}`)}&key=${key}`, { signal: AbortSignal.timeout(12000) });
-  const data: any = await search.json();
-  if (!search.ok || data.status === 'REQUEST_DENIED') throw new Error(data.error_message || 'Google Places search failed');
-  const places: any[] = (data.results || []).slice(0, 8);
-  return Promise.all(
-    places.map(async (place) => {
-      let details: any = {};
-      try {
-        const response = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(place.place_id)}&fields=website,formatted_phone_number&key=${key}`, { signal: AbortSignal.timeout(8000) });
-        details = (await response.json())?.result || {};
-      } catch {
-        /* details are optional */
-      }
-      return {
-        businessName: String(place.name || ''),
-        address: String(place.formatted_address || ''),
-        rating: Number(place.rating) || 0,
-        reviewCount: Number(place.user_ratings_total) || 0,
-        website: details.website || null,
-        phone: details.formatted_phone_number || null,
-        mapLink: `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-      };
-    }),
-  );
-}
-
+// --- Lead Research Agent: one tool, the public business search. Read-only; it saves nothing. ---
 const runLeadResearch: Runner = async (_supabase, task) => {
   const category = String(task.input?.category || '').trim();
   const city = String(task.input?.city || '').trim();
   if (!category || !city) throw new Error('The task needs a business type and a city');
-  const businesses = await placesSearch(category, city);
-  const withoutSite = businesses.filter((item) => !item.website).length;
+  const found = await findBusinesses(category, city);
+  const withoutSite = found.businesses.filter((item) => !item.website).length;
+  const where = found.source === 'google' ? '' : ' Source: OpenStreetMap (free), so the list is shorter and has no ratings.';
   return {
-    summary: `Found ${businesses.length} ${category} in ${city}; ${withoutSite} of them show no website.`,
-    output: { category, city, businesses },
+    summary: found.businesses.length
+      ? `Found ${found.businesses.length} ${category} in ${city}; ${withoutSite} of them show no website.${where}`
+      : `Found no ${category} in ${city}.${where}`,
+    output: { category, city, source: found.source, note: found.note, businesses: found.businesses },
   };
 };
 
