@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { recordTask } from './lib/_team.js';
-import { checkWebsite, osmSearch, plainPlacesError } from './lib/_places.js';
+import { checkWebsite, osmSearch, plainPlacesError, searchBusinesses } from './lib/_places.js';
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY as string;
 
@@ -40,6 +40,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { category, city } = req.body;
+
+    // Free worldwide search (Geoapify) when its key is set: by city name or inside the map area.
+    const provider = String(process.env.PLACES_PROVIDER || '').toLowerCase();
+    if (process.env.GEOAPIFY_API_KEY && provider !== 'google') {
+      const b = req.body?.bounds;
+      const bounds = b && typeof b === 'object' ? { west: Number(b.west), south: Number(b.south), east: Number(b.east), north: Number(b.north) } : null;
+      const place = String(city || '').trim();
+      if (!String(category || '').trim() || (!place && !bounds)) {
+        return res.status(400).json({ success: false, error: 'Type a business type, then a city or use the map area' });
+      }
+      let found;
+      try {
+        found = await searchBusinesses({ category: String(category), city: bounds ? '' : place, bounds, limit: Number(req.body?.limit) || 20, offset: Number(req.body?.offset) || 0 });
+      } catch (searchError) {
+        return res.status(200).json({ success: false, error: searchError instanceof Error ? searchError.message : 'Search failed' });
+      }
+      // Open at most 20 of the listed websites to see whether they work on phones (kept short for speed).
+      let checks = 0;
+      const results = await Promise.all(found.businesses.map(async (item) => {
+        const check = item.website && checks < 20 ? (checks += 1, await checkWebsite(item.website)) : { outdated: false, note: null };
+        return { ...item, website: item.website || undefined, phone: item.phone || undefined, email: item.email || undefined, category: item.category || undefined, city: item.city || undefined, country: item.country || undefined, outdatedWebsite: check.outdated, websiteNote: check.note || undefined };
+      }));
+      const where = bounds ? 'the map area' : place;
+      await recordTask({
+        agentKey: 'lead-research',
+        title: `Find ${category} in ${where}`,
+        status: 'done',
+        summary: `Searched "${category}" in ${where} and found ${results.length}${Number(req.body?.offset) ? ' more' : ''}.`,
+        input: { category, city: place || null, bounds },
+        output: { found: results.length, source: found.source, credits: found.credits ?? null },
+      });
+      return res.status(200).json({ success: true, data: results, source: found.source, note: found.note, area: found.area || null, hasMore: Boolean(found.hasMore), credits: found.credits ?? null });
+    }
 
     if (!category || !city) {
       return res.status(400).json({

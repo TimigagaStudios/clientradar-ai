@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
-import { planRequest, transcribeAudio } from './lib/_master.js';
+import { planRequest, transcribeAudio, searchWishes } from './lib/_master.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { scanLead } from './lib/_website.js';
@@ -82,7 +82,7 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   const problems: string[] = [];
   for (const task of plan.tasks) {
     if (task.agent === 'lead-research') {
-      rows.push({ agent_key: 'lead-research', title: `Find ${task.category} in ${task.city}`, status: 'queued', input: { category: task.category, city: task.city } });
+      rows.push({ agent_key: 'lead-research', title: `Find ${task.category} in ${task.city}`, status: 'queued', input: { category: task.category, city: task.city, ...searchWishes(message) } });
       continue;
     }
     const wanted = String(task.leadName || '').replace(/[%_,()]/g, ' ').trim();
