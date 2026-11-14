@@ -3,6 +3,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
+import DemoSiteView from '../components/DemoSiteView';
+import { hasDesign } from '../lib/demoSite';
 import { ArrowLeft, ArrowRight, CalendarCheck, CheckCircle2, ChevronDown, Home, Instagram, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Sparkles, UtensilsCrossed, X } from 'lucide-react';
 
 type Pair = { title: string; body: string };
@@ -81,6 +83,9 @@ export default function DemoPreview() {
   if (!job) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] text-[var(--text-secondary)]">Loading demo...</div>;
 
   const content = job.content || {};
+  // Demos built with a design recipe are real website files shown in their own frame.
+  // Older demos (no recipe) keep the original layout below.
+  if (hasDesign(content)) return <DemoSiteView content={{ ...content, businessName: content.businessName || job.leads?.business_name }} />;
   const rawTheme = content.theme || {};
   const theme = {
     background: isHex(rawTheme.background) ? rawTheme.background : DEFAULT_THEME.background,

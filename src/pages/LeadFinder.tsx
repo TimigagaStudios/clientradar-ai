@@ -25,7 +25,6 @@ const LeadFinder = () => {
   const [searchParams, setSearchParams] = useState({
     category: '',
     city: '',
-    radius: '10',
   });
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -140,7 +139,7 @@ const LeadFinder = () => {
       <section className="neo-card p-6 md:p-8">
         <form
           onSubmit={handleSearch}
-          className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
+          className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
         >
           <div className="space-y-2">
             <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] ml-1">
@@ -178,24 +177,6 @@ const LeadFinder = () => {
                 required
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-[0.18em] ml-1">
-              Radius
-            </label>
-            <select
-              className={inputClasses}
-              value={searchParams.radius}
-              onChange={(e) =>
-                setSearchParams({ ...searchParams, radius: e.target.value })
-              }
-            >
-              <option className="bg-[#0A0A0A] text-white" value="5">5 km</option>
-              <option className="bg-[#0A0A0A] text-white" value="10">10 km</option>
-              <option className="bg-[#0A0A0A] text-white" value="25">25 km</option>
-              <option className="bg-[#0A0A0A] text-white" value="50">50 km</option>
-            </select>
           </div>
 
           <button
