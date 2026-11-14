@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import FluidOrb, { type OrbState } from './FluidOrb';
 import { useLeads } from '../../context/LeadContext';
+import FoundBusinesses from './FoundBusinesses';
 import './assistant.css';
 
 type Mode = 'full' | 'compact';
@@ -821,18 +822,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
                   {task.error && <p className="mt-1 text-xs text-red-400 break-words">{task.error}</p>}
                   {task.output?.note && <p className="mt-1 text-[11px] text-[var(--text-secondary)] break-words">{task.output.note}</p>}
                   {Array.isArray(task.output?.businesses) && task.output.businesses.length > 0 && (
-                    <ul className="mt-2 space-y-1.5">
-                      {task.output.businesses.map((business: any, index: number) => (
-                        <li key={index} className="text-xs text-[var(--text-primary)] break-words">
-                          <b>{business.businessName}</b>
-                          <span className="text-[var(--text-secondary)]">
-                            {' '}- {business.rating ? `${business.rating} stars (${business.reviewCount})` : 'no rating shown'} - {business.website ? 'has website' : 'no website listed'}{' '}
-                          </span>
-                          <a href={business.mapLink} target="_blank" rel="noreferrer" className="underline">Map</a>
-                        </li>
-                      ))}
-                      <li className="text-[11px] text-[var(--text-secondary)]">Nothing was saved. To keep any of these, save them from Lead Finder.</li>
-                    </ul>
+                    <FoundBusinesses businesses={task.output.businesses} category={task.output?.category} city={task.output?.city} />
                   )}
                   {task.output?.demoUrl && (
                     <a href={task.output.demoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-semibold underline text-[var(--text-primary)]">Open demo</a>
