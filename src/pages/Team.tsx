@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 // AI Team page: the real team register with real task records and the activity log.
@@ -94,8 +94,11 @@ const Team = () => {
     setFailed('');
     try {
       const response = await fetch('/api/team');
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || 'Could not load the team');
+      let result: any = null;
+      try { result = await response.json(); } catch { /* not JSON */ }
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || (response.status === 404 ? 'The team server is not deployed yet. Check that the latest Vercel deployment says Ready.' : `Could not load the team (error ${response.status}).`));
+      }
       setAgents(result.data.agents || []);
       setTasks(result.data.tasks || []);
       setActivity(result.data.activity || []);
@@ -202,16 +205,16 @@ const Team = () => {
       <section className="neo-card p-5 sm:p-6 space-y-4">
         <h2 className="text-xl font-black text-[var(--text-primary)]">Recent tasks</h2>
         {tasks.length === 0 ? (
-          <p className="text-sm text-[var(--text-secondary)]">No tasks yet. Run a Lead Finder search or generate a demo and it will appear here.</p>
+          <p className="text-sm text-[var(--text-secondary)]">No tasks yet. Ask the Master Agent on the home screen, run a Lead Finder search or generate a demo.</p>
         ) : (
           <ul className="divide-y divide-slate-500/15">
             {tasks.map((task) => (
               <li key={task.id} className="py-3 flex items-start gap-3">
-                {task.status === 'failed' ? <XCircle size={18} className="shrink-0 mt-0.5 text-red-400" /> : <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-green-500" />}
+                {task.status === 'failed' ? <XCircle size={18} className="shrink-0 mt-0.5 text-red-400" /> : task.status === 'done' ? <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-green-500" /> : <Clock3 size={18} className="shrink-0 mt-0.5 text-[var(--text-secondary)]" />}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--text-primary)] break-words">{task.title}</p>
                   <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                    {nameOf(task.agentKey)} - {task.status} - {timeAgo(task.createdAt)}
+                    {nameOf(task.agentKey)} - {task.status.replace('_', ' ')} - {timeAgo(task.createdAt)}
                     {task.leadId && <> - <Link to={`/leads/${task.leadId}`} className="underline">{task.leadName || 'Open lead'}</Link></>}
                   </p>
                   {task.error && <p className="text-xs text-red-400 mt-1 break-words">{task.error}</p>}
