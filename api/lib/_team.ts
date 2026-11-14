@@ -62,6 +62,18 @@ export const AGENTS: AgentProfile[] = [
     stageNote: 'Bulk screenshot import with review, duplicate marks and source tracking is live from the Import button.',
   },
   {
+    key: 'records-upkeep',
+    name: 'Records Upkeep Agent',
+    role: 'Keeps older records up to date',
+    job: 'Goes through your saved leads after you sign in and fills what newer ClientRadar features need, so nothing has to be imported again: map positions for the globe, and a first read of lead websites for a missing email. It only fills empty fields and never changes what you typed.',
+    tools: ['Look up a map position from an address or city', 'Website scan (emails, brand colours, style)'],
+    dataAccess: ['Leads (fills empty map position, email, phone, Instagram; adds a note line)'],
+    needsApproval: ['Changing or deleting anything you entered'],
+    reportsTo: 'master',
+    stage: 'active',
+    stageNote: 'Runs quietly after sign-in (at most every 6 hours) and after a screenshot import, in small batches, then gives the Master Agent one summary.',
+  },
+  {
     key: 'demo-creation',
     name: 'Demo Creation Agent',
     role: 'Builds the demo website for a lead',
