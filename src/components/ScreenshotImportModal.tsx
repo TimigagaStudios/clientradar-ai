@@ -3,6 +3,7 @@ import { AlertTriangle, Check, Images, Loader2, Pencil, RotateCcw, Trash2, Uploa
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
 import { foldIncoming, mergeDuplicates, sameBusiness } from '../lib/importMatch';
+import { runUpkeep } from '../lib/upkeep';
 
 // AI Screenshot Import. Many screenshots in, one record per business out, reviewed by the
 // owner, then saved into the normal leads list. Images are shrunk on the device and sent
@@ -268,6 +269,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
         await refreshLeads();
         setScanNote(`Website check finished: ${emails} ${emails === 1 ? 'email' : 'emails'} found on ${scanned} ${scanned === 1 ? 'website' : 'websites'}.`);
       }
+      // New leads from screenshots have no map position yet: the Records Upkeep Agent places them on the globe.
+      if (imported) void runUpkeep({ force: true }).then((total) => { if (total && total.placed + total.approximate > 0) void refreshLeads(); });
     } catch (error) {
       if (imported) await refreshLeads();
       showToast({ type: 'error', title: 'Import stopped', message: `${imported} imported. ${error instanceof Error ? error.message : 'Please try again.'}` });
