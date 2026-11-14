@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
-import { planRequest, transcribeAudio, searchWishes } from './lib/_master.js';
+import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
@@ -76,6 +76,10 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   if (!message) return res.status(400).json({ success: false, error: 'message is required' });
   const history = Array.isArray(req.body?.history) ? req.body.history.filter((line: unknown) => typeof line === 'string').slice(-6) : [];
 
+  // Many demos at once: the Master Agent picks the leads, asks ONE approval, then they build one after another.
+  const batch = batchDemoWish(message);
+  if (batch) return await handleBatchDemos(supabase, res, message, batch);
+
   const context = await masterContext(supabase);
   const plan = await planRequest(message, history, context);
   let reply = plan.reply;
@@ -131,6 +135,60 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   });
 }
 
+async function handleBatchDemos(supabase: any, res: VercelResponse, message: string, wish: { count: number; noWebsite: boolean; level: 'mid' | 'hybrid' | 'ultra' }) {
+  let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website').order('lead_score', { ascending: false }).limit(400);
+  if (wish.noWebsite) query = query.is('website', null);
+  const { data: leads } = await query;
+  const { data: active } = await supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']);
+  const busy = new Set((active || []).map((row: any) => row.lead_id));
+  // Only leads with no demo yet; the strongest first.
+  const open = (leads || []).filter((lead: any) => !busy.has(lead.id) && (!lead.demo_status || lead.demo_status === 'Not Started'));
+  const picked = open.slice(0, wish.count);
+  const now = new Date().toISOString();
+  const say = async (reply: string, child: any | null) => {
+    const { data: parent } = await supabase.from('agent_tasks').insert({ agent_key: 'master', title: message.slice(0, 200), status: child ? 'running' : 'done', requested_by: 'owner', input: { message }, output: { reply, source: 'rules' }, attempts: 1, started_at: now, completed_at: child ? null : now }).select('id').single();
+    if (!parent || !child) return res.status(200).json({ success: true, data: { reply: child && !parent ? `${reply} I could not record the task, so nothing was started.` : reply, source: 'rules', tasks: [] } });
+    const { data: created, error } = await supabase.from('agent_tasks').insert({ ...child, parent_task_id: parent.id, requested_by: 'master' }).select('id, agent_key, title, status').single();
+    if (error || !created) return res.status(500).json({ success: false, error: error?.message || 'Could not create the task' });
+    await note(supabase, 'master', 'handoff', `Asked ${nameOf('demo-creation')} to: ${created.title} (waiting for your approval)`, created.id);
+    return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [{ id: created.id, agentKey: created.agent_key, agentName: nameOf(created.agent_key), title: created.title, status: created.status }] } });
+  };
+  if (!picked.length) return await say(`I looked for leads${wish.noWebsite ? ' without a website' : ''} that have no demo yet and found none, so there is nothing to build.`, null);
+  const names = picked.map((lead: any) => String(lead.business_name));
+  const listed = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
+  const more = open.length > picked.length ? ` ${open.length - picked.length} more are waiting after this batch.` : '';
+  const capped = wish.count === MAX_BATCH && open.length > MAX_BATCH ? ` I keep a batch to ${MAX_BATCH} so the free AI limit is not used up at once.` : '';
+  const reply = `I picked the ${picked.length} strongest ${picked.length === 1 ? 'lead' : 'leads'}${wish.noWebsite ? ' without a website' : ''} that have no demo yet: ${listed}. Approve once and the Demo Creation Agent builds them one after another; I will tell you when they are ready. Nothing is sent to anyone.${capped}${more}`;
+  return await say(reply, {
+    agent_key: 'demo-creation',
+    title: `Build ${picked.length} ${LEVEL_NAMES[wish.level]} ${picked.length === 1 ? 'demo' : 'demos'} (one approval for all)`,
+    status: 'waiting_approval',
+    input: { batch: true, level: wish.level, leadIds: picked.map((lead: any) => lead.id), leadNames: names },
+  });
+}
+
+// An approved batch becomes one queued task per lead. The app then runs them one at a time.
+async function startBatch(supabase: any, task: any, res: VercelResponse) {
+  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: 1, started_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', task.id).eq('status', 'waiting_approval').select('id');
+  if (!claimed?.length) return res.status(409).json({ success: false, error: 'This batch was already started' });
+  const ids: string[] = Array.isArray(task.input?.leadIds) ? task.input.leadIds.slice(0, MAX_BATCH) : [];
+  const names: string[] = Array.isArray(task.input?.leadNames) ? task.input.leadNames : [];
+  const level = task.input?.level || 'mid';
+  const { data: created, error } = await supabase.from('agent_tasks').insert(ids.map((leadId, index) => ({
+    agent_key: 'demo-creation', title: `Build ${LEVEL_NAMES[level]} demo for ${names[index] || 'lead'}`, status: 'queued', lead_id: leadId,
+    parent_task_id: task.parent_task_id, requested_by: 'master', input: { leadId, level, batchTaskId: task.id },
+  }))).select('id, title');
+  if (error || !created) {
+    await supabase.from('agent_tasks').update({ status: 'failed', error: String(error?.message || 'Could not queue the demos').slice(0, 300), completed_at: new Date().toISOString() }).eq('id', task.id);
+    return res.status(500).json({ success: false, error: error?.message || 'Could not queue the demos' });
+  }
+  const summary = `Approved. ${created.length} ${created.length === 1 ? 'demo is' : 'demos are'} queued and will build one after another. Keep ClientRadar open; you can use other pages meanwhile.`;
+  const output = { batch: true, total: created.length, queue: created.map((row: any) => ({ id: row.id, title: row.title })), summary };
+  await supabase.from('agent_tasks').update({ status: 'done', output, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', task.id);
+  await note(supabase, 'master', 'approved', `You approved: ${task.title}`, task.id);
+  return res.status(200).json({ success: true, data: { id: task.id, agentKey: task.agent_key, agentName: nameOf(task.agent_key), title: task.title, status: 'done', summary, output, error: null } });
+}
+
 async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse) {
   const taskId = String(req.body?.taskId || '');
   if (!taskId) return res.status(400).json({ success: false, error: 'taskId is required' });
@@ -138,6 +196,7 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
   if (!canRun(task.agent_key)) return res.status(400).json({ success: false, error: 'This agent is not active yet' });
   if (task.status === 'waiting_approval' && req.body?.approve !== true) return res.status(403).json({ success: false, error: 'This task needs your approval first' });
+  if (task.input?.batch && task.status === 'waiting_approval') return await startBatch(supabase, task, res);
   // A task stuck on "running" for over two minutes was interrupted and may be tried again.
   const stuck = task.status === 'running' && Date.now() - new Date(task.started_at || task.created_at).getTime() > 120000;
   if (!stuck && !['queued', 'waiting_approval', 'failed'].includes(task.status)) return res.status(409).json({ success: false, error: `This task is already ${task.status}` });
@@ -201,7 +260,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // The Records Upkeep Agent: one small batch per call; the app sends one summary at the end.
         if (req.body?.summary) {
           const n = (value: unknown) => Math.max(0, Math.round(Number(value) || 0));
-          const total = { placed: n(req.body.summary.placed), approximate: n(req.body.summary.approximate), notFound: n(req.body.summary.notFound), scanned: n(req.body.summary.scanned), emails: n(req.body.summary.emails) };
+          const total = { placed: n(req.body.summary.placed), approximate: n(req.body.summary.approximate), notFound: n(req.body.summary.notFound), scanned: n(req.body.summary.scanned), emails: n(req.body.summary.emails), services: n(req.body.summary.services) };
           const summary = upkeepSummary(total);
           if (summary) await recordTask({ agentKey: 'records-upkeep', title: 'Bring lead records up to date', status: 'done', requestedBy: 'system', summary, output: total });
           return res.status(200).json({ success: true });
