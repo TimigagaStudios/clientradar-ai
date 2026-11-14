@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Images, Loader2, Pencil, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import { useLeads } from '../context/LeadContext';
 import { useToast } from './ui/useToast';
-import { sameBusiness } from '../lib/importMatch';
+import { mergeDuplicates, sameBusiness } from '../lib/importMatch';
 
 // AI Screenshot Import. Many screenshots in, one record per business out, reviewed by the
 // owner, then saved into the normal leads list. Images are shrunk on the device and sent
@@ -201,6 +201,18 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
     void postTeam({ action: 'import-update', removeIds: ids }).catch(() => undefined);
   };
 
+  // Repeats inside this list are folded into the first record (keeping any extra phone, website or
+  // address); records that match a lead you already have are removed.
+  const mergeAndRemove = () => {
+    const saved = (record: ImportRecord) => (leads || []).some((lead: any) => sameBusiness(record, { name: lead.businessName, website: lead.website, phone: lead.phone, city: lead.city }));
+    const result = mergeDuplicates(records, saved, ['name', 'category', 'address', 'city', 'country', 'phone', 'website', 'email', 'rating', 'reviewCount', 'description']);
+    if (!result.removedIds.length) return;
+    setRecords(result.kept);
+    setSelected((current) => { const next = new Set(current); result.removedIds.forEach((id) => next.delete(id)); return next; });
+    void postTeam({ action: 'import-update', removeIds: result.removedIds }).catch(() => undefined);
+    result.changed.forEach((record) => { void postTeam({ action: 'import-update', id: record.id, data: record }).catch(() => undefined); });
+  };
+
   const editField = (id: string, field: keyof ImportRecord, value: string) => setRecords((current) => current.map((record) => {
     if (record.id !== id) return record;
     if (field === 'rating' || field === 'reviewCount') return { ...record, [field]: value.trim() === '' || Number.isNaN(Number(value)) ? null : Number(value) };
@@ -251,7 +263,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
         <div className="flex items-start justify-between gap-3 mb-5">
           <div>
             <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2"><Images size={20} className="text-[var(--accent)]" />AI Screenshot Import</h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">Add screenshots of business listings. The AI reads every business into its own record for you to review before anything is saved.</p>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">Add screenshots of business listings (Apple Maps, Google Maps or any directory). The AI reads every business into its own record for you to review before anything is saved.</p>
           </div>
           <button onClick={close} className="p-2 rounded-xl neo-button text-[var(--text-secondary)]" aria-label="Close" disabled={importing}><X size={16} /></button>
         </div>
@@ -311,7 +323,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
             <div className="flex flex-wrap gap-2 mb-3 text-xs">
               <button type="button" onClick={() => setSelected(new Set(records.filter(verified).map((record) => record.id)))} className="px-3 py-2 rounded-xl neo-button text-[var(--text-primary)]">Select all verified</button>
               <button type="button" onClick={() => setSelected(new Set())} className="px-3 py-2 rounded-xl neo-button text-[var(--text-primary)]">Select none</button>
-              {duplicateCount > 0 && <button type="button" onClick={() => removeRecords(records.filter((record) => flags[record.id]?.duplicate).map((record) => record.id))} className="px-3 py-2 rounded-xl neo-button text-[var(--text-primary)]">Remove {duplicateCount} {duplicateCount === 1 ? 'duplicate' : 'duplicates'}</button>}
+              {duplicateCount > 0 && <button type="button" onClick={mergeAndRemove} className="px-3 py-2 rounded-xl neo-button text-[var(--text-primary)]">Merge and remove {duplicateCount} {duplicateCount === 1 ? 'duplicate' : 'duplicates'}</button>}
             </div>
             <div className="space-y-2 max-h-[46vh] overflow-y-auto pr-1">
               {records.map((record) => {
