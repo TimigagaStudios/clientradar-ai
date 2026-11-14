@@ -109,7 +109,8 @@ function readContent(content: any) {
     city: String(content?.city || ''),
     level,
     multi: level === 'ultra',
-    motion: level !== 'mid',
+    motion: true,
+    rich: level !== 'mid',
     hero: content?.hero || {},
     about: content?.about || {},
     closing: content?.closing || {},
@@ -174,7 +175,9 @@ function art(model: Model, variant: number) {
   } else {
     body = `<rect width="400" height="400" fill="${accent}"/><circle cx="${num(280, 360)}" cy="${num(40, 120)}" r="${num(90, 140)}" fill="${model.onAccent}" opacity=".12"/><text x="200" y="262" text-anchor="middle" font-size="190" style="font-family:var(--font-head);font-weight:var(--head-weight)" fill="${model.onAccent}">${esc(model.initials)}</text>`;
   }
-  return `<svg class="art" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Decorative artwork">${body}</svg>`;
+  // A soft light-to-shade finish and a fine grain, so the artwork reads as a finished image and not flat shapes.
+  const finish = `<defs><linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".2"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".32"/></linearGradient><filter id="${id}n" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0"/></filter></defs><rect width="400" height="400" fill="url(#${id}g)"/><rect width="400" height="400" filter="url(#${id}n)" opacity=".16"/>`;
+  return `<svg class="art" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Decorative artwork">${body}${finish}</svg>`;
 }
 
 // A visible, clearly labelled gap for a fact that is not known yet. Never filled with a guess.
@@ -230,9 +233,51 @@ function enquiryForm(title: string, button: string, extra: string, id = '') {
   return `<form class="card form" data-demo-form${id ? ` id="${id}"` : ''}><h3 data-form-title>${esc(title)}</h3><p class="choice" data-choice hidden></p><label>Name<input type="text" name="name" autocomplete="name" required></label><label>Phone or email<input type="text" name="contact" required></label>${extraField}<button class="btn" type="submit">${esc(button)}</button><p class="notice" data-notice hidden>Demo form: nothing was sent. On the live site this goes straight to the business.</p></form>`;
 }
 
+// The business name inside the main headline is picked out in the accent colour.
+function highlight(model: Model, title: string) {
+  const at = title.toLowerCase().indexOf(model.name.toLowerCase());
+  if (at < 0 || model.name.length < 3 || model.name.length >= title.length) {
+    const words = title.split(' ');
+    if (words.length < 4) return esc(title);
+    const cut = words.length - Math.min(2, Math.floor(words.length / 3));
+    return `${esc(words.slice(0, cut).join(' '))} <span class="hl">${esc(words.slice(cut).join(' '))}</span>`;
+  }
+  return `${esc(title.slice(0, at))}<span class="hl">${esc(title.slice(at, at + model.name.length))}</span>${esc(title.slice(at + model.name.length))}`;
+}
+
+// A slow moving line of the real service names, category and city.
+function marquee(model: Model) {
+  const words = [...model.services.map((item) => item.title), model.category, model.city].filter(Boolean);
+  if (words.length < 3 || model.heroKind === 'type') return '';
+  const run = words.map((word) => `<span>${esc(word)}</span><i></i>`).join('');
+  return `<div class="mq" aria-hidden="true"><div class="mq-in">${run}${run}${run}</div></div>`;
+}
+
+// A call-to-action strip in the middle of the page, using the real phone number when it is known.
+function ctaStrip(model: Model) {
+  const call = model.phone ? `<a class="btn btn-light" href="tel:${esc(model.phone.replace(/[^+\d]/g, ''))}" target="_top">${ICON.phone}Call ${esc(model.phone)}</a>` : '';
+  return `<section class="cta-strip"><div class="wrap"><div class="cta-in rv"><div><p class="cta-k">${esc(model.category || 'Get in touch')}</p><h2>Have a question for ${esc(model.name)}?</h2><p>Call or send a message. It only takes a minute.</p></div><div class="actions">${call}<a class="btn ${call ? 'btn-line' : 'btn-light'}" ${link(model, 'contact')}>${esc(model.hero.cta || 'Get in touch')}${ICON.arrow}</a></div></div></div></section>`;
+}
+
+// Real facts only: where the business is, what it does, how to reach it.
+function aboutFacts(model: Model) {
+  const rows = [
+    model.city ? `<li><span>Based in</span><strong>${esc(model.city)}</strong></li>` : '',
+    model.category ? `<li><span>What we do</span><strong>${esc(model.category)}</strong></li>` : '',
+    `<li><span>Call us</span><strong>${model.phone ? `<a href="tel:${esc(model.phone.replace(/[^+\d]/g, ''))}" target="_top">${esc(model.phone)}</a>` : placeholder('Add phone number')}</strong></li>`,
+  ].filter(Boolean).join('');
+  return `<ul class="af">${rows}</ul>`;
+}
+
+// On phones: a bar that stays at the bottom with the two actions that matter.
+function mobileBar(model: Model) {
+  const call = model.phone ? `<a class="mb-call" href="tel:${esc(model.phone.replace(/[^+\d]/g, ''))}" target="_top">${ICON.phone}Call</a>` : '';
+  return `<div class="mbar" data-mbar>${call}<a class="mb-go" ${link(model, 'contact')}>${esc(model.hero.cta || 'Get in touch')}${ICON.arrow}</a></div>`;
+}
+
 function heroSection(model: Model) {
   const eyebrow = `<p class="eyebrow">${esc(model.hero.eyebrow || model.category)}</p>`;
-  const title = `<h1>${esc(model.hero.title || model.name)}</h1>`;
+  const title = `<h1>${highlight(model, String(model.hero.title || model.name))}</h1>`;
   const lead = model.hero.description ? `<p class="lead">${esc(model.hero.description)}</p>` : '';
   const buttons = `<div class="actions"><a class="btn" ${link(model, 'contact')}>${esc(model.hero.cta || 'Get in touch')}${ICON.arrow}</a><a class="btn btn-ghost" ${link(model, 'services')}>Our services</a></div>`;
   const kind = model.heroKind;
@@ -244,12 +289,12 @@ function heroSection(model: Model) {
   if (kind === 'form') return `<section class="hero hero-form" id="top"><div class="wrap hero-grid"><div class="rv">${eyebrow}${title}${lead}${facts(model)}</div><div class="rv">${enquiryForm('Quick enquiry', 'Send enquiry', 'message')}</div></div></section>`;
   if (kind === 'stack') return `<section class="hero hero-stack" id="top"><div class="wrap rv">${eyebrow}${title}${lead}${buttons}</div><div class="wrap"><div class="hero-band rv">${art(model, 1)}<div class="band-card card">${facts(model)}</div></div></div></section>`;
   if (kind === 'offset') return `<section class="hero hero-offset" id="top"><div class="wrap hero-grid"><div class="hero-art rv">${art(model, 1)}<div class="float-card card"><strong>${esc(model.name)}</strong>${facts(model)}</div></div><div class="rv">${eyebrow}${title}${lead}${buttons}</div></div></section>`;
-  return `<section class="hero hero-split" id="top"><div class="wrap hero-grid"><div class="rv">${eyebrow}${title}${lead}${buttons}${facts(model)}</div><div class="hero-art rv">${art(model, 1)}</div></div></section>`;
+  return `<section class="hero hero-split" id="top"><div class="wrap hero-grid"><div class="rv">${eyebrow}${title}${lead}${buttons}${facts(model)}</div><div class="hero-art rv">${art(model, 1)}${model.category ? `<span class="chip chip-a">${esc(model.category)}</span>` : ''}${model.city ? `<span class="chip chip-b">${ICON.pin}${esc(model.city)}</span>` : ''}</div></div></section>`;
 }
 
 function aboutSection(model: Model) {
   const title = model.about.title || `About ${model.name}`;
-  const body = `<p class="lead">${esc(model.about.body || '')}</p>`;
+  const body = `<p class="lead">${esc(model.about.body || '')}</p>${aboutFacts(model)}`;
   if (model.align === 'center') return `<section class="sec about about-center" id="about"><div class="wrap narrow rv">${head(model, 'About', title)}${body}</div></section>`;
   return `<section class="sec about" id="about"><div class="wrap two"><div class="rv">${head(model, 'About', title)}${body}</div><div class="frame rv">${art(model, 2)}</div></div></section>`;
 }
@@ -313,7 +358,15 @@ function closingSection(model: Model, withForm: boolean) {
 
 function footer(model: Model) {
   const where = [model.category, model.city].filter(Boolean).map(esc).join(' &middot; ');
-  return `<footer class="ft"><div class="wrap ft-in"><div><p class="logo">${esc(model.name)}</p>${where ? `<p>${where}</p>` : ''}</div><p class="small">${esc(model.disclaimer)}</p></div></footer>`;
+  const links = model.multi
+    ? pageList(model).map((page) => `<a ${link(model, page.key)}>${esc(page.label)}</a>`)
+    : ['<a href="#about">About</a>', '<a href="#services">Services</a>', ...(model.process.length ? ['<a href="#process">How it works</a>'] : []), '<a href="#contact">Contact</a>'];
+  const reach = [
+    model.phone ? `<a href="tel:${esc(model.phone.replace(/[^+\d]/g, ''))}" target="_top">${esc(model.phone)}</a>` : '',
+    model.email ? `<a href="mailto:${esc(model.email)}" target="_top">${esc(model.email)}</a>` : '',
+    model.instagram ? `<a href="https://instagram.com/${encodeURIComponent(model.instagram)}" target="_blank" rel="noopener noreferrer">@${esc(model.instagram)}</a>` : '',
+  ].filter(Boolean);
+  return `<footer class="ft"><div class="wrap ft-top"><div class="ft-brand"><p class="logo">${esc(model.name)}</p>${where ? `<p>${where}</p>` : ''}</div><nav class="ft-col" aria-label="Footer"><p class="ft-h">Explore</p>${links.join('')}</nav>${reach.length ? `<div class="ft-col"><p class="ft-h">Contact</p>${reach.join('')}</div>` : ''}</div><div class="wrap ft-in"><p class="small">${esc(model.disclaimer)}</p><a class="ft-up" href="#top">Back to top</a></div></footer>`;
 }
 
 function pageBody(model: Model, key: string) {
@@ -326,7 +379,11 @@ function pageBody(model: Model, key: string) {
     faq: () => faqSection(model),
   };
   const title = (eyebrow: string, text: string) => `<section class="page-top"><div class="wrap rv"><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(text)}</h1></div></section>`;
-  if (!model.multi) return heroSection(model) + model.order.map((name) => sections[name]()).join('') + closingSection(model, false);
+  if (!model.multi) {
+    const built = model.order.map((name) => sections[name]()).filter(Boolean);
+    built.splice(Math.min(3, built.length), 0, ctaStrip(model));
+    return heroSection(model) + marquee(model) + built.join('') + closingSection(model, false);
+  }
   if (key === 'about') return title(model.name, model.about.title || 'About us') + aboutSection(model) + processSection(model) + closingSection(model, false);
   if (key === 'services') return title(model.category || 'Services', 'Services') + servicesSection(model) + highlightsSection(model) + closingSection(model, false);
   if (key === 'showcase') return title(model.name, SHOWCASE[model.kind].nav) + showcaseSection(model);
@@ -335,7 +392,99 @@ function pageBody(model: Model, key: string) {
   const home = model.order[0] === 'services' || model.order[0] === 'highlights'
     ? [highlightsSection(model), servicesSection(model, 3), aboutSection(model)]
     : [aboutSection(model), servicesSection(model, 3), highlightsSection(model)];
-  return heroSection(model) + home.join('') + closingSection(model, false);
+  return heroSection(model) + marquee(model) + home.join('') + ctaStrip(model) + closingSection(model, false);
+}
+
+// The premium finish shared by every level: depth, light, movement and clear calls to action.
+// Hybrid and Ultra add more on top (pointer light on cards, drifting glow, headline reveal).
+function premium(model: Model) {
+  const { accent, bg } = model.colors;
+  const dark = readableOn(bg) === '#ffffff';
+  const shade = dark ? 'rgba(0,0,0,.55)' : 'rgba(20,24,40,.16)';
+  const css: string[] = [];
+  css.push(`body{overflow-x:hidden}
+::selection{background:${accent};color:var(--on-accent)}
+.bar{position:fixed;top:0;left:0;height:3px;width:0;background:linear-gradient(90deg,${accent},${accent}99);z-index:60;pointer-events:none}
+.hd{background:${bg}d9;-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);transition:box-shadow .3s ease}
+.hd.scrolled{box-shadow:0 14px 34px -22px ${shade}}
+.links a{position:relative}
+@media(min-width:860px){.links a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .3s ease}.links a:hover::after,.links a[aria-current]::after{transform:scaleX(1)}}
+.hero{position:relative;overflow:hidden;isolation:isolate}
+.hero::before{content:"";position:absolute;z-index:-1;width:min(900px,130vw);aspect-ratio:1/1;right:-22%;top:-38%;background:radial-gradient(closest-side,${accent}${dark ? '47' : '30'},transparent 70%);pointer-events:none}
+.hero::after{content:"";position:absolute;z-index:-1;inset:0;background-image:radial-gradient(${dark ? '#ffffff' : '#000000'}14 1px,transparent 1px);background-size:26px 26px;-webkit-mask-image:linear-gradient(180deg,#000,transparent 85%);mask-image:linear-gradient(180deg,#000,transparent 85%);pointer-events:none}
+.hero-full::before,.hero-full::after{display:none}
+.hero h1{text-wrap:balance}
+.hl{color:var(--accent)}
+@supports((-webkit-background-clip:text) or (background-clip:text)){.hl{background:linear-gradient(100deg,${accent},color-mix(in srgb,${accent} 62%,var(--text)));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}}
+.hero-art,.frame,.hero-band{box-shadow:0 40px 80px -40px ${shade},0 0 0 1px var(--line)}
+.chip{position:absolute;display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:${bg}e6;color:var(--text);border:1px solid var(--line);font-size:.86rem;font-weight:600;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 16px 30px -18px ${shade}}
+.chip svg{color:var(--accent)}
+.chip-a{top:18px;left:18px}.chip-b{bottom:18px;right:18px}
+.hero-offset .hero-art{box-shadow:none}.hero-offset .hero-art .art{box-shadow:0 40px 80px -40px ${shade}}
+.ft .logo{text-align:left}
+.btn{position:relative;overflow:hidden;box-shadow:0 14px 28px -14px ${accent}b3;transition:transform .25s ease,box-shadow .25s ease,opacity .2s ease}
+.btn:hover{transform:translateY(-3px);opacity:1;box-shadow:0 20px 36px -14px ${accent}cc}
+.btn svg{transition:transform .25s ease}.btn:hover svg{transform:translateX(4px)}
+.btn::after{content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-18deg);transition:left .6s ease}
+.btn:hover::after{left:130%}
+.btn-ghost,.btn-line{box-shadow:none}.btn-ghost::after,.btn-line::after{display:none}
+.btn-ghost:hover{box-shadow:none;border-color:var(--accent);color:var(--accent)}
+.card{transition:transform .3s ease,box-shadow .3s ease,border-color .3s ease;position:relative}
+.svc-cards .card:hover,.svc-bento .card:hover,.sc-grid .card:hover{transform:translateY(-6px);border-color:${accent}8c;box-shadow:0 28px 50px -30px ${shade}}
+.svc-cards .card::before,.svc-bento .card::before{content:"";position:absolute;left:26px;right:26px;top:0;height:3px;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .4s ease}
+.svc-cards .card:hover::before,.svc-bento .card:hover::before{transform:scaleX(1)}
+.tick{background:linear-gradient(140deg,${accent},${accent}b3);color:var(--on-accent);box-shadow:0 10px 20px -10px ${accent}cc}
+.svc-list article,.svc-alt article{transition:padding .3s ease,background .3s ease}
+@media(hover:hover){.svc-list article:hover,.svc-alt article:hover{padding-left:14px;background:linear-gradient(90deg,${accent}14,transparent 60%)}}
+.sh h2,.cta-in h2,.closing h2{text-wrap:balance}
+.mq{overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:18px 0;background:var(--bg)}
+.mq-in{display:flex;align-items:center;gap:28px;width:max-content;animation:mq 38s linear infinite;font-family:var(--font-head);font-weight:var(--head-weight);font-size:1.05rem;letter-spacing:var(--head-track);white-space:nowrap${FONTS[model.fonts].upper ? ';text-transform:uppercase' : ''}}
+.mq-in i{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+@keyframes mq{to{transform:translateX(-33.333%)}}
+.af{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));text-align:left}
+.af li{padding:16px 18px;border:1px solid var(--line);border-radius:var(--radius);background:${dark ? 'rgba(255,255,255,.04)' : 'rgba(255,255,255,.6)'};display:grid;gap:4px}
+.af span{font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.af strong{font-family:var(--font-head);font-weight:var(--head-weight);font-size:1.05rem;letter-spacing:var(--head-track);overflow-wrap:anywhere}
+.cta-strip{padding:28px 0;background:var(--bg)!important}
+.cta-in{position:relative;overflow:hidden;display:grid;gap:24px;align-items:center;padding:36px 26px;border-radius:var(--radius-big);background:linear-gradient(125deg,${accent},color-mix(in srgb,${accent} 70%,#000));color:var(--on-accent)}
+.cta-in::before{content:"";position:absolute;width:420px;height:420px;right:-140px;top:-200px;border-radius:50%;background:radial-gradient(closest-side,rgba(255,255,255,.28),transparent);pointer-events:none}
+.cta-in>*{position:relative}
+.cta-in p{opacity:.9;margin-top:10px}.cta-k{font-size:.76rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;margin:0 0 10px!important}
+.cta-in .actions{margin-top:0}
+.btn-light{background:var(--on-accent);color:${accent};border-color:var(--on-accent);box-shadow:0 14px 28px -14px rgba(0,0,0,.45)}
+.btn-light:hover{box-shadow:0 20px 36px -14px rgba(0,0,0,.5)}
+.btn-line{background:transparent;color:var(--on-accent);border-color:currentColor}
+@media(min-width:860px){.cta-in{grid-template-columns:1.2fr auto;padding:52px 56px}.cta-strip{padding:40px 0}}
+.pr-steps .step,.pr-timeline .step{box-shadow:0 10px 22px -10px ${accent}cc}
+.faq details{transition:border-color .3s ease}.faq details[open]{border-color:${accent}8c}
+.ft{padding:0;background:${dark ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.035)'}}
+.ft-top{display:grid;gap:28px;padding-top:48px;padding-bottom:36px}
+.ft-brand .logo{font-size:1.5rem;white-space:normal}
+.ft-col{display:grid;gap:10px;align-content:start}.ft-col a{color:var(--text);opacity:.85;width:max-content;max-width:100%;overflow-wrap:anywhere}.ft-col a:hover{color:var(--accent);opacity:1}
+.ft-h{font-size:.74rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;color:var(--muted)}
+.ft-in{border-top:1px solid var(--line);padding-top:20px;padding-bottom:96px;align-items:center}
+.ft-up{font-weight:600;color:var(--text);justify-self:start}.ft-up:hover{color:var(--accent)}
+@media(min-width:860px){.ft-top{grid-template-columns:1.4fr 1fr 1fr;padding-top:64px}.ft-in{grid-template-columns:1fr auto;padding-bottom:28px}.ft .small{text-align:left}.ft-up{justify-self:end}}
+.mbar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;gap:8px;padding:8px;border-radius:999px;background:${bg}eb;border:1px solid var(--line);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 20px 40px -18px ${shade};transform:translateY(140%);transition:transform .35s ease}
+.mbar.show{transform:none}
+.mbar a{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;border-radius:999px;font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 14px}
+.mb-call{border:1px solid var(--line);color:var(--text);flex:0 0 auto!important}.mb-go{background:var(--accent);color:var(--on-accent)}
+@media(min-width:860px){.mbar{display:none}}
+@media(prefers-reduced-motion:reduce){.mq-in{animation:none}.btn,.card,.mbar{transition:none}}`);
+  if (model.rich) css.push(`.hero::before{animation:glow 16s ease-in-out infinite alternate}
+@keyframes glow{to{transform:translate(-14%,12%) scale(1.15)}}
+.hero-art .art,.frame .art{transition:transform 1.2s cubic-bezier(.2,.7,.2,1)}.hero-art:hover .art,.frame:hover .art{transform:scale(1.05)}
+.card{--mx:50%;--my:50%}
+.card>*{position:relative}
+.svc-cards .card,.svc-bento .card,.sc-grid .card{background-image:radial-gradient(260px circle at var(--mx) var(--my),${accent}24,transparent 70%)}
+.chip-a{animation:bob 6s ease-in-out infinite}.chip-b{animation:bob 7s ease-in-out -2s infinite}
+@keyframes bob{50%{transform:translateY(-8px)}}
+@media(prefers-reduced-motion:reduce){.hero::before,.chip-a,.chip-b{animation:none}}`);
+  if (model.level === 'ultra') css.push(`.js .hero h1 .w{display:inline-block;opacity:0;transform:translateY(.5em);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1)}.js .hero h1.go .w{opacity:1;transform:none}
+body{animation:pagein .5s ease both}@keyframes pagein{from{opacity:0}}
+.page-top{position:relative;overflow:hidden;isolation:isolate}.page-top::before{content:"";position:absolute;z-index:-1;width:700px;height:700px;right:-200px;top:-420px;background:radial-gradient(closest-side,${accent}40,transparent 70%)}
+@media(prefers-reduced-motion:reduce){.js .hero h1 .w{opacity:1;transform:none;transition:none}body{animation:none}}`);
+  return css.join('\n');
 }
 
 function styles(model: Model) {
@@ -457,6 +606,7 @@ p{margin:0}
   if (model.closingKind === 'card') parts.push('.big-card{padding:32px 24px}.after{margin-top:28px}@media(min-width:860px){.big-card{padding:64px}.big-card .contact-list{grid-template-columns:1fr 1fr}}');
   if (model.closingKind === 'split') parts.push('.closing-split .two{align-items:start}.closing-split .contact-list{margin-top:0}.closing-split .contact-list li{padding:14px 0;border-bottom:1px solid var(--line)}.closing-split .form{margin-top:28px}');
 
+  parts.push(premium(model));
   if (model.motion) parts.push('.js .rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}.js .rv.in{opacity:1;transform:none}@media(prefers-reduced-motion:reduce){.js .rv{opacity:1;transform:none;transition:none}html{scroll-behavior:auto}}');
   return parts.join('\n');
 }
@@ -491,6 +641,64 @@ const SCRIPT = `// Small behaviours: menu, gentle reveal on scroll, sample enqui
     items.forEach(function (item) { watcher.observe(item); });
   } else {
     items.forEach(function (item) { item.classList.add('in'); });
+  }
+  // Cards in a row arrive one after another.
+  items.forEach(function (item) {
+    var group = item.parentNode ? Array.prototype.filter.call(item.parentNode.children, function (child) { return child.classList.contains('rv'); }) : [];
+    var place = group.indexOf(item);
+    if (place > 0) item.style.transitionDelay = Math.min(place, 5) * 90 + 'ms';
+  });
+  // Reading progress line, header shadow and the phone action bar.
+  var bar = document.querySelector('[data-bar]');
+  var mbar = document.querySelector('[data-mbar]');
+  var busy = false;
+  function onScroll() {
+    busy = false;
+    var top = window.pageYOffset || document.documentElement.scrollTop || 0;
+    var full = document.documentElement.scrollHeight - window.innerHeight;
+    if (bar) bar.style.width = (full > 0 ? Math.min(100, (top / full) * 100) : 0) + '%';
+    if (header) header.classList.toggle('scrolled', top > 12);
+    if (mbar) mbar.classList.toggle('show', top > 420 && top < full - 260);
+  }
+  window.addEventListener('scroll', function () { if (!busy) { busy = true; window.requestAnimationFrame(onScroll); } }, { passive: true });
+  onScroll();
+  var level = document.body.getAttribute('data-level');
+  var calm = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Hybrid and Ultra: a soft light follows the pointer across cards.
+  if (level !== 'mid' && !calm) {
+    document.querySelectorAll('.card').forEach(function (card) {
+      card.addEventListener('pointermove', function (event) {
+        var box = card.getBoundingClientRect();
+        card.style.setProperty('--mx', (event.clientX - box.left) + 'px');
+        card.style.setProperty('--my', (event.clientY - box.top) + 'px');
+      });
+    });
+  }
+  // Ultra: the main headline arrives word by word.
+  if (level === 'ultra' && !calm) {
+    var title = document.querySelector('.hero h1');
+    if (title) {
+      var count = 0;
+      var wrap = function (node) {
+        Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+          if (child.nodeType === 3) {
+            var piece = document.createDocumentFragment();
+            child.textContent.split(/(\\s+)/).forEach(function (word) {
+              if (!word) return;
+              if (/^\\s+$/.test(word)) { piece.appendChild(document.createTextNode(' ')); return; }
+              var span = document.createElement('span');
+              span.className = 'w';
+              span.style.transitionDelay = (count++ * 70) + 'ms';
+              span.textContent = word;
+              piece.appendChild(span);
+            });
+            node.replaceChild(piece, child);
+          } else if (child.nodeType === 1) wrap(child);
+        });
+      };
+      wrap(title);
+      window.setTimeout(function () { title.classList.add('go'); }, 60);
+    }
   }
   var chosen = [];
   document.querySelectorAll('[data-choose]').forEach(function (button) {
@@ -540,12 +748,14 @@ function document_(model: Model, page: SitePage, inline: boolean) {
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?${font.query}&amp;display=swap">
 ${css}
 </head>
-<body>
+<body data-level="${model.level}">
+<div class="bar" data-bar></div>
 ${header(model, page.key)}
 <main>
 ${pageBody(model, page.key)}
 </main>
 ${footer(model)}
+${mobileBar(model)}
 ${script}
 </body>
 </html>
