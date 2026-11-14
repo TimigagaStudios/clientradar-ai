@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
+import { recordTask } from './lib/_team.js';
 
 const GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY as string;
 
@@ -111,6 +112,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       })
     );
+
+    await recordTask({
+      agentKey: 'lead-research',
+      title: `Find ${category} in ${city}`,
+      status: 'done',
+      summary: `Searched "${category} in ${city}" and found ${enrichedResults.length} ${enrichedResults.length === 1 ? 'business' : 'businesses'}.`,
+      input: { category, city },
+      output: { found: enrichedResults.length },
+    });
 
     return res.status(200).json({
       success: true,
