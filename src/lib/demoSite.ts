@@ -124,6 +124,7 @@ function readContent(content: any) {
     phone: contact.phone ? String(contact.phone) : '',
     email: contact.email ? String(contact.email) : '',
     instagram,
+    photos: (Array.isArray(content?.photos) ? content.photos : []).filter((photo: any) => photo && typeof photo.url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(photo.url)).slice(0, 12).map((photo: any) => ({ url: String(photo.url), sample: photo.kind !== 'own', alt: String(photo.alt || ''), credit: String(photo.credit || ''), link: typeof photo.link === 'string' && /^https:\/\/www\.pexels\.com\//.test(photo.link) ? photo.link : 'https://www.pexels.com' })) as { url: string; sample: boolean; alt: string; credit: string; link: string }[],
     disclaimer: String(content?.disclaimer || 'Demo concept content. Confirm business details before production use.'),
     colors,
     onAccent: readableOn(colors.accent),
@@ -144,6 +145,7 @@ function readContent(content: any) {
 // Designed artwork drawn from the site's own colours. Used where photographs will go later,
 // so no stock or invented photos of the business are ever shown.
 let artCount = 0;
+let shownPhotos = new Set<number>(); // which photographs this page really shows (for the credit line)
 function art(model: Model, variant: number) {
   const { accent, alt, surface, text } = model.colors;
   const random = seeded(model.seed * 31 + variant * 977);
@@ -177,7 +179,14 @@ function art(model: Model, variant: number) {
   }
   // A soft light-to-shade finish and a fine grain, so the artwork reads as a finished image and not flat shapes.
   const finish = `<defs><linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".2"/><stop offset=".55" stop-color="#ffffff" stop-opacity="0"/><stop offset="1" stop-color="#000000" stop-opacity=".32"/></linearGradient><filter id="${id}n" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0"/></filter></defs><rect width="400" height="400" fill="url(#${id}g)"/><rect width="400" height="400" filter="url(#${id}n)" opacity=".16"/>`;
-  return `<svg class="art" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Decorative artwork">${body}${finish}</svg>`;
+  const drawn = `<svg class="art" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Decorative artwork">${body}${finish}</svg>`;
+  // A photograph sits on top of the artwork when one is known: the business's own picture, or a
+  // sample photograph that is always marked as a sample. If it fails to load, the artwork shows instead.
+  const place = variant >= 10 ? variant - 8 : variant - 1;
+  const photo = model.photos[place];
+  if (!photo) return drawn;
+  shownPhotos.add(place);
+  return `<span class="pic">${drawn}<img src="${esc(photo.url)}" alt="${esc(photo.alt || model.name)}" loading="${variant === 1 ? 'eager' : 'lazy'}" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('nopic');this.remove()">${photo.sample ? '<em class="pic-tag">Sample photo</em>' : ''}</span>`;
 }
 
 // A visible, clearly labelled gap for a fact that is not known yet. Never filled with a guess.
@@ -295,8 +304,10 @@ function heroSection(model: Model) {
 function aboutSection(model: Model) {
   const title = model.about.title || `About ${model.name}`;
   const body = `<p class="lead">${esc(model.about.body || '')}</p>${aboutFacts(model)}`;
-  if (model.align === 'center') return `<section class="sec about about-center" id="about"><div class="wrap narrow rv">${head(model, 'About', title)}${body}</div></section>`;
-  return `<section class="sec about" id="about"><div class="wrap two"><div class="rv">${head(model, 'About', title)}${body}</div><div class="frame rv">${art(model, 2)}</div></div></section>`;
+  // Openings made only of words or a form have no picture, so the first photograph is shown here instead.
+  const variant = model.heroKind === 'type' || model.heroKind === 'form' ? 1 : 2;
+  if (model.align === 'center') return `<section class="sec about about-center" id="about"><div class="wrap narrow rv">${head(model, 'About', title)}${body}${model.photos[variant - 1] ? `<div class="frame frame-wide">${art(model, variant)}</div>` : ''}</div></section>`;
+  return `<section class="sec about" id="about"><div class="wrap two"><div class="rv">${head(model, 'About', title)}${body}</div><div class="frame rv">${art(model, variant)}</div></div></section>`;
 }
 
 function servicesSection(model: Model, limit = 99) {
@@ -366,7 +377,10 @@ function footer(model: Model) {
     model.email ? `<a href="mailto:${esc(model.email)}" target="_top">${esc(model.email)}</a>` : '',
     model.instagram ? `<a href="https://instagram.com/${encodeURIComponent(model.instagram)}" target="_blank" rel="noopener noreferrer">@${esc(model.instagram)}</a>` : '',
   ].filter(Boolean);
-  return `<footer class="ft"><div class="wrap ft-top"><div class="ft-brand"><p class="logo">${esc(model.name)}</p>${where ? `<p>${where}</p>` : ''}</div><nav class="ft-col" aria-label="Footer"><p class="ft-h">Explore</p>${links.join('')}</nav>${reach.length ? `<div class="ft-col"><p class="ft-h">Contact</p>${reach.join('')}</div>` : ''}</div><div class="wrap ft-in"><p class="small">${esc(model.disclaimer)}</p><a class="ft-up" href="#top">Back to top</a></div></footer>`;
+  const samples = model.photos.filter((photo, index) => photo.sample && shownPhotos.has(index));
+  const names = samples.filter((photo, index, all) => photo.credit && all.findIndex((other) => other.credit === photo.credit) === index).slice(0, 8).map((photo) => `<a href="${esc(photo.link)}" target="_blank" rel="noopener noreferrer">${esc(photo.credit)}</a>`).join(', ');
+  const credit = samples.length ? `<p class="small credit">Sample photos provided by <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>${names ? ` (photos by ${names})` : ''}. They show the type of business, not this business. Replace with real photographs before launch.</p>` : '';
+  return `<footer class="ft"><div class="wrap ft-top"><div class="ft-brand"><p class="logo">${esc(model.name)}</p>${where ? `<p>${where}</p>` : ''}</div><nav class="ft-col" aria-label="Footer"><p class="ft-h">Explore</p>${links.join('')}</nav>${reach.length ? `<div class="ft-col"><p class="ft-h">Contact</p>${reach.join('')}</div>` : ''}</div><div class="wrap ft-in"><div><p class="small">${esc(model.disclaimer)}</p>${credit}</div><a class="ft-up" href="#top">Back to top</a></div></footer>`;
 }
 
 function pageBody(model: Model, key: string) {
@@ -420,6 +434,14 @@ function premium(model: Model) {
 .chip{position:absolute;display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:999px;background:${bg}e6;color:var(--text);border:1px solid var(--line);font-size:.86rem;font-weight:600;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);box-shadow:0 16px 30px -18px ${shade}}
 .chip svg{color:var(--accent)}
 .chip-a{top:18px;left:18px}.chip-b{bottom:18px;right:18px}
+.pic{position:relative;display:block;width:100%;height:100%;border-radius:inherit;overflow:hidden}
+.pic img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;transition:transform 1.2s cubic-bezier(.2,.7,.2,1)}
+.pic-tag{position:absolute;left:10px;bottom:10px;padding:4px 10px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;font-size:.68rem;font-style:normal;font-weight:600;letter-spacing:.04em}
+.nopic .pic-tag{display:none}
+.hero-offset .hero-art .pic{border-radius:var(--radius-big);box-shadow:0 40px 80px -40px ${shade}}
+.hero-art:hover .pic img,.frame:hover .pic img,.thumb:hover .pic img{transform:scale(1.05)}
+.frame-wide{aspect-ratio:16/9;margin-top:34px}
+.credit{margin-top:8px}.credit a{text-decoration:underline}
 .hero-offset .hero-art{box-shadow:none}.hero-offset .hero-art .art{box-shadow:0 40px 80px -40px ${shade}}
 .ft .logo{text-align:left}
 .btn{position:relative;overflow:hidden;box-shadow:0 14px 28px -14px ${accent}b3;transition:transform .25s ease,box-shadow .25s ease,opacity .2s ease}
@@ -731,6 +753,7 @@ const PREVIEW_BRIDGE = `document.addEventListener('click', function (event) {
 });`;
 
 function document_(model: Model, page: SitePage, inline: boolean) {
+  shownPhotos = new Set<number>();
   const font = FONTS[model.fonts];
   const title = page.key === 'home' ? `${model.name}${model.city ? ` | ${model.city}` : ''}` : `${page.label} | ${model.name}`;
   const description = String(model.hero.description || model.about.body || '').slice(0, 155);
@@ -802,7 +825,9 @@ export function buildDemoSite(content: any): SiteFiles {
     '',
     '## Before this goes live',
     '- Replace every dashed placeholder (search the HTML for `class="ph"`): phone, email, street address, opening hours.',
-    '- Replace the decorative artwork with real photographs of the business.',
+    model.photos.some((photo) => photo.sample) ? '- Photos marked "Sample photo" come from Pexels and show the type of business, not this business. Replace them with real photographs. Keep the Pexels credit in the footer while any sample photo remains.' : '',
+    model.photos.some((photo) => !photo.sample) ? '- Unmarked photos were read from the business\'s current website and still load from there. Confirm with the owner that they may be used, then save copies into this folder.' : '',
+    '- Replace any remaining decorative artwork with real photographs of the business.',
     model.showcase.length ? `- The ${SHOWCASE[model.kind].nav.toLowerCase()} section holds SAMPLE content. Replace it with real items.` : '',
     '- The forms are samples and send nothing. Connect them to an email or form service.',
     '- Confirm every statement with the business owner. Nothing here is a verified claim, award, review or price.',
