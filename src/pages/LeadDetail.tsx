@@ -44,6 +44,8 @@ const LeadDetail = () => {
   } = useLeads() as any;
 
   const [demoUrl, setDemoUrl] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState('');
   const [deletingDemo, setDeletingDemo] = useState(false);
   const [demoError, setDemoError] = useState('');
   const [fetchedLead, setFetchedLead] = useState<any | null>(null);
@@ -215,6 +217,37 @@ const LeadDetail = () => {
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!lead) return;
     updateLeadStatus(lead.id, e.target.value as LeadStatus);
+  };
+
+  // Lead Research reads this lead's own website: fills a missing email or phone and reports the brand colours.
+  const scanSite = async () => {
+    if (!lead || scanning) return;
+    setScanning(true);
+    setScanResult('');
+    try {
+      const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'scan-site', leadId: lead.id }) });
+      const raw = await response.text();
+      let result: any = null;
+      try { result = JSON.parse(raw); } catch { result = null; }
+      if (!result || !response.ok || !result.success) throw new Error(result?.error || `The server answered ${response.status}`);
+      const data = result.data || {};
+      if (!data.read) { setScanResult(data.reason || 'The website could not be read.'); return; }
+      const parts = [
+        data.emails?.length ? `Email on their site: ${data.emails.join(', ')}` : 'No email is written on their site',
+        data.filled?.length ? `Saved to this lead: ${data.filled.join(', ')}` : '',
+        data.accent ? `Brand colour ${data.accent}` : 'Brand colour not clear',
+        data.darkDesign === true ? 'dark design' : data.darkDesign === false ? 'light design' : '',
+        data.fonts?.length ? `fonts ${data.fonts.slice(0, 2).join(', ')}` : '',
+        data.platform ? `built with ${data.platform}` : '',
+        data.mobileReady === false ? 'not built for phones' : '',
+      ].filter(Boolean);
+      setScanResult(`${parts.join('. ')}. The next demo for this lead will use these colours.`);
+      await refreshLeads();
+    } catch (error) {
+      setScanResult(error instanceof Error ? error.message : 'The scan failed. Please try again.');
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleDeleteDemo = async () => {
@@ -472,6 +505,12 @@ const LeadDetail = () => {
                     <Phone size={18} className="text-[var(--text-secondary)] flex-shrink-0" />
                     <span>{lead.phone || 'N/A'}</span>
                   </div>
+                  {lead.email && (
+                    <div className="flex items-center gap-3 text-[var(--text-primary)]">
+                      <Mail size={18} className="text-[var(--text-secondary)] flex-shrink-0" />
+                      <span className="break-all">{lead.email}</span>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 text-[var(--text-primary)]">
                     <Globe size={18} className="text-[var(--text-secondary)] flex-shrink-0" />
                     {lead.website ? (
@@ -484,6 +523,14 @@ const LeadDetail = () => {
                       </span>
                     )}
                   </div>
+                  {lead.website && (
+                    <div>
+                      <button type="button" onClick={scanSite} disabled={scanning} className="px-4 py-2 rounded-xl neo-button text-sm text-[var(--text-primary)] disabled:opacity-50">
+                        {scanning ? 'Reading their website...' : 'Scan website for email and colours'}
+                      </button>
+                      {scanResult && <p className="mt-2 text-sm text-[var(--text-secondary)] break-words">{scanResult}</p>}
+                    </div>
+                  )}
                 </div>
               </div>
 
