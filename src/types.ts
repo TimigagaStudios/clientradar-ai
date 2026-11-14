@@ -64,4 +64,11 @@ export type SearchResult = {
   rating: number;
   reviewCount: number;
   mapLink: string;
+  latitude?: number;
+  longitude?: number;
+  email?: string;
+  category?: string;
+  city?: string;
+  country?: string;
+  websiteNote?: string;
 };
