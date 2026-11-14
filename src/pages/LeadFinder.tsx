@@ -257,13 +257,17 @@ const LeadFinder = () => {
                       </td>
 
                       <td className="p-4">
-                        <div className="flex items-center gap-1 mb-2">
-                          <Star size={14} className="text-yellow-500 fill-yellow-500" />
-                          <span className="text-[var(--text-primary)]">{result.rating}</span>
-                          <span className="text-[var(--text-secondary)] text-xs">
-                            ({result.reviewCount})
-                          </span>
-                        </div>
+                        {result.rating > 0 ? (
+                          <div className="flex items-center gap-1 mb-2">
+                            <Star size={14} className="text-yellow-500 fill-yellow-500" />
+                            <span className="text-[var(--text-primary)]">{result.rating}</span>
+                            <span className="text-[var(--text-secondary)] text-xs">
+                              ({result.reviewCount})
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="mb-2 text-xs text-[var(--text-secondary)]">No rating available</p>
+                        )}
 
                         <div className="flex items-center gap-2">
                           <span
