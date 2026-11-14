@@ -33,6 +33,8 @@ const LeadFinder = () => {
   const [source, setSource] = useState('');
   const [note, setNote] = useState('');
   const [onlyNoSite, setOnlyNoSite] = useState(false);
+  const [hideKnown, setHideKnown] = useState(true);
+  const [knownKeys, setKnownKeys] = useState<Set<string>>(new Set()); // found by this search but already in the leads
   const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
 
   const [searchParams, setSearchParams] = useState({
@@ -62,6 +64,10 @@ const LeadFinder = () => {
       const found: SearchResult[] = result.data || [];
       const merged = offset > 0 ? [...results, ...found.filter((item) => !results.some((old) => foundKey(old) === foundKey(item)))] : found;
       setResults(merged);
+      // Businesses that were already saved before this search are remembered, so they can be hidden.
+      const known = new Set(offset > 0 ? knownKeys : []);
+      found.forEach((item) => { if (existingLeadFor(leads, item)) known.add(foundKey(item)); });
+      setKnownKeys(known);
       setLast(query);
       setHasMore(Boolean(result.hasMore));
       setSource(String(result.source || 'google'));
@@ -70,7 +76,7 @@ const LeadFinder = () => {
       showToast({
         type: 'success',
         title: 'Search complete',
-        message: offset > 0 ? `${found.length} more loaded (${merged.length} in total).` : `${found.length} business result(s) loaded.`,
+        message: `${offset > 0 ? `${found.length} more loaded (${merged.length} in total).` : `${found.length} business result(s) loaded.`}${known.size ? ` ${known.size} already in your leads.` : ''}`,
       });
     } catch (error) {
       console.error(error);
@@ -126,7 +132,7 @@ const LeadFinder = () => {
     }
   };
 
-  const shown = useMemo(() => (onlyNoSite ? results.filter((item) => !item.website) : results), [results, onlyNoSite]);
+  const shown = useMemo(() => results.filter((item) => (!onlyNoSite || !item.website) && (!hideKnown || !knownKeys.has(foundKey(item)))), [results, onlyNoSite, hideKnown, knownKeys]);
   const unsaved = shown.filter((item) => !stateOf(item).saved);
 
   const saveAll = async () => {
@@ -257,10 +263,10 @@ const LeadFinder = () => {
       </section>
 
       {results.length > 0 && (
-        <section className="neo-card overflow-hidden">
+        <section className="neo-card overflow-hidden" data-finder-results>
           <div className="px-6 py-5 border-b border-black/8 dark:border-white/8 transition-colors duration-300">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
-              Search Results ({shown.length})
+              Search Results ({shown.length}{shown.length !== results.length ? ` of ${results.length}` : ''})
             </h2>
             <p className="text-sm text-[var(--text-secondary)] mt-1">
               Review and save high-value opportunities into your lead database.
@@ -270,6 +276,10 @@ const LeadFinder = () => {
               <label className="inline-flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
                 <input type="checkbox" checked={onlyNoSite} onChange={(e) => setOnlyNoSite(e.target.checked)} />
                 Only without a website ({results.filter((item) => !item.website).length})
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+                <input type="checkbox" checked={hideKnown} onChange={(e) => setHideKnown(e.target.checked)} />
+                Hide ones already in my leads ({knownKeys.size})
               </label>
               <button
                 type="button"
