@@ -139,6 +139,54 @@ export function buildDemoPrompt(lead: any, templateKey: string, styleLevel: Demo
   ].join('\n');
 }
 
+// Which sections a demo of this level should have today but was built without (older builds).
+function missingSections(content: any, templateKey: string): ('process' | 'faq')[] {
+  if (!content || !content.design || !content.design.version) return [];
+  const level = content.styleLevel === 'ultra' || content.styleLevel === 'hybrid' || content.styleLevel === 'mid' ? content.styleLevel as DemoStyleLevel : splitTemplateKey(templateKey).level;
+  const limits = TIER_LIMITS[level];
+  const missing: ('process' | 'faq')[] = [];
+  if (limits.process > 0 && !(Array.isArray(content.process) && content.process.length)) missing.push('process');
+  if (limits.faq > 0 && !(Array.isArray(content.faq) && content.faq.length)) missing.push('faq');
+  return missing;
+}
+
+// Ready demos that were built before new sections existed. Found by the Records Upkeep Agent.
+export async function outdatedDemos(supabase: any, limit = 25): Promise<{ id: string; leadId: string; name: string; missing: string[] }[]> {
+  const { data, error } = await supabase.from('demo_jobs').select('id, lead_id, template_key, content').eq('status', 'ready').order('created_at', { ascending: false }).limit(200);
+  if (error || !data) return [];
+  return data
+    .map((job: any) => ({ id: job.id, leadId: job.lead_id, name: String(job.content?.businessName || 'a lead'), missing: missingSections(job.content, job.template_key) }))
+    .filter((item: any) => item.missing.length)
+    .slice(0, limit);
+}
+
+// Adds ONLY the missing sections to a finished demo. Its design, existing words and link stay exactly as they are.
+export async function refreshDemoSections(supabase: any, id: string) {
+  const { data: job, error } = await supabase.from('demo_jobs').select('*, leads(*)').eq('id', id).single();
+  if (error || !job) throw new Error('Demo not found');
+  const missing = missingSections(job.content, job.template_key);
+  const name = String(job.content?.businessName || job.leads?.business_name || 'the lead');
+  if (job.status !== 'ready' || !missing.length) return { name, added: [] as string[], generatedBy: 'none' };
+  const lead = job.leads || { business_name: name, category: job.content?.category, city: job.content?.city };
+  const level = (job.content.styleLevel || splitTemplateKey(job.template_key).level) as DemoStyleLevel;
+  const base = fallbackContent(lead, level);
+  let generated: any = null;
+  try {
+    generated = await generateDemoContent(lead, splitTemplateKey(job.template_key).template, `${job.prompt || buildDemoPrompt(lead, 'auto', level)}\n${describeDesign(job.content.design)}`, level);
+  } catch { /* the built-in text is used instead */ }
+  const content = { ...job.content };
+  let ai = 0;
+  for (const key of missing) {
+    const written = generated && Array.isArray(generated[key]) && generated[key].length >= 2 ? generated[key] : null;
+    if (written) ai += 1;
+    content[key] = written || (base as any)[key];
+  }
+  content.sectionsAdded = { at: new Date().toISOString(), sections: missing, generatedBy: ai === missing.length ? 'ai' : 'fallback' };
+  const { error: saveError } = await supabase.from('demo_jobs').update({ content }).eq('id', id);
+  if (saveError) throw new Error(saveError.message);
+  return { name, added: missing as string[], generatedBy: ai === missing.length ? 'ai' : 'fallback' };
+}
+
 // options.record = false when an agent task already tracks this build (avoids a double record).
 export async function processDemoJob(supabase: any, id: string, options: { record?: boolean } = {}) {
   const record = options.record !== false;

@@ -1,4 +1,4 @@
-import { buildDemoPrompt, processDemoJob } from './demo-job-process.js';
+import { buildDemoPrompt, processDemoJob, refreshDemoSections } from './demo-job-process.js';
 import { normalizeStyleLevel } from './demo-ai.js';
 import { searchBusinesses, type FoundBusiness } from './_places.js';
 
@@ -50,7 +50,20 @@ const runLeadResearch: Runner = async (_supabase, task) => {
 // --- Demo Creation Agent: reads its one lead, writes a demo job and builds it. Never sends anything. ---
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
 
+const SECTION_NAMES: Record<string, string> = { process: 'How it works', faq: 'Common questions' };
+
 const runDemoCreation: Runner = async (supabase, task) => {
+  // An update of a finished demo: only the missing sections are added.
+  if (task.input?.refresh) {
+    const done = await refreshDemoSections(supabase, String(task.input.jobId || ''));
+    const jobId = String(task.input.jobId || '');
+    if (!done.added.length) return { summary: `The demo for ${done.name} was already up to date.`, output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: 'none' } };
+    const sections = done.added.map((key) => SECTION_NAMES[key] || key).join(' and ');
+    return {
+      summary: `Added ${sections} to the demo for ${done.name} (${done.generatedBy === 'ai' ? 'AI written' : 'built-in text'}). Its design, wording and link did not change.`,
+      output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: done.generatedBy, added: done.added },
+    };
+  }
   const leadId = String(task.input?.leadId || '');
   const level = normalizeStyleLevel(task.input?.level);
   if (!leadId) throw new Error('The task has no lead');
