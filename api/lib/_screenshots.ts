@@ -49,12 +49,17 @@ export function cleanBusiness(raw: any): ExtractedBusiness {
 }
 
 const PROMPT = [
-  'This image is a screenshot that may list one or many businesses (for example a Google Maps results list, a search results page, a directory, or a single business profile).',
+  'This image is a screenshot that may list one or many businesses (for example an Apple Maps or Google Maps results list, an Apple Maps place card, a search results page, a directory, or a single business profile).',
   'Extract EVERY separate business visible, each as its own entry. Do not merge businesses and do not skip partly visible ones.',
   'For each business give: name, category, address, city, country, phone, website, email, rating (0 to 5), reviewCount, description (short, only from visible text), confidence (0 to 1: how sure you are this entry is read correctly).',
   'Only use text that is actually visible in the image. If a field is not visible, use null. Never guess a phone number, website, email, rating or address.',
   'If the name is cut off or unclear, still include the entry with a low confidence.',
-  'Ignore adverts, map labels, buttons and the phone status bar. If there are no businesses, return an empty list.',
+  'Apple Maps layout: a results row usually shows the name, then a line such as "Dentist - Santa Monica" (the first part is the category, the second part is the city or neighbourhood), then a rating, a distance and an open or closed status. A place card shows one business with Call, Website and Directions buttons and a Details section with Hours, Phone, Website and Address: read the phone, website and address from that Details section.',
+  'A distance such as "1.2 mi" or "3 km" is NOT an address: ignore it. Price marks such as "$$" are not a rating: ignore them.',
+  'rating must be a star score from 0 to 5 only. If the screenshot shows a percentage instead (for example "92%" with a thumbs-up, which is how Apple Maps shows ratings), set rating to null, put the number of ratings in reviewCount, and write the percentage in description, for example "92% recommended on Apple Maps". Never convert a percentage into stars.',
+  'If the rating comes from another service (for example Yelp or Tripadvisor), keep the star score and mention the service in description.',
+  'Opening status or hours, when visible, go in description. Words on a button (Call, Website, Directions, Share, Save) are not a phone number or website: only use a real number or web address that is written out.',
+  'Ignore adverts, sponsored rows, map pins and labels on the map itself, buttons, the search bar and the phone status bar. If there are no businesses, return an empty list.',
   'Return JSON only, in this shape: {"businesses":[{"name":"","category":"","address":"","city":"","country":"","phone":"","website":"","email":"","rating":null,"reviewCount":null,"description":"","confidence":0.9}]}',
 ].join('\n');
 
