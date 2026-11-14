@@ -3,6 +3,7 @@ import Globe from 'react-globe.gl';
 import { ArrowLeft, Globe2, MapPin, RotateCcw, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
+import { priceStage } from '../lib/demo-factory';
 
 type LeadPoint = {
   id: string; businessName: string; city: string; category: string;
@@ -21,6 +22,8 @@ type GlobeRef = { pointOfView: (view: { lat: number; lng: number; altitude: numb
 
 export default function LeadGlobe() {
   const { leads } = useLeads();
+  // Pin colours follow the current price stage (launch, growth, studio).
+  const priceRanges = useMemo(() => priceStage(leads.filter((lead: any) => lead.status === 'Deal Closed').length).ranges, [leads]);
   const globeRef = useRef<GlobeRef | undefined>();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -73,8 +76,8 @@ export default function LeadGlobe() {
   const markerColor = (point: LeadPoint) => {
     if (point.id === selectedId) return '#ff7a00';
     if (point.demoStatus === 'Ready') return '#39d98a';
-    if (point.priority === 'High' || (point.dealValue || 0) >= 6000) return '#ff4d5f';
-    if (point.priority === 'Medium' || (point.dealValue || 0) >= 3000) return '#f2c94c';
+    if (point.priority === 'High' || (point.dealValue || 0) >= priceRanges.ultra.min) return '#ff4d5f';
+    if (point.priority === 'Medium' || (point.dealValue || 0) >= priceRanges.hybrid.min) return '#f2c94c';
     return '#ffd08a';
   };
 

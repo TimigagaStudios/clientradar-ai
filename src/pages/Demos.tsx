@@ -22,7 +22,7 @@ const Demos = () => {
   const handleSelectLead = (leadId: string) => {
     setSelectedLeadId(leadId);
     const lead = leads.find((item: any) => item.id === leadId);
-    const suggestion = lead ? suggestStyleLevel(lead) : '';
+    const suggestion = lead ? suggestStyleLevel(lead, leads.filter((item: any) => item.status === 'Deal Closed').length) : '';
     setSuggestedLevel(suggestion);
     if (suggestion) setStyleLevel(suggestion);
   };

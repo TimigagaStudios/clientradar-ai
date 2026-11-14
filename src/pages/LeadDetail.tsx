@@ -28,7 +28,7 @@ import {
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
 import { cn } from '../utils/cn';
-import { deleteLeadDemo, estimateLeadValue, VALUE_RANGES } from '../lib/demo-factory';
+import { deleteLeadDemo, estimateLeadValue } from '../lib/demo-factory';
 
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -151,7 +151,8 @@ const LeadDetail = () => {
     return { value: aiRating.toFixed(1), isAi: true };
   }, [lead, computedLeadScore]);
 
-  const valueEstimate = useMemo(() => estimateLeadValue(lead, computedLeadScore), [lead, computedLeadScore]);
+  const closedDeals = useMemo(() => leads.filter((item: any) => item.status === 'Deal Closed').length, [leads]);
+  const valueEstimate = useMemo(() => estimateLeadValue(lead, computedLeadScore, closedDeals), [lead, computedLeadScore, closedDeals]);
   const aiLeadValue = lead?.dealValue && Number(lead.dealValue) > 0 ? Number(lead.dealValue) : valueEstimate.value;
 
   // === ORIGINAL AI SUMMARY (kept exactly) ===
@@ -886,7 +887,7 @@ const LeadDetail = () => {
               <span className="text-[var(--text-secondary)] text-sm">potential</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-2">
-              {isDealClosed ? 'Closed deal amount - editable above.' : `Estimate at the ${VALUE_RANGES[valueEstimate.level].label} level ($${VALUE_RANGES[valueEstimate.level].min.toLocaleString()}-$${VALUE_RANGES[valueEstimate.level].max.toLocaleString()}). A guide, not a quote.`}
+              {isDealClosed ? 'Closed deal amount - editable above.' : `${valueEstimate.stage}: ${valueEstimate.label} level ($${valueEstimate.min.toLocaleString()}-$${valueEstimate.max.toLocaleString()}). A guide, not a quote.`}
             </p>
           </div>
 
