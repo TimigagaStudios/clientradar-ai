@@ -2,6 +2,7 @@ import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, tier
 import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { recordTask } from './_team.js';
 import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js';
+import { scanWebsite } from './_website.js';
 
 function fallbackContent(lead: any, level: DemoStyleLevel) {
   const business = lead.business_name || 'Your Business';
@@ -118,26 +119,6 @@ function mergeContent(base: any, generated: any) {
   };
 }
 
-// Reads the public title, description and colours of a lead's existing website.
-// (Moved here from website-profile.ts to stay inside Vercel's server function limit.)
-async function inspectPublicWebsite(url: string | undefined) {
-  if (!url) return null;
-  let parsed: URL;
-  try { parsed = new URL(url.startsWith('http') ? url : `https://${url}`); } catch { return null; }
-  if (!['http:', 'https:'].includes(parsed.protocol)) return null;
-  try {
-    const response = await fetch(parsed.toString(), { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'ClientRadar-DemoFactory/1.0' } });
-    if (!response.ok) return null;
-    const html = (await response.text()).slice(0, 250_000);
-    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || null;
-    const description = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i)?.[1]?.trim() || null;
-    const colors = [...new Set((html.match(/#[0-9a-fA-F]{6}/g) || []).map((color) => color.toLowerCase()))].slice(0, 8);
-    return { url: parsed.toString(), title, description, colors };
-  } catch {
-    return null;
-  }
-}
-
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
 
 // Same wording as the prompt built in api/demo-jobs.ts (kept in step by hand until that file is next edited).
@@ -171,12 +152,17 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
   try {
     const lead = job.leads || {};
     const { template, level } = splitTemplateKey(job.template_key);
-    const websiteProfile = await inspectPublicWebsite(lead.website);
+    // Read the business's own website first: its real colours, light or dark look, fonts and contact email.
+    const scan = await scanWebsite(lead.website);
+    const websiteProfile = scan ? { url: scan.url, title: scan.title, description: scan.description, heading: scan.heading, colors: scan.colors, brandColor: scan.accent, darkDesign: scan.darkDesign, fonts: scan.fonts, builtWith: scan.platform, mobileReady: scan.mobileReady } : null;
+    // An email written on their own site completes the lead (only when the lead has none).
+    const foundEmail = !lead.email && scan?.emails[0] ? scan.emails[0] : null;
+    if (foundEmail) { lead.email = foundEmail; await supabase.from('leads').update({ email: foundEmail, updated_at: new Date().toISOString() }).eq('id', job.lead_id); }
     const stylePrompt = websiteProfile
-      ? `${job.prompt}\nExisting website profile: ${JSON.stringify(websiteProfile)}\nPreserve the recognizable brand direction while improving clarity, hierarchy, mobile layout, and conversion flow.`
+      ? `${job.prompt}\nExisting website profile: ${JSON.stringify(websiteProfile)}\nKeep their real brand colour and overall mood so the owner recognises their business, while clearly improving clarity, hierarchy, mobile layout and conversion flow. Do not copy their sentences.`
       : `${job.prompt}\nNo existing website was found. Create a distinctive brand direction based on the business name, category, city, and template. Avoid generic copy and vary palette, tone, layout emphasis, and visual mood between businesses.`;
     // Every demo gets its own design recipe, checked against earlier demos so looks do not repeat.
-    const design = pickDesignDna({ seedText: `${id}:${(job.attempts || 0) + 1}`, category: lead.category, brandColors: websiteProfile?.colors, earlier: await loadEarlierDesigns(supabase, id) });
+    const design = pickDesignDna({ seedText: `${id}:${(job.attempts || 0) + 1}`, category: lead.category, brandColors: scan ? [scan.accent, ...scan.colors].filter(Boolean) : undefined, brandDark: scan?.darkDesign, earlier: await loadEarlierDesigns(supabase, id) });
     const kind = showcaseKind(template, lead.category);
     const showcaseLimit = TIER_LIMITS[level].showcase;
     const fullPrompt = `${showcaseLimit > 0 ? `${stylePrompt}\n${showcaseRule(kind, showcaseLimit)}` : stylePrompt}\n${describeDesign(design)}`;

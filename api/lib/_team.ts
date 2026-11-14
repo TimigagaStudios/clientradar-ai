@@ -42,7 +42,7 @@ export const AGENTS: AgentProfile[] = [
     name: 'Lead Research Agent',
     role: 'Finds businesses worth contacting',
     job: 'Searches public business listings for a category and city and returns candidates with rating, reviews, phone and website status.',
-    tools: ['Google Places search'],
+    tools: ['Business search', 'Website scan (emails, brand colours, style)'],
     dataAccess: ['Public business listings'],
     needsApproval: ['Saving leads without you choosing them'],
     reportsTo: 'master',

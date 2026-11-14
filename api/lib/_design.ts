@@ -128,7 +128,7 @@ export type EarlierDesign = { category?: unknown; design?: Record<string, unknow
 
 // Tries many recipes and keeps the one that is furthest from every earlier demo,
 // counting demos in the same trade much more strictly than demos in other trades.
-export function pickDesignDna(input: { seedText: string; category?: unknown; brandColors?: unknown; earlier?: EarlierDesign[] }): DesignDna {
+export function pickDesignDna(input: { seedText: string; category?: unknown; brandColors?: unknown; brandDark?: boolean | null; earlier?: EarlierDesign[] }): DesignDna {
   const random = randomFrom(hashText(input.seedText));
   const choose = <T,>(list: readonly T[]) => list[Math.floor(random() * list.length)];
   const brand = brandAccent(input.brandColors);
@@ -136,7 +136,9 @@ export function pickDesignDna(input: { seedText: string; category?: unknown; bra
   let best: DesignDna | null = null;
   let bestScore = -1;
   for (let attempt = 0; attempt < 80; attempt += 1) {
-    const dark = random() < 0.35;
+    // With a real website the demo follows its light or dark look; otherwise the look is chosen fresh.
+    const chance = random() < 0.35;
+    const dark = brand && typeof input.brandDark === 'boolean' ? input.brandDark : chance;
     const palette = brand ? (dark ? 'brand-dark' : 'brand-light') : choose(PALETTE_KEYS);
     const candidate: DesignDna = {
       version: 1,

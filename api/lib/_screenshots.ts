@@ -207,10 +207,10 @@ export async function handleImportSave(supabase: any, body: any) {
   });
   // With migration 005 the source is stored in its own columns; without it the same facts stay in the notes.
   let sourceColumns = true;
-  let result = await supabase.from('leads').insert(rows.map((row) => ({ ...row.base, ...row.source }))).select('id, business_name');
+  let result = await supabase.from('leads').insert(rows.map((row) => ({ ...row.base, ...row.source }))).select('id, business_name, website, email');
   if (result.error && columnMissing(result.error)) {
     sourceColumns = false;
-    result = await supabase.from('leads').insert(rows.map((row) => row.base)).select('id, business_name');
+    result = await supabase.from('leads').insert(rows.map((row) => row.base)).select('id, business_name, website, email');
   }
   if (result.error || !Array.isArray(result.data)) {
     const message = String(result.error?.message || 'Could not save the leads').slice(0, 200);
@@ -231,5 +231,5 @@ export async function handleImportSave(supabase: any, body: any) {
     output: { imported: created.length, sourceColumns },
     startedAt,
   });
-  return { status: 200, json: { success: true, data: { imported: created.length, importedIds: usable.map((item) => item.raw.id), sourceColumns } } };
+  return { status: 200, json: { success: true, data: { imported: created.length, importedIds: usable.map((item) => item.raw.id), sourceColumns, leads: created.map((row) => ({ id: row.id, name: row.business_name, website: row.website || null, email: row.email || null })) } } };
 }
