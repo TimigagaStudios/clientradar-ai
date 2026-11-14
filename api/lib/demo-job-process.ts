@@ -1,6 +1,7 @@
 import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, tierRules, TIER_LIMITS } from './demo-ai.js';
 import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { recordTask } from './_team.js';
+import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js';
 
 function fallbackContent(lead: any, level: DemoStyleLevel) {
   const business = lead.business_name || 'Your Business';
@@ -174,9 +175,11 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
     const stylePrompt = websiteProfile
       ? `${job.prompt}\nExisting website profile: ${JSON.stringify(websiteProfile)}\nPreserve the recognizable brand direction while improving clarity, hierarchy, mobile layout, and conversion flow.`
       : `${job.prompt}\nNo existing website was found. Create a distinctive brand direction based on the business name, category, city, and template. Avoid generic copy and vary palette, tone, layout emphasis, and visual mood between businesses.`;
+    // Every demo gets its own design recipe, checked against earlier demos so looks do not repeat.
+    const design = pickDesignDna({ seedText: `${id}:${(job.attempts || 0) + 1}`, category: lead.category, brandColors: websiteProfile?.colors, earlier: await loadEarlierDesigns(supabase, id) });
     const kind = showcaseKind(template, lead.category);
     const showcaseLimit = TIER_LIMITS[level].showcase;
-    const fullPrompt = showcaseLimit > 0 ? `${stylePrompt}\n${showcaseRule(kind, showcaseLimit)}` : stylePrompt;
+    const fullPrompt = `${showcaseLimit > 0 ? `${stylePrompt}\n${showcaseRule(kind, showcaseLimit)}` : stylePrompt}\n${describeDesign(design)}`;
     // If the AI provider fails, the demo still completes with built-in text and records the reason.
     let generated: Awaited<ReturnType<typeof generateDemoContent>> = null;
     let aiError: string | null = null;
@@ -195,9 +198,10 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       styleLevel: level,
       generatedBy: generated ? 'ai' : 'fallback',
       aiError,
+      design,
       showcase,
       ...mergeContent(fallbackContent(lead, level), generated),
-      contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null },
+      contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null, website: lead.website || null },
       theme: generated?.theme || { ...fallbackTheme(lead), source: websiteProfile ? 'website-profile' : 'generated-fallback', websiteProfile },
     };
     const demoUrl = `/demos/preview/${id}`;

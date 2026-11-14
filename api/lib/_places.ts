@@ -27,6 +27,25 @@ export function plainPlacesError(message: string) {
   return message.replace(/https?:\/\/\S+/g, '').replace(/\s+/g, ' ').trim().slice(0, 140) || 'Google Places search failed';
 }
 
+// A real check of a business website (replaces the old random "outdated" guess).
+// It only reports a problem it actually saw on the page; when the site cannot be read, nothing is claimed.
+export async function checkWebsite(url: string | null | undefined): Promise<{ outdated: boolean; note: string | null }> {
+  if (!url) return { outdated: false, note: null };
+  let parsed: URL;
+  try { parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`); } catch { return { outdated: false, note: null }; }
+  try {
+    const response = await fetch(parsed.toString(), { signal: AbortSignal.timeout(3500), redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ClientRadarAI/1.0)' } });
+    if (!response.ok) return { outdated: false, note: null };
+    const html = (await response.text()).slice(0, 120_000);
+    if (!/<html|<head|<body/i.test(html)) return { outdated: false, note: null };
+    if (!/<meta[^>]+name=["']?viewport/i.test(html)) return { outdated: true, note: 'Not built for phones' };
+    if (String(response.url || parsed.toString()).startsWith('http://')) return { outdated: true, note: 'No secure connection (https)' };
+    return { outdated: false, note: null };
+  } catch {
+    return { outdated: false, note: null };
+  }
+}
+
 export async function osmSearch(category: string, city: string, limit = 10): Promise<FoundBusiness[]> {
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(`${category} in ${city}`)}&format=jsonv2&limit=${limit}&addressdetails=1&extratags=1`;
   const response = await fetch(url, { headers: { 'User-Agent': 'ClientRadarAI/1.0 (lead research)', 'Accept-Language': 'en' }, signal: AbortSignal.timeout(12000) });
