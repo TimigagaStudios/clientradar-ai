@@ -1,4 +1,4 @@
-import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, TIER_LIMITS } from './demo-ai.js';
+import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, tierRules, TIER_LIMITS } from './demo-ai.js';
 import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { recordTask } from './_team.js';
 
@@ -139,7 +139,27 @@ async function inspectPublicWebsite(url: string | undefined) {
 
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
 
-export async function processDemoJob(supabase: any, id: string) {
+// Same wording as the prompt built in api/demo-jobs.ts (kept in step by hand until that file is next edited).
+export function buildDemoPrompt(lead: any, templateKey: string, styleLevel: DemoStyleLevel) {
+  return [
+    'Create a polished, mobile-first demo website for this business.',
+    `Business name: ${lead.business_name}`,
+    `Industry: ${lead.category || 'General business'}`,
+    `Location: ${lead.city || 'Not provided'}`,
+    `Phone: ${lead.phone || 'Not provided'}`,
+    `Email: ${lead.email || 'Not provided'}`,
+    `Instagram: ${lead.instagram || 'Not provided'}`,
+    `Website status: ${lead.website ? 'Existing website' : 'No website found'}`,
+    `Template: ${templateKey}`,
+    ...tierRules(styleLevel),
+    'Do not invent medical, legal, financial, awards, pricing, review, or performance claims.',
+    'Return structured website content only; the template controls layout and code.',
+  ].join('\n');
+}
+
+// options.record = false when an agent task already tracks this build (avoids a double record).
+export async function processDemoJob(supabase: any, id: string, options: { record?: boolean } = {}) {
+  const record = options.record !== false;
   const { data: job, error: jobError } = await supabase.from('demo_jobs').select('*, leads(*)').eq('id', id).single();
   if (jobError || !job) throw new Error('Demo job not found');
   if (job.status === 'ready') return job;
@@ -184,7 +204,7 @@ export async function processDemoJob(supabase: any, id: string) {
     const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
     if (error) throw error;
     await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
-    await recordTask({
+    if (record) await recordTask({
       agentKey: 'demo-creation',
       title: `Build ${levelName} demo for ${businessName}`,
       status: 'done',
@@ -197,7 +217,7 @@ export async function processDemoJob(supabase: any, id: string) {
     return data;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Demo generation failed';
-    await recordTask({
+    if (record) await recordTask({
       agentKey: 'demo-creation',
       title: `Build ${levelName} demo for ${businessName}`,
       status: 'failed',
