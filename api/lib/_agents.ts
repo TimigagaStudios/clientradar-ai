@@ -50,17 +50,17 @@ const runLeadResearch: Runner = async (_supabase, task) => {
 // --- Demo Creation Agent: reads its one lead, writes a demo job and builds it. Never sends anything. ---
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
 
-const SECTION_NAMES: Record<string, string> = { process: 'How it works', faq: 'Common questions' };
+const SECTION_NAMES: Record<string, string> = { process: 'How it works', faq: 'Common questions', photos: 'photos' };
 
 const runDemoCreation: Runner = async (supabase, task) => {
   // An update of a finished demo: only the missing sections are added.
   if (task.input?.refresh) {
     const done = await refreshDemoSections(supabase, String(task.input.jobId || ''));
     const jobId = String(task.input.jobId || '');
-    if (!done.added.length) return { summary: `The demo for ${done.name} was already up to date.`, output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: 'none' } };
+    if (!done.added.length) return { summary: `The demo for ${done.name} needed no change (no new section was missing and no photos were found for it).`, output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: 'none' } };
     const sections = done.added.map((key) => SECTION_NAMES[key] || key).join(' and ');
     return {
-      summary: `Added ${sections} to the demo for ${done.name} (${done.generatedBy === 'ai' ? 'AI written' : 'built-in text'}). Its design, wording and link did not change.`,
+      summary: `Added ${sections} to the demo for ${done.name}${done.generatedBy === 'none' ? '' : ` (${done.generatedBy === 'ai' ? 'AI written' : 'built-in text'})`}${done.photos ? `: ${done.photos.own} from their own website, ${done.photos.sample} sample ${done.photos.sample === 1 ? 'photo' : 'photos'} marked as samples` : ''}. Its wording and link did not change.`,
       output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: done.generatedBy, added: done.added },
     };
   }

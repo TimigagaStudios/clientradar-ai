@@ -3,6 +3,10 @@ import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { recordTask } from './_team.js';
 import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js';
 import { scanWebsite } from './_website.js';
+import { demoPhotos, photosPossible } from './_photos.js';
+
+// How many photographs each level shows: opening and about; Ultra also has one per showcase card.
+const PHOTO_COUNT: Record<string, number> = { mid: 2, hybrid: 2, ultra: 8 };
 
 function fallbackContent(lead: any, level: DemoStyleLevel) {
   const business = lead.business_name || 'Your Business';
@@ -140,13 +144,15 @@ export function buildDemoPrompt(lead: any, templateKey: string, styleLevel: Demo
 }
 
 // Which sections a demo of this level should have today but was built without (older builds).
-function missingSections(content: any, templateKey: string): ('process' | 'faq')[] {
+function missingSections(content: any, templateKey: string): ('process' | 'faq' | 'photos')[] {
   if (!content || !content.design || !content.design.version) return [];
   const level = content.styleLevel === 'ultra' || content.styleLevel === 'hybrid' || content.styleLevel === 'mid' ? content.styleLevel as DemoStyleLevel : splitTemplateKey(templateKey).level;
   const limits = TIER_LIMITS[level];
-  const missing: ('process' | 'faq')[] = [];
+  const missing: ('process' | 'faq' | 'photos')[] = [];
   if (limits.process > 0 && !(Array.isArray(content.process) && content.process.length)) missing.push('process');
   if (limits.faq > 0 && !(Array.isArray(content.faq) && content.faq.length)) missing.push('faq');
+  // Photographs: looked for once per demo, and only when there is somewhere to get them from.
+  if (!content.photosChecked && !(Array.isArray(content.photos) && content.photos.length) && photosPossible(content.contact?.website)) missing.push('photos');
   return missing;
 }
 
@@ -166,25 +172,38 @@ export async function refreshDemoSections(supabase: any, id: string) {
   if (error || !job) throw new Error('Demo not found');
   const missing = missingSections(job.content, job.template_key);
   const name = String(job.content?.businessName || job.leads?.business_name || 'the lead');
-  if (job.status !== 'ready' || !missing.length) return { name, added: [] as string[], generatedBy: 'none' };
+  if (job.status !== 'ready' || !missing.length) return { name, added: [] as string[], generatedBy: 'none', photos: null as { own: number; sample: number } | null };
   const lead = job.leads || { business_name: name, category: job.content?.category, city: job.content?.city };
   const level = (job.content.styleLevel || splitTemplateKey(job.template_key).level) as DemoStyleLevel;
   const base = fallbackContent(lead, level);
   let generated: any = null;
-  try {
-    generated = await generateDemoContent(lead, splitTemplateKey(job.template_key).template, `${job.prompt || buildDemoPrompt(lead, 'auto', level)}\n${describeDesign(job.content.design)}`, level);
-  } catch { /* the built-in text is used instead */ }
+  if (missing.some((key) => key !== 'photos')) {
+    try {
+      generated = await generateDemoContent(lead, splitTemplateKey(job.template_key).template, `${job.prompt || buildDemoPrompt(lead, 'auto', level)}\n${describeDesign(job.content.design)}`, level);
+    } catch { /* the built-in text is used instead */ }
+  }
   const content = { ...job.content };
   let ai = 0;
-  for (const key of missing) {
+  const added: string[] = [];
+  const texts = missing.filter((key) => key !== 'photos');
+  if (missing.includes('photos')) {
+    const scan = await scanWebsite(lead.website || content.contact?.website);
+    const photos = await demoPhotos({ ownImages: scan?.images, businessName: name, category: String(lead.category || content.category || ''), seed: id, count: PHOTO_COUNT[level] || 2 });
+    content.photosChecked = new Date().toISOString();
+    if (photos.length) { content.photos = photos; added.push('photos'); }
+  }
+  for (const key of texts) {
+    added.push(key);
     const written = generated && Array.isArray(generated[key]) && generated[key].length >= 2 ? generated[key] : null;
     if (written) ai += 1;
     content[key] = written || (base as any)[key];
   }
-  content.sectionsAdded = { at: new Date().toISOString(), sections: missing, generatedBy: ai === missing.length ? 'ai' : 'fallback' };
+  const by = !texts.length ? 'none' : ai === texts.length ? 'ai' : 'fallback';
+  content.sectionsAdded = { at: new Date().toISOString(), sections: added, generatedBy: by };
   const { error: saveError } = await supabase.from('demo_jobs').update({ content }).eq('id', id);
   if (saveError) throw new Error(saveError.message);
-  return { name, added: missing as string[], generatedBy: ai === missing.length ? 'ai' : 'fallback' };
+  const own = (content.photos || []).filter((photo: any) => photo.kind === 'own').length;
+  return { name, added, generatedBy: by, photos: added.includes('photos') ? { own, sample: content.photos.length - own } : null };
 }
 
 // options.record = false when an agent task already tracks this build (avoids a double record).
@@ -238,6 +257,9 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null, website: lead.website || null },
       theme: generated?.theme || { ...fallbackTheme(lead), source: websiteProfile ? 'website-profile' : 'generated-fallback', websiteProfile },
     };
+    // Photographs: the business's own pictures from its website, otherwise labelled sample photos.
+    const photos = await demoPhotos({ ownImages: scan?.images, businessName: content.businessName, category: content.category, seed: id, count: PHOTO_COUNT[level] || 2 });
+    Object.assign(content, { photos, photosChecked: new Date().toISOString() });
     const demoUrl = `/demos/preview/${id}`;
     const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
     if (error) throw error;

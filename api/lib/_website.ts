@@ -5,6 +5,8 @@
 // business's real colours instead of assuming them). Nothing is guessed; an unreadable site gives null.
 // The file name starts with "_" so Vercel does not count it as a server function.
 
+import { findImages } from './_photos.js';
+
 export interface WebsiteScan {
   url: string;
   title: string | null;
@@ -22,6 +24,7 @@ export interface WebsiteScan {
   mobileReady: boolean;
   secure: boolean;
   pagesRead: string[];
+  images: string[]; // pictures found on the business's own pages
 }
 
 const AGENT = { 'User-Agent': 'Mozilla/5.0 (compatible; ClientRadarAI/1.0; website scan)', Accept: 'text/html,text/css,*/*' };
@@ -189,6 +192,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
     pagesRead: [base.pathname || '/', ...extraPages.filter((_, index) => pages[index]).map((url) => url.pathname)],
+    images: findImages(allHtml, base.toString()),
   };
 }
 
