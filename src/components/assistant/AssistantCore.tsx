@@ -176,7 +176,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   // Natural voice (server) with real loudness; the device voice is the fallback.
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-  const audioCacheRef = useRef<{ text: string; buffer: AudioBuffer } | null>(null);
+  const audioCacheRef = useRef<{ text: string; audio: Promise<ArrayBuffer> } | null>(null);
   const speakSeqRef = useRef(0);
   const loadingVoiceRef = useRef(false);
   const levelFrameRef = useRef(0);
@@ -211,11 +211,11 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   };
 
   // Plays the natural voice. Resolves false when it is not possible on this device; throws with the reason when the server cannot do it.
-  const speakNatural = async (text: string, seq: number): Promise<boolean> => {
-    const context = unlockAudio();
-    if (!context) return false;
-    let buffer = audioCacheRef.current?.text === text ? audioCacheRef.current.buffer : null;
-    if (!buffer) {
+  // Asks the server for the spoken audio. The latest text is kept, so the briefing can be
+  // prepared before the tap and a repeat costs no new request.
+  const fetchVoice = (text: string): Promise<ArrayBuffer> => {
+    if (audioCacheRef.current?.text === text) return audioCacheRef.current.audio;
+    const audio = (async () => {
       const response = await fetch('/api/demo-jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -226,9 +226,21 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         try { reason = (await response.json()).error || reason; } catch { /* not JSON */ }
         throw new Error(reason);
       }
-      buffer = await context.decodeAudioData(await response.arrayBuffer());
-      audioCacheRef.current = { text, buffer };
-    }
+      return response.arrayBuffer();
+    })();
+    audioCacheRef.current = { text, audio };
+    audio.catch(() => {
+      if (audioCacheRef.current?.audio === audio) audioCacheRef.current = null;
+    });
+    return audio;
+  };
+
+  const speakNatural = async (text: string, seq: number): Promise<boolean> => {
+    const context = unlockAudio();
+    if (!context) return false;
+    const bytes = await fetchVoice(text);
+    if (seq !== speakSeqRef.current) return true;
+    const buffer = await context.decodeAudioData(bytes.slice(0));
     if (seq !== speakSeqRef.current) return true;
 
     const source = context.createBufferSource();
@@ -319,6 +331,17 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     if (reason) setVoiceNote(`Natural voice not used: ${reason}. Using the phone voice.`);
     if (!speak(text)) setPresenceState('idle');
   };
+
+  // Once the voice has been used, prepare the briefing audio quietly after the numbers settle,
+  // so the tap answers at once.
+  useEffect(() => {
+    if (!voiceUsed || !audioContextClass()) return undefined;
+    const timer = window.setTimeout(() => {
+      fetchVoice(`Good ${greeting()}, Timothy. ${briefingText}`).catch(() => undefined);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [briefingText, voiceUsed]);
 
   const handleOrbTap = () => {
     if (!canVoice()) return;
