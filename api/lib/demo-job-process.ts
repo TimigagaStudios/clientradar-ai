@@ -1,6 +1,6 @@
 import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, TIER_LIMITS } from './demo-ai.js';
 import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
-import { inspectPublicWebsite } from './website-profile.js';
+import { recordTask } from './_team.js';
 
 function fallbackContent(lead: any, level: DemoStyleLevel) {
   const business = lead.business_name || 'Your Business';
@@ -117,10 +117,35 @@ function mergeContent(base: any, generated: any) {
   };
 }
 
+// Reads the public title, description and colours of a lead's existing website.
+// (Moved here from website-profile.ts to stay inside Vercel's server function limit.)
+async function inspectPublicWebsite(url: string | undefined) {
+  if (!url) return null;
+  let parsed: URL;
+  try { parsed = new URL(url.startsWith('http') ? url : `https://${url}`); } catch { return null; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  try {
+    const response = await fetch(parsed.toString(), { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'ClientRadar-DemoFactory/1.0' } });
+    if (!response.ok) return null;
+    const html = (await response.text()).slice(0, 250_000);
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim() || null;
+    const description = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i)?.[1]?.trim() || null;
+    const colors = [...new Set((html.match(/#[0-9a-fA-F]{6}/g) || []).map((color) => color.toLowerCase()))].slice(0, 8);
+    return { url: parsed.toString(), title, description, colors };
+  } catch {
+    return null;
+  }
+}
+
+const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
+
 export async function processDemoJob(supabase: any, id: string) {
   const { data: job, error: jobError } = await supabase.from('demo_jobs').select('*, leads(*)').eq('id', id).single();
   if (jobError || !job) throw new Error('Demo job not found');
   if (job.status === 'ready') return job;
+  const startedAt = new Date();
+  const businessName = job.leads?.business_name || 'a lead';
+  const levelName = LEVEL_NAMES[splitTemplateKey(job.template_key).level] || 'demo';
   await supabase.from('demo_jobs').update({ status: 'generating', attempts: (job.attempts || 0) + 1, started_at: new Date().toISOString() }).eq('id', id);
   try {
     const lead = job.leads || {};
@@ -159,9 +184,29 @@ export async function processDemoJob(supabase: any, id: string) {
     const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
     if (error) throw error;
     await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
+    await recordTask({
+      agentKey: 'demo-creation',
+      title: `Build ${levelName} demo for ${businessName}`,
+      status: 'done',
+      summary: `Built the ${levelName} demo for ${businessName} (${generated ? 'AI written' : 'built-in text'}).`,
+      leadId: job.lead_id,
+      input: { jobId: id, template, level },
+      output: { demoUrl, generatedBy: generated ? 'ai' : 'fallback', aiError },
+      startedAt,
+    });
     return data;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Demo generation failed';
+    await recordTask({
+      agentKey: 'demo-creation',
+      title: `Build ${levelName} demo for ${businessName}`,
+      status: 'failed',
+      summary: `Could not build the demo for ${businessName}: ${message}`,
+      leadId: job.lead_id,
+      input: { jobId: id },
+      error: message,
+      startedAt,
+    });
     await supabase.from('demo_jobs').update({ status: 'failed', error: message }).eq('id', id);
     throw new Error(message);
   }
