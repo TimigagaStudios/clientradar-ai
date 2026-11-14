@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio, searchWishes } from './lib/_master.js';
+import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { scanLead } from './lib/_website.js';
@@ -189,6 +190,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'extract' || action === 'import-update' || action === 'import-save') {
         const out = action === 'extract' ? await handleExtract(supabase, req.body) : action === 'import-update' ? await handleImportUpdate(supabase, req.body) : await handleImportSave(supabase, req.body);
         return res.status(out.status).json(out.json);
+      }
+      if (action === 'upkeep') {
+        // The Records Upkeep Agent: one small batch per call; the app sends one summary at the end.
+        if (req.body?.summary) {
+          const n = (value: unknown) => Math.max(0, Math.round(Number(value) || 0));
+          const total = { placed: n(req.body.summary.placed), approximate: n(req.body.summary.approximate), notFound: n(req.body.summary.notFound), scanned: n(req.body.summary.scanned), emails: n(req.body.summary.emails) };
+          const summary = upkeepSummary(total);
+          if (summary) await recordTask({ agentKey: 'records-upkeep', title: 'Bring lead records up to date', status: 'done', requestedBy: 'system', summary, output: total });
+          return res.status(200).json({ success: true });
+        }
+        return res.status(200).json({ success: true, data: await runUpkeep(supabase) });
       }
       if (action === 'scan-site') {
         // After a bulk run the browser sends one summary so the activity log gets a single honest line.
