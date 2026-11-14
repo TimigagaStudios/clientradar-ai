@@ -38,6 +38,20 @@ export function statusLine(context: MasterContext) {
   return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.`;
 }
 
+// "Build demos for my top 20 leads without a website": a request for MANY demos at once.
+// A single named demo ("build a demo for Pegasus Dental") is not a batch.
+export const MAX_BATCH = 25;
+export function batchDemoWish(message: string): { count: number; noWebsite: boolean; level: 'mid' | 'hybrid' | 'ultra' } | null {
+  const text = clean(message, 400);
+  if (!/\bdemos?\b/i.test(text)) return null;
+  const many = /\bdemos\b/i.test(text) || /\b(each|every|all|top|best|strongest)\b/i.test(text);
+  const aboutLeads = /\b(leads?|businesses|them|all|every|top|best|strongest|rest|remaining)\b/i.test(text);
+  if (!many || !aboutLeads || /\b(ready|preview|show|open|delete|how many|status)\b/i.test(text)) return null;
+  const number = text.match(/\b(\d{1,3})\b/);
+  const count = number ? Math.max(1, Math.min(MAX_BATCH, Number(number[1]))) : /\b(all|every|rest|remaining)\b/i.test(text) ? MAX_BATCH : 10;
+  return { count, noWebsite: Boolean(searchWishes(text).noWebsite), level: levelFrom(text) };
+}
+
 // Read straight from the owner's own words (not from the AI): how many businesses, and whether only
 // those without a website are wanted. "Find 100 real estate companies in Los Angeles without websites".
 export function searchWishes(message: string): { count?: number; noWebsite?: boolean } {

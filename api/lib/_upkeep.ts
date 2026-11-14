@@ -1,4 +1,5 @@
 import { scanLead } from './_website.js';
+import { ensureKnownServices } from './_tracker.js';
 
 // Records Upkeep Agent: goes through saved leads and brings older records up to what ClientRadar
 // can do today, so nothing has to be imported again. It only FILLS what is missing; it never
@@ -13,6 +14,7 @@ export interface UpkeepResult {
   emails: number; // emails found by those reads
   remaining: number; // leads still waiting after this batch
   skipped: string | null; // why map positions were not looked up (for example no key)
+  services: number; // services added to the Business Tracker
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -35,7 +37,9 @@ async function geocode(text: string, key: string): Promise<{ lat: number; lon: n
 const usableCity = (city: unknown) => { const value = String(city || '').trim(); return value && !/^unknown$/i.test(value) ? value : ''; };
 
 export async function runUpkeep(supabase: any, options: { positions?: number; websites?: number } = {}): Promise<UpkeepResult> {
-  const result: UpkeepResult = { placed: 0, approximate: 0, notFound: 0, scanned: 0, emails: 0, remaining: 0, skipped: null };
+  const result: UpkeepResult = { placed: 0, approximate: 0, notFound: 0, scanned: 0, emails: 0, remaining: 0, skipped: null, services: 0 };
+  // 0. The Business Tracker lists every service ClientRadar runs on, without anyone typing it in.
+  result.services = (await ensureKnownServices(supabase)).length;
   const maxPositions = options.positions ?? 12;
   const maxWebsites = options.websites ?? 2;
 
@@ -100,8 +104,9 @@ export async function runUpkeep(supabase: any, options: { positions?: number; we
   return result;
 }
 
-export function upkeepSummary(total: Pick<UpkeepResult, 'placed' | 'approximate' | 'notFound' | 'scanned' | 'emails'>) {
+export function upkeepSummary(total: Pick<UpkeepResult, 'placed' | 'approximate' | 'notFound' | 'scanned' | 'emails'> & { services?: number }) {
   const parts: string[] = [];
+  if (total.services) parts.push(`added ${total.services} ${total.services === 1 ? 'service' : 'services'} to the Business Tracker`);
   const mapped = total.placed + total.approximate;
   if (mapped) parts.push(`placed ${mapped} ${mapped === 1 ? 'lead' : 'leads'} on the globe${total.approximate ? ` (${total.approximate} only to the city centre)` : ''}`);
   if (total.notFound) parts.push(`could not find a map position for ${total.notFound}`);
