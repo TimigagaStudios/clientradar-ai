@@ -18,6 +18,7 @@ import Demos from './pages/Demos';
 import DemoPreview from './pages/DemoPreview';
 import AIOutreach from './pages/AIOutreach';
 import Invoices from './pages/Invoices';
+import Team from './pages/Team';
 import Assistant from './pages/Assistant'; // âœ… NEW â€” Executive Agent home
 
 import { LeadProvider } from './context/LeadContext';
@@ -76,6 +77,7 @@ const App = () => {
               {/* âœ… (B) Dedicated assistant route (reachable from nav anytime) */}
               <Route path="/assistant" element={<RequireAuth><Layout><Assistant /></Layout></RequireAuth>} />
 
+              <Route path="/team" element={<RequireAuth><Layout><Team /></Layout></RequireAuth>} />
               <Route path="/finder" element={<RequireAuth><Layout><LeadFinder /></Layout></RequireAuth>} />
               <Route path="/globe" element={<RequireAuth><Layout><LeadGlobe /></Layout></RequireAuth>} />
               <Route path="/globe/city/:id" element={<RequireAuth><Layout><LeadCityView /></Layout></RequireAuth>} />
