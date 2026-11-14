@@ -28,7 +28,7 @@ import {
 import { format } from 'date-fns';
 import { LeadStatus, LeadPriority } from '../types';
 import { cn } from '../utils/cn';
-import { deleteLeadDemo } from '../lib/demo-factory';
+import { deleteLeadDemo, estimateLeadValue, VALUE_RANGES } from '../lib/demo-factory';
 
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -151,18 +151,8 @@ const LeadDetail = () => {
     return { value: aiRating.toFixed(1), isAi: true };
   }, [lead, computedLeadScore]);
 
-  const aiLeadValue = useMemo(() => {
-    if (!lead) return 750;
-    if (lead.dealValue && Number(lead.dealValue) > 0) return Number(lead.dealValue);
-    const score = computedLeadScore;
-    const hasSite = !!lead.website;
-    const rating = Number(lead?.rating) || 4.0;
-    let base = 650;
-    if (!hasSite) base += 150;
-    if (rating >= 4.5) base += 100;
-    if (score > 70) base += 100;
-    return Math.min(1000, Math.max(500, Math.round(base / 50) * 50));
-  }, [lead, computedLeadScore]);
+  const valueEstimate = useMemo(() => estimateLeadValue(lead, computedLeadScore), [lead, computedLeadScore]);
+  const aiLeadValue = lead?.dealValue && Number(lead.dealValue) > 0 ? Number(lead.dealValue) : valueEstimate.value;
 
   // === ORIGINAL AI SUMMARY (kept exactly) ===
   const aiSummary = useMemo(() => {
@@ -896,7 +886,7 @@ const LeadDetail = () => {
               <span className="text-[var(--text-secondary)] text-sm">potential</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-2">
-              {isDealClosed ? 'Closed deal amount - editable above.' : `AI-estimated - Revenue Mode $500-$1000`}
+              {isDealClosed ? 'Closed deal amount - editable above.' : `Estimate at the ${VALUE_RANGES[valueEstimate.level].label} level ($${VALUE_RANGES[valueEstimate.level].min.toLocaleString()}-$${VALUE_RANGES[valueEstimate.level].max.toLocaleString()}). A guide, not a quote.`}
             </p>
           </div>
 

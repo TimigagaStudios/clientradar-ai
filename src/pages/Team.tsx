@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
+import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, Wrench, XCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 // AI Team page: the real team register with real task records and the activity log.
@@ -46,6 +46,7 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   master: Sparkles,
   'lead-research': Search,
   'demo-creation': MonitorPlay,
+  'records-upkeep': Wrench,
   'quality-assurance': ShieldCheck,
   outreach: Send,
   reporting: BarChart3,
