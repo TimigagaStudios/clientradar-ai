@@ -13,8 +13,8 @@ export type DemoStyleLevel = 'mid' | 'hybrid' | 'ultra';
 export type DemoShowcaseKind = 'listings' | 'menu' | 'products' | 'booking';
 
 export const TIER_LIMITS: Record<DemoStyleLevel, { services: number; highlights: number; process: number; faq: number; showcase: number }> = {
-  mid: { services: 3, highlights: 3, process: 0, faq: 0, showcase: 0 },
-  hybrid: { services: 4, highlights: 3, process: 3, faq: 0, showcase: 3 },
+  mid: { services: 3, highlights: 3, process: 3, faq: 0, showcase: 0 },
+  hybrid: { services: 4, highlights: 3, process: 3, faq: 3, showcase: 3 },
   ultra: { services: 6, highlights: 4, process: 4, faq: 5, showcase: 6 },
 };
 
@@ -64,16 +64,16 @@ export function tierRules(level: DemoStyleLevel): string[] {
       'Style level: Hybrid.',
       'Balance aesthetics and functionality: clean premium wording, professional grid-based structure, SEO-friendly headings.',
       'Avoid enterprise features. Focus on speed, clarity and reusability.',
-      'One long page: hero, about, services, reasons to choose the business, a how-it-works process and a contact call to action.',
-      'Provide 4 services, 3 reasons to choose the business and 3 process steps.',
+      'One long page: hero, about, services, reasons to choose the business, a how-it-works process, common questions and a contact call to action.',
+      'Provide 4 services, 3 reasons to choose the business, 3 process steps and 3 frequently asked questions.',
     ];
   }
   return [
     'Style level: Mid-Level.',
     'Modern, clean and fast: strong visual layout, clean typography, SEO-friendly headings, low complexity.',
     'No dashboards, no admin features, no heavy functionality.',
-    'One page: hero, about, services, reasons to choose the business and a contact call to action.',
-    'Provide 3 services and 3 reasons to choose the business.',
+    'One page: hero, about, services, reasons to choose the business, a short how-it-works process and a contact call to action.',
+    'Provide 3 services, 3 reasons to choose the business and 3 short process steps.',
   ];
 }
 
@@ -85,9 +85,9 @@ function tierShape(level: DemoStyleLevel) {
     services: [{ title: '', body: '' }],
     highlights: [{ title: '', body: '' }],
   };
-  if (level !== 'mid') shape.process = [{ title: '', body: '' }];
+  shape.process = [{ title: '', body: '' }];
   if (level !== 'mid') shape.showcase = { title: '', items: [{ title: '', subtitle: '', detail: '' }] };
-  if (level === 'ultra') shape.faq = [{ question: '', answer: '' }];
+  if (level !== 'mid') shape.faq = [{ question: '', answer: '' }];
   shape.closing = { title: '', body: '', cta: '' };
   shape.disclaimer = '';
   return JSON.stringify(shape);
