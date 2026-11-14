@@ -4,6 +4,7 @@ import { AGENTS, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio } from './lib/_master.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
+import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
 
 // AI team endpoint.
 // GET                      team register with live task and activity records.
@@ -12,6 +13,13 @@ import { canRun, runAgentTask } from './lib/_agents.js';
 // POST action "cancel"     the owner declines a waiting task.
 // POST action "transcribe" a short voice recording becomes text (nothing is stored).
 // GET  ?view=chat          the saved conversation, rebuilt from the task records.
+// POST action "extract"       the Screenshot Intelligence Agent reads ONE screenshot into business records.
+// POST action "import-update" saves an edit or removes records waiting for review.
+// POST action "import-save"   reviewed records become leads in the normal leads table.
+// GET  ?view=imports          records still waiting for review.
+
+// Reading a screenshot with the AI can take longer than the default time allowed for a server call.
+export const config = { maxDuration: 60 };
 
 const MAX_ATTEMPTS = 3;
 const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid', ultra: 'Ultra Premium' };
@@ -176,12 +184,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const text = await transcribeAudio(audio, mimeType);
         return res.status(200).json({ success: true, data: { text } });
       }
+      if (action === 'extract' || action === 'import-update' || action === 'import-save') {
+        const out = action === 'extract' ? await handleExtract(supabase, req.body) : action === 'import-update' ? await handleImportUpdate(supabase, req.body) : await handleImportSave(supabase, req.body);
+        return res.status(out.status).json(out.json);
+      }
       return res.status(400).json({ success: false, error: 'Unknown action' });
     } catch (error) {
       return res.status(500).json({ success: false, error: error instanceof Error ? error.message.slice(0, 200) : 'Team error' });
     }
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+  if (req.query?.view === 'imports') {
+    try {
+      const supabase = teamClient();
+      if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(200).json({ success: true, data: await listPendingImports(supabase) });
+    } catch {
+      return res.status(200).json({ success: true, data: { ready: false, records: [] } });
+    }
+  }
 
   if (req.query?.view === 'chat') {
     try {
