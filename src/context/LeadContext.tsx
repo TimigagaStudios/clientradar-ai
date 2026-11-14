@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { runUpkeep } from '../lib/upkeep';
 import { Lead, ActivityLog, LeadStatus, OutreachLog, DemoStatus } from '../types';
 
 interface LeadContextType {
@@ -75,7 +76,14 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   useEffect(() => {
-    refreshLeads();
+    // After the leads load, the Records Upkeep Agent quietly fills what older leads are missing
+    // (map positions, unread websites); the list reloads only when something changed.
+    const upkeep = () => {
+      window.setTimeout(() => {
+        void runUpkeep().then((total) => { if (total && total.placed + total.approximate + total.notFound + total.scanned > 0) void refreshLeads(); });
+      }, 4000);
+    };
+    void refreshLeads().then(upkeep);
 
     // The API needs a login. Reload the leads when the owner signs in, and
     // clear them on sign-out. The reload is deferred because Supabase must not
@@ -83,7 +91,7 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let signedIn: boolean | null = null;
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       const next = Boolean(session);
-      if (signedIn === false && next) window.setTimeout(() => void refreshLeads(), 0);
+      if (signedIn === false && next) window.setTimeout(() => void refreshLeads().then(upkeep), 0);
       if (signedIn === true && !next) setLeads([]);
       signedIn = next;
     });
