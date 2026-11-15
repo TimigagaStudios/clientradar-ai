@@ -165,7 +165,9 @@ export async function sendEmail(draft: OutreachDraft): Promise<void> {
   const response = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'Content-Type': 'application/json', 'api-key': String(process.env.BREVO_API_KEY) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
   if (!response.ok) {
     const result: any = await response.json().catch(() => null);
-    throw new Error(clean(result?.message || `Brevo refused the email (${response.status})`, 200));
+    const reason = clean(result?.message || `Brevo refused the email (${response.status})`, 200);
+    // 401 means Brevo did not accept the key itself, so no email of the batch can go out until the key is replaced.
+    throw new Error(response.status === 401 ? `Brevo did not accept the API key ("${reason}"). Create a new key in Brevo and put it in Vercel as BREVO_API_KEY.` : reason);
   }
 }
 
@@ -201,6 +203,15 @@ export async function sendOneDraft(supabase: any, task: any, leadId: string): Pr
   const now = new Date().toISOString();
   await supabase.from('agent_tasks').update({ output: { ...task.output, drafts, summary }, ...(finished ? { status: sent || !failed ? 'done' : 'failed', error: sent || !failed ? null : 'No email could be sent', completed_at: now } : {}), updated_at: now }).eq('id', task.id);
   return { draft, left, sent, failed, finished };
+}
+
+// Emails that failed (for example a refused key) may be tried again: they were already approved,
+// and the text and addresses stay exactly as approved.
+export async function retryFailed(supabase: any, task: any): Promise<OutreachDraft[]> {
+  const drafts: OutreachDraft[] = (Array.isArray(task.output?.drafts) ? task.output.drafts : []).map((draft: OutreachDraft) => (draft.state === 'failed' ? { ...draft, state: 'pending' as DraftState, error: undefined } : draft));
+  const now = new Date().toISOString();
+  await supabase.from('agent_tasks').update({ status: 'running', error: null, completed_at: null, updated_at: now, output: { ...task.output, drafts, summary: 'Trying the unsent emails again.' } }).eq('id', task.id);
+  return drafts;
 }
 
 // For the orb: how many leads could be written to right now.
