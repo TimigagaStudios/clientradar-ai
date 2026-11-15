@@ -150,7 +150,23 @@ export function applyEdits(drafts: OutreachDraft[], edits: unknown): OutreachDra
 const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const toHtml = (body: string) => `<div style="font-family: Arial, sans-serif; color: #111111; line-height: 1.7;">${escapeHtml(body).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1">$1</a>').replace(/\n/g, '<br>')}</div>`;
 
-export const mailReady = () => Boolean(process.env.BREVO_API_KEY && process.env.BREVO_SENDER_NAME && process.env.BREVO_SENDER_EMAIL);
+// The key as saved in Vercel, with stray spaces, line breaks or quote marks from pasting removed.
+const brevoKey = () => String(process.env.BREVO_API_KEY || '').trim().replace(/^["']+|["']+$/g, '').trim();
+
+// What is wrong with the saved key, judged by its shape only. The key itself is never shown:
+// at most its last 4 characters, so it can be matched against the list in Brevo.
+export function keyHint(): string {
+  const raw = String(process.env.BREVO_API_KEY || '');
+  const key = brevoKey();
+  if (!key) return 'BREVO_API_KEY is empty in Vercel.';
+  if (/^xsmtpsib-/i.test(key)) return 'The value saved in Vercel is an SMTP key (it starts with "xsmtpsib-"). ClientRadar needs an API key, which starts with "xkeysib-": in Brevo open the "API keys" tab, not the "SMTP" tab.';
+  if (!/^xkeysib-/.test(key)) return `The value saved in Vercel does not look like a Brevo API key: it is ${key.length} characters long and does not start with "xkeysib-". The key name or a wrong text may have been pasted.`;
+  if (/\s/.test(key)) return 'The key saved in Vercel has a space or line break in the middle, so it was not pasted in one piece.';
+  if (key.length < 60) return `The key saved in Vercel is only ${key.length} characters long, so part of it is missing. A full key is much longer.`;
+  return `The key saved in Vercel has the right shape and ends with "${key.slice(-4)}"${raw !== key ? ' (I removed stray spaces or quote marks around it)' : ''}. Compare those 4 characters with the key shown in Brevo. If they differ, Vercel still holds an old key: save the new one for Production and redeploy.`;
+}
+
+export const mailReady = () => Boolean(brevoKey() && process.env.BREVO_SENDER_NAME && process.env.BREVO_SENDER_EMAIL);
 
 export async function sendEmail(draft: OutreachDraft): Promise<void> {
   if (!mailReady()) throw new Error('Email sending is not set up (Brevo settings are missing in Vercel)');
@@ -162,12 +178,12 @@ export async function sendEmail(draft: OutreachDraft): Promise<void> {
     textContent: draft.body,
   };
   if (process.env.BREVO_REPLY_TO_EMAIL) payload.replyTo = { email: process.env.BREVO_REPLY_TO_EMAIL, name: process.env.BREVO_REPLY_TO_NAME || process.env.BREVO_SENDER_NAME };
-  const response = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'Content-Type': 'application/json', 'api-key': String(process.env.BREVO_API_KEY) }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { 'Content-Type': 'application/json', 'api-key': brevoKey() }, body: JSON.stringify(payload), signal: AbortSignal.timeout(20000) });
   if (!response.ok) {
     const result: any = await response.json().catch(() => null);
     const reason = clean(result?.message || `Brevo refused the email (${response.status})`, 200);
     // 401 means Brevo did not accept the key itself, so no email of the batch can go out until the key is replaced.
-    throw new Error(response.status === 401 ? `Brevo did not accept the API key ("${reason}"). Create a new key in Brevo and put it in Vercel as BREVO_API_KEY.` : reason);
+    throw new Error(response.status === 401 ? `Brevo did not accept the API key ("${reason}"). ${keyHint()}` : reason);
   }
 }
 
