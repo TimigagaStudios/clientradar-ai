@@ -75,7 +75,7 @@ const runDemoCreation: Runner = async (supabase, task) => {
   if (error || !job) throw new Error(error?.message || 'Could not create the demo job');
   await supabase.from('leads').update({ demo_status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', leadId);
   const built = await processDemoJob(supabase, job.id, { record: false });
-  const written = built?.content?.generatedBy === 'ai' ? 'AI written' : 'built-in text';
+  const written = built?.content?.generatedBy === 'ai' ? 'AI written' : built?.content?.learnedFrom ? 'built-in text in the style of an earlier AI demo' : 'built-in text';
   return {
     summary: `Built the ${LEVEL_NAMES[level]} demo for ${lead.business_name} (${written}). It is ready for you to review; nothing was sent.`,
     output: { leadId, leadName: lead.business_name, level, jobId: job.id, demoUrl: `/demos/preview/${job.id}`, generatedBy: built?.content?.generatedBy || 'fallback' },

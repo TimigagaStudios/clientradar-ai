@@ -4,6 +4,7 @@ import { recordTask } from './_team.js';
 import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js';
 import { scanWebsite } from './_website.js';
 import { demoPhotos, photosPossible } from './_photos.js';
+import { learnedParts } from './_patterns.js';
 
 // How many photographs each level shows: opening and about; Ultra also has one per showcase card.
 const PHOTO_COUNT: Record<string, number> = { mid: 2, hybrid: 2, ultra: 8 };
@@ -110,7 +111,7 @@ function mergeContent(base: any, generated: any) {
     Object.keys(fallback).forEach((key) => { if (ai?.[key]) merged[key] = ai[key]; });
     return merged;
   };
-  const list = (ai: any[], fallback: any[]) => (Array.isArray(ai) && ai.length >= Math.min(2, fallback.length) ? ai : fallback);
+  const list = (ai: any[], fallback: any[]) => (Array.isArray(ai) && fallback.length > 0 && ai.length >= Math.min(2, fallback.length) ? ai.slice(0, Math.max(fallback.length, 1)) : fallback);
   return {
     hero: pick(generated.hero, base.hero),
     about: pick(generated.about, base.about),
@@ -175,12 +176,16 @@ export async function refreshDemoSections(supabase: any, id: string) {
   if (job.status !== 'ready' || !missing.length) return { name, added: [] as string[], generatedBy: 'none', photos: null as { own: number; sample: number } | null };
   const lead = job.leads || { business_name: name, category: job.content?.category, city: job.content?.city };
   const level = (job.content.styleLevel || splitTemplateKey(job.template_key).level) as DemoStyleLevel;
-  const base = fallbackContent(lead, level);
+  let base: any = fallbackContent(lead, level);
   let generated: any = null;
   if (missing.some((key) => key !== 'photos')) {
     try {
       generated = await generateDemoContent(lead, splitTemplateKey(job.template_key).template, `${job.prompt || buildDemoPrompt(lead, 'auto', level)}\n${describeDesign(job.content.design)}`, level);
     } catch { /* the built-in text is used instead */ }
+    if (!generated) {
+      const learned = await learnedParts(supabase, lead, level, id);
+      if (learned) base = mergeContent(base, learned.parts);
+    }
   }
   const content = { ...job.content };
   let ai = 0;
@@ -241,6 +246,8 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
     } catch (reason) {
       aiError = reason instanceof Error ? reason.message.slice(0, 200) : 'AI provider failed';
     }
+    // When the AI could not write, the built-in writer borrows the wording of an earlier AI demo of the same trade.
+    const learned = generated ? null : await learnedParts(supabase, lead, level, id);
     const baseShowcase = showcaseLimit > 0 ? fallbackShowcase(kind, lead, showcaseLimit) : null;
     const showcase = baseShowcase ? { kind, title: generated?.showcase?.title || baseShowcase.title, items: generated?.showcase?.items || baseShowcase.items, sample: true } : null;
     const content = {
@@ -251,9 +258,11 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       styleLevel: level,
       generatedBy: generated ? 'ai' : 'fallback',
       aiError,
+      // Built-in text that follows an earlier AI demo of the same trade (null when the AI wrote this one, or none exists yet).
+      learnedFrom: learned ? { jobId: learned.sourceId, parts: learned.reused } : null,
       design,
       showcase,
-      ...mergeContent(fallbackContent(lead, level), generated),
+      ...mergeContent(fallbackContent(lead, level), generated || learned?.parts || null),
       contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null, website: lead.website || null },
       theme: generated?.theme || { ...fallbackTheme(lead), source: websiteProfile ? 'website-profile' : 'generated-fallback', websiteProfile },
     };
@@ -268,7 +277,7 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       agentKey: 'demo-creation',
       title: `Build ${levelName} demo for ${businessName}`,
       status: 'done',
-      summary: `Built the ${levelName} demo for ${businessName} (${generated ? 'AI written' : 'built-in text'}).`,
+      summary: `Built the ${levelName} demo for ${businessName} (${generated ? 'AI written' : learned ? 'built-in text in the style of an earlier AI demo' : 'built-in text'}).`,
       leadId: job.lead_id,
       input: { jobId: id, template, level },
       output: { demoUrl, generatedBy: generated ? 'ai' : 'fallback', aiError },
