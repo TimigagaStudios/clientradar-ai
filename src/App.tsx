@@ -19,6 +19,7 @@ import DemoPreview from './pages/DemoPreview';
 import AIOutreach from './pages/AIOutreach';
 import Invoices from './pages/Invoices';
 import Tracker from './pages/Tracker';
+import Duplicates from './pages/Duplicates';
 import Team from './pages/Team';
 import Assistant from './pages/Assistant'; // âœ… NEW â€” Executive Agent home
 
@@ -84,6 +85,7 @@ const App = () => {
               <Route path="/globe" element={<RequireAuth><Layout><LeadGlobe /></Layout></RequireAuth>} />
               <Route path="/globe/city/:id" element={<RequireAuth><Layout><LeadCityView /></Layout></RequireAuth>} />
               <Route path="/leads" element={<RequireAuth><Layout><Leads /></Layout></RequireAuth>} />
+              <Route path="/leads/duplicates" element={<RequireAuth><Layout><Duplicates /></Layout></RequireAuth>} />
               <Route path="/leads/:id" element={<RequireAuth><Layout><LeadDetail /></Layout></RequireAuth>} />
               <Route path="/outreach" element={<RequireAuth><Layout><Outreach /></Layout></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><Layout><Analytics /></Layout></RequireAuth>} />
