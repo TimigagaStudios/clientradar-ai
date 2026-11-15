@@ -31,6 +31,7 @@ interface ChatTask {
   summary?: string;
   error?: string | null;
   output?: any;
+  link?: string;
 }
 
 interface Msg {
@@ -825,10 +826,11 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
                   <p className="mt-0.5 text-[var(--text-secondary)] break-words">{task.title}</p>
                   {task.status === 'waiting_approval' && (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" className="cr-chip primary" onClick={() => void approveTask(task)}>Approve</button>
+                      {task.link ? <button type="button" className="cr-chip primary" onClick={() => navigate(task.link as string)} data-task-link>Review drafts</button> : <button type="button" className="cr-chip primary" onClick={() => void approveTask(task)}>Approve</button>}
                       <button type="button" className="cr-chip" onClick={() => void declineTask(task)}>Not now</button>
                     </div>
                   )}
+                  {task.link && (task.status === 'running' || task.status === 'done') && <div className="mt-2"><button type="button" className="cr-chip" onClick={() => navigate(task.link as string)}>Open drafts</button></div>}
                   {task.status === 'failed' && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button type="button" className="cr-chip" onClick={() => void approveTask(task)}>Try again</button>

@@ -7,14 +7,15 @@ import './fluidOrb.css';
 // says when work is finished and offers the next step. It only shows real task results.
 // The orb can be dragged anywhere on the screen, and it can read its message aloud.
 
-type Notice = { text: string; to?: string; yes?: string; action?: 'refresh-demos' };
+type Notice = { text: string; to?: string; yes?: string; action?: 'refresh-demos' | 'draft-outreach' };
 type Spot = { x: number; y: number };
-type ChatTask = { id: string; agentName?: string; title: string; status: string; summary?: string; error?: string | null };
+type ChatTask = { id: string; agentName?: string; title: string; status: string; summary?: string; error?: string | null; link?: string };
 type ChatLine = { id: string; side: 'me' | 'ai'; text: string; tasks?: ChatTask[] };
 
 const POS_KEY = 'cr-orb-pos';
 const SNOOZE_KEY = 'cr-demo-update-later';
 const DUP_KEY = 'cr-duplicate-notice';
+const MAIL_KEY = 'cr-outreach-offer';
 const lineId = () => Math.random().toString(36).slice(2, 9);
 const postTeam = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -80,6 +81,12 @@ export default function MasterFloat() {
           localStorage.setItem(DUP_KEY, String(Date.now()));
           addNotice({ to: '/leads/duplicates', yes: 'Review them', text: `${repeats.names} business ${repeats.names === 1 ? 'name is' : 'names are'} saved more than once (for example ${repeats.example})${repeats.likelySame ? `; ${repeats.likelySame} look like the same business saved twice` : ''}. You can merge them or keep them as separate branches. Nothing was deleted.` });
         }
+        // Demos that are ready but were never emailed: offered once a day at most.
+        const mail = body?.data?.outreach;
+        if (body?.success && mail?.ready > 0 && Date.now() - Number(localStorage.getItem(MAIL_KEY) || 0) > 24 * 3600 * 1000) {
+          localStorage.setItem(MAIL_KEY, String(Date.now()));
+          addNotice({ action: 'draft-outreach', yes: 'Yes, write them', text: `${mail.ready} ${mail.ready === 1 ? 'lead has' : 'leads have'} a ready demo and an email address but ${mail.ready === 1 ? 'has' : 'have'} not been written to. Shall I have the Outreach Agent write the emails? You read them and approve once; nothing is sent before that.` });
+        }
         const count = Number(body?.data?.count) || 0;
         if (!body?.success || !count) return;
         const label: Record<string, string> = { faq: 'a "Common questions" section', process: 'a "How it works" section', photos: 'photos' };
@@ -102,6 +109,19 @@ export default function MasterFloat() {
     } catch (error) {
       addNotice({ text: `I could not start the update: ${error instanceof Error ? error.message : 'unknown reason'}.` });
     }
+  };
+
+  const startOutreach = async () => {
+    dropNotice();
+    setOpen(true);
+    setThinking(true);
+    try {
+      const data = await postTeam({ action: 'chat', message: 'Draft outreach emails for my leads with ready demos', history: [] });
+      say({ side: 'ai', text: String(data.reply || ''), tasks: Array.isArray(data.tasks) ? data.tasks : [] });
+    } catch (error) {
+      say({ side: 'ai', text: `I could not start the drafts: ${error instanceof Error ? error.message : 'unknown reason'}.` });
+    }
+    setThinking(false);
   };
 
   const sum = workSummary(work);
@@ -127,7 +147,10 @@ export default function MasterFloat() {
     no = { label: 'Later', run: clearWork };
   } else if (notice) {
     text = notice.text;
-    if (notice.action === 'refresh-demos') {
+    if (notice.action === 'draft-outreach') {
+      yes = { label: notice.yes || 'Yes', run: () => void startOutreach() };
+      no = { label: 'Not now', run: dropNotice };
+    } else if (notice.action === 'refresh-demos') {
       yes = { label: notice.yes || 'Yes', run: () => void startRefresh() };
       no = { label: 'Not now', run: () => { try { localStorage.setItem(SNOOZE_KEY, String(Date.now())); } catch { /* ignore */ } dropNotice(); } };
     } else {
@@ -316,7 +339,7 @@ export default function MasterFloat() {
                     <div key={task.id} className="mt-2 rounded-xl p-2 text-left text-xs" style={{ border: '1px solid rgba(255,255,255,0.16)' }}>
                       <p className="font-semibold break-words">{task.title}</p>
                       <div className="mt-2 flex gap-2">
-                        <button type="button" onClick={() => void runTask(task, true)} className="rounded-full px-3 py-1.5 font-bold text-white" style={{ background: '#ff7a00' }}>Approve</button>
+                        {task.link ? <button type="button" onClick={() => { const to = task.link as string; setOpen(false); navigate(to); }} className="rounded-full px-3 py-1.5 font-bold text-white" style={{ background: '#ff7a00' }} data-task-link>Review drafts</button> : <button type="button" onClick={() => void runTask(task, true)} className="rounded-full px-3 py-1.5 font-bold text-white" style={{ background: '#ff7a00' }}>Approve</button>}
                         <button type="button" onClick={() => void declineTask(task)} className="rounded-full px-3 py-1.5 font-bold" style={{ border: '1px solid rgba(255,255,255,0.25)' }}>Decline</button>
                       </div>
                     </div>
