@@ -9,9 +9,20 @@ import './fluidOrb.css';
 
 type Notice = { text: string; to?: string; yes?: string; action?: 'refresh-demos' };
 type Spot = { x: number; y: number };
+type ChatTask = { id: string; agentName?: string; title: string; status: string; summary?: string; error?: string | null };
+type ChatLine = { id: string; side: 'me' | 'ai'; text: string; tasks?: ChatTask[] };
 
 const POS_KEY = 'cr-orb-pos';
 const SNOOZE_KEY = 'cr-demo-update-later';
+const DUP_KEY = 'cr-duplicate-notice';
+const lineId = () => Math.random().toString(36).slice(2, 9);
+const postTeam = async (body: Record<string, unknown>) => {
+  const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  let result: any = null;
+  try { result = JSON.parse(await response.text()); } catch { /* not JSON */ }
+  if (!response.ok || !result?.success) throw new Error(result?.error || `server error ${response.status}`);
+  return result.data;
+};
 const SIZE = 48;
 const EDGE = 10;
 
@@ -32,7 +43,12 @@ export default function MasterFloat() {
   const location = useLocation();
   const [work, setWork] = useState<WorkState>(getWork());
   const [notices, setNotices] = useState<Notice[]>([]);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
+  const [chat, setChat] = useState<ChatLine[]>([]);
+  const [draft, setDraft] = useState('');
+  const [thinking, setThinking] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const chatEnd = useRef<HTMLDivElement | null>(null);
   const [spot, setSpot] = useState<Spot>(startSpot);
   const [dragging, setDragging] = useState(false);
   const [voice, setVoice] = useState<'idle' | 'loading' | 'speaking'>('idle');
@@ -56,6 +72,12 @@ export default function MasterFloat() {
         if (Date.now() - Number(localStorage.getItem(SNOOZE_KEY) || 0) < 24 * 3600 * 1000 || workActive()) return;
         const response = await fetch('/api/team?view=demo-updates');
         const body = JSON.parse(await response.text());
+        // Business names saved more than once: said once a week at most.
+        const repeats = body?.data?.duplicates;
+        if (body?.success && repeats?.names > 0 && Date.now() - Number(localStorage.getItem(DUP_KEY) || 0) > 7 * 24 * 3600 * 1000) {
+          localStorage.setItem(DUP_KEY, String(Date.now()));
+          addNotice({ to: '/leads', yes: 'Open leads', text: `${repeats.names} business ${repeats.names === 1 ? 'name is' : 'names are'} saved more than once (for example ${repeats.example}). When I build demos in a batch I now make only one per business name. Nothing was deleted.` });
+        }
         const count = Number(body?.data?.count) || 0;
         if (!body?.success || !count) return;
         const label: Record<string, string> = { faq: 'a "Common questions" section', process: 'a "How it works" section', photos: 'photos' };
@@ -111,6 +133,50 @@ export default function MasterFloat() {
       no = { label: yes ? 'Later' : 'OK', run: dropNotice };
     }
   }
+
+  // ---- Chat: ask the Master Agent from any page. The same server, records and approvals as the home chat.
+  useEffect(() => { chatEnd.current?.scrollIntoView({ block: 'nearest' }); }, [chat, thinking]);
+  const say = (line: Omit<ChatLine, 'id'>) => setChat((current) => [...current.slice(-11), { ...line, id: lineId() }]);
+  const patchTask = (taskId: string, change: Partial<ChatTask>) => setChat((current) => current.map((line) => (line.tasks ? { ...line, tasks: line.tasks.map((task) => (task.id === taskId ? { ...task, ...change } : task)) } : line)));
+  const runTask = async (task: ChatTask, approve: boolean) => {
+    patchTask(task.id, { status: 'running', error: null });
+    try {
+      const data = await postTeam({ action: 'run', taskId: task.id, approve });
+      patchTask(task.id, { status: data.status, summary: data.summary, error: data.error });
+      if (Array.isArray(data.output?.queue) && data.output.queue.length) enqueueWork(data.output.queue);
+      say({ side: 'ai', text: String(data.summary || data.error || 'Done.') });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown reason';
+      patchTask(task.id, { status: 'failed', error: reason });
+      say({ side: 'ai', text: `Could not finish "${task.title}": ${reason}` });
+    }
+  };
+  const declineTask = async (task: ChatTask) => {
+    try { await postTeam({ action: 'cancel', taskId: task.id }); patchTask(task.id, { status: 'cancelled' }); } catch (error) { patchTask(task.id, { error: error instanceof Error ? error.message : 'Could not decline' }); }
+  };
+  const send = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const words = draft.trim();
+    if (!words || thinking) return;
+    setDraft('');
+    say({ side: 'me', text: words });
+    const word = words.toLowerCase().replace(/[.!?]+$/, '');
+    if (/^(hold on|hold up|pause|wait|stop|stop for now|not now)( please)?$/.test(word) && workActive() && !getWork().paused) { pauseWork(); say({ side: 'ai', text: 'Paused. The task running right now will finish, then I wait. Say continue when you are ready.' }); return; }
+    if (/^(continue|resume|go on|go ahead|carry on|ok continue)( please)?$/.test(word) && getWork().paused) { resumeWork(); say({ side: 'ai', text: 'Continuing with the rest of the queue.' }); return; }
+    setThinking(true);
+    try {
+      const history = chat.slice(-6).map((line) => `${line.side === 'me' ? 'Timothy' : 'Master Agent'}: ${line.text}`);
+      const data = await postTeam({ action: 'chat', message: words, history });
+      const tasks: ChatTask[] = Array.isArray(data.tasks) ? data.tasks : [];
+      setThinking(false);
+      say({ side: 'ai', text: String(data.reply || ''), tasks });
+      // Tasks that need no approval start straight away, one after another.
+      for (const task of tasks.filter((item) => item.status === 'queued')) await runTask(task, false);
+    } catch (error) {
+      setThinking(false);
+      say({ side: 'ai', text: `I could not reach the team server: ${error instanceof Error ? error.message : 'unknown reason'}.` });
+    }
+  };
 
   // ---- Voice: reads the current message aloud when asked. Never speaks by itself.
   useEffect(() => { setVoiceNote(''); }, [text]);
@@ -188,13 +254,13 @@ export default function MasterFloat() {
       try { localStorage.setItem(POS_KEY, JSON.stringify(rested)); } catch { /* ignore */ }
       return;
     }
-    if (text && !open) setOpen(true);
-    else if (text) setOpen(false);
-    else if (!onAssistant) navigate('/');
+    setOpen((value) => !value);
   };
 
-  // Nothing to say: a quiet orb that opens the chat (not shown on the chat page itself).
+  // On the home page the full chat is already there, so the orb only appears when it has something to report.
   if (!text && onAssistant) return null;
+  const lastReply = [...chat].reverse().find((line) => line.side === 'ai')?.text || '';
+  const toRead = text || lastReply;
 
   const left = spot.x + SIZE / 2 < window.innerWidth / 2;
   const upper = spot.y < window.innerHeight / 2;
@@ -202,34 +268,63 @@ export default function MasterFloat() {
   const bubbleStyle: React.CSSProperties = {
     position: 'fixed', zIndex: 70, width: bubbleWidth,
     left: left ? EDGE : undefined, right: left ? undefined : EDGE,
-    top: upper ? spot.y + SIZE + 8 : undefined, bottom: upper ? undefined : window.innerHeight - spot.y + 8,
+    // While typing on a phone the panel moves to the top, clear of the keyboard.
+    top: typing ? 76 : upper ? spot.y + SIZE + 8 : undefined, bottom: typing || upper ? undefined : window.innerHeight - spot.y + 8,
+    maxHeight: Math.max(220, typing ? window.innerHeight * 0.5 : upper ? window.innerHeight - spot.y - SIZE - 8 - EDGE : spot.y - 8 - 76), overflowY: 'auto',
     background: 'rgba(8,16,36,0.96)', color: '#eaf1ff', border: '1px solid rgba(120,170,255,0.28)',
   };
 
   return (
     <div data-master-float>
-      {text && open && !dragging && (
+      {open && !dragging && (
         <div role="status" aria-live="polite" className="rounded-2xl px-4 py-3 text-sm shadow-2xl" style={bubbleStyle} data-float-bubble>
           <div className="flex items-center justify-between gap-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: '#8fb7ff' }}>Master Agent</p>
-            <button type="button" onClick={() => void speak(text)} aria-label={voice === 'idle' ? 'Read this aloud' : 'Stop speaking'} className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ border: '1px solid rgba(255,255,255,0.25)', color: '#eaf1ff' }} data-float-speak>
+            {toRead && <button type="button" onClick={() => void speak(toRead)} aria-label={voice === 'idle' ? 'Read this aloud' : 'Stop speaking'} className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ border: '1px solid rgba(255,255,255,0.25)', color: '#eaf1ff' }} data-float-speak>
               {voice === 'idle' ? 'Listen' : voice === 'loading' ? 'Loading...' : 'Stop'}
-            </button>
+            </button>}
           </div>
-          <p className="mt-1 leading-5 break-words">{text}</p>
+          {text && <p className="mt-1 leading-5 break-words" data-float-status>{text}</p>}
           {voiceNote && <p className="mt-1 text-xs" style={{ color: '#ffb37a' }}>{voiceNote}</p>}
           {active && <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }}><div style={{ width: `${sum.total ? Math.round(((sum.done + sum.failed) / sum.total) * 100) : 0}%`, height: '100%', background: '#ff7a00', transition: 'width 400ms' }} /></div>}
-          <div className="mt-3 flex flex-wrap gap-2">
+          {(yes || no) && <div className="mt-3 flex flex-wrap gap-2">
             {yes && <button type="button" onClick={yes.run} className="rounded-full px-3.5 py-1.5 text-xs font-bold text-white" style={{ background: '#ff7a00' }}>{yes.label}</button>}
             {no && <button type="button" onClick={no.run} className="rounded-full px-3.5 py-1.5 text-xs font-bold" style={{ border: '1px solid rgba(255,255,255,0.25)', color: '#eaf1ff' }}>{no.label}</button>}
-            <button type="button" onClick={() => setOpen(false)} className="rounded-full px-3 py-1.5 text-xs" style={{ color: '#9fb0d0' }}>Hide</button>
+          </div>}
+          {(chat.length > 0 || thinking) && (
+            <div className="mt-3 space-y-2 overflow-y-auto pr-1" style={{ maxHeight: '34vh', borderTop: text ? '1px solid rgba(255,255,255,0.12)' : undefined, paddingTop: text ? 10 : 0 }} data-float-chat>
+              {chat.map((line) => (
+                <div key={line.id} className={line.side === 'me' ? 'text-right' : ''}>
+                  <span className="inline-block rounded-2xl px-3 py-2 text-left break-words" style={{ maxWidth: '92%', background: line.side === 'me' ? 'rgba(255,122,0,0.22)' : 'rgba(255,255,255,0.07)' }}>{line.text}</span>
+                  {line.tasks?.filter((task) => task.status === 'waiting_approval').map((task) => (
+                    <div key={task.id} className="mt-2 rounded-xl p-2 text-left text-xs" style={{ border: '1px solid rgba(255,255,255,0.16)' }}>
+                      <p className="font-semibold break-words">{task.title}</p>
+                      <div className="mt-2 flex gap-2">
+                        <button type="button" onClick={() => void runTask(task, true)} className="rounded-full px-3 py-1.5 font-bold text-white" style={{ background: '#ff7a00' }}>Approve</button>
+                        <button type="button" onClick={() => void declineTask(task)} className="rounded-full px-3 py-1.5 font-bold" style={{ border: '1px solid rgba(255,255,255,0.25)' }}>Decline</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              {thinking && <p className="text-xs" style={{ color: '#9fb0d0' }}>Thinking...</p>}
+              <div ref={chatEnd} />
+            </div>
+          )}
+          <form onSubmit={(event) => void send(event)} className="mt-3 flex gap-2" data-float-form>
+            <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask the Master Agent..." aria-label="Message to the Master Agent" onFocus={() => setTyping(window.innerWidth < 860)} onBlur={() => window.setTimeout(() => setTyping(false), 250)} enterKeyHint="send" className="min-w-0 flex-1 rounded-full px-3.5 py-2 outline-none" style={{ fontSize: 16, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: '#eaf1ff' }} />
+            <button type="submit" disabled={!draft.trim() || thinking} className="rounded-full px-3.5 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: '#ff7a00' }}>Send</button>
+          </form>
+          <div className="mt-2 flex items-center justify-between text-xs" style={{ color: '#9fb0d0' }}>
+            {!onAssistant ? <button type="button" onClick={() => { setOpen(false); navigate('/'); }} className="underline">Open full chat</button> : <span />}
+            <button type="button" onClick={() => setOpen(false)}>Hide</button>
           </div>
         </div>
       )}
       <button
         type="button"
         data-float-orb
-        aria-label={text ? 'Master Agent update. Drag to move.' : 'Talk to the Master Agent. Drag to move.'}
+        aria-label={text ? 'Master Agent update. Tap to open, drag to move.' : 'Talk to the Master Agent. Tap to open, drag to move.'}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
