@@ -5,6 +5,7 @@ import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } 
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
+import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
@@ -82,6 +83,9 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   const history = Array.isArray(req.body?.history) ? req.body.history.filter((line: unknown) => typeof line === 'string').slice(-6) : [];
 
   // Many demos at once: the Master Agent picks the leads, asks ONE approval, then they build one after another.
+  // Outreach for many leads: the Outreach Agent writes every draft, the owner approves once, then they are sent.
+  const mail = batchOutreachWish(message);
+  if (mail) return await handleBatchOutreach(supabase, req, res, message, mail.count);
   const batch = batchDemoWish(message);
   if (batch) return await handleBatchDemos(supabase, res, message, batch);
 
@@ -184,6 +188,69 @@ async function handleBatchDemos(supabase: any, res: VercelResponse, message: str
   });
 }
 
+const originOf = (req: VercelRequest) => {
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  return host ? `${/^(localhost|127\.)/.test(host) ? 'http' : 'https'}://${host}` : 'https://clientradarai.vercel.app';
+};
+const plural = (count: number, one: string, many: string) => (count === 1 ? one : many);
+
+async function handleBatchOutreach(supabase: any, req: VercelRequest, res: VercelResponse, message: string, count: number) {
+  const pick = await pickForOutreach(supabase, count);
+  const now = new Date().toISOString();
+  const aside = `${pick.noEmail ? ` ${pick.noEmail} ${plural(pick.noEmail, 'lead has', 'leads have')} a ready demo but no email address, so I left ${plural(pick.noEmail, 'it', 'them')} out.` : ''}`;
+  if (!pick.leads.length) {
+    const reply = `I found no lead to write to: I only draft for leads with a ready demo, an email address and no earlier contact.${aside}`;
+    await supabase.from('agent_tasks').insert({ agent_key: 'master', title: message.slice(0, 200), status: 'done', requested_by: 'owner', input: { message }, output: { reply, source: 'rules' }, attempts: 1, started_at: now, completed_at: now });
+    return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [] } });
+  }
+  const written = await writeDrafts(pick.leads, originOf(req));
+  const total = written.drafts.length;
+  const title = `Send ${total} outreach ${plural(total, 'email', 'emails')} (one approval for all)`;
+  const how = written.ai === total ? 'each with its own opening written by the AI' : written.ai ? `${written.ai} with an opening written by the AI, the rest with built-in wording` : 'with built-in wording (the AI was not available)';
+  const reply = `The Outreach Agent wrote ${total} ${plural(total, 'draft', 'drafts')}, ${how}. Each one links to that lead's demo. Nothing has been sent: open the drafts, change or leave out any you like, then approve once and they go out.${aside}${pick.waiting ? ` ${pick.waiting} more are waiting after this batch.` : ''}${mailReady() ? '' : ' Note: email sending is not set up in Vercel yet, so sending would fail until the Brevo settings are added.'}`;
+  const { data: parent } = await supabase.from('agent_tasks').insert({ agent_key: 'master', title: message.slice(0, 200), status: 'running', requested_by: 'owner', input: { message }, output: { reply, source: 'rules' }, attempts: 1, started_at: now }).select('id').single();
+  const { data: created, error } = await supabase.from('agent_tasks').insert({ agent_key: 'outreach', title, status: 'waiting_approval', parent_task_id: parent?.id || null, requested_by: 'master', input: { outreach: true, leadIds: pick.leads.map((lead: any) => lead.id) }, output: { drafts: written.drafts, aiError: written.aiError, summary: `${total} ${plural(total, 'draft', 'drafts')} written; waiting for your approval.` } }).select('id, agent_key, title, status').single();
+  if (error || !created) return res.status(500).json({ success: false, error: error?.message || 'Could not save the drafts' });
+  await note(supabase, 'master', 'handoff', `Asked ${nameOf('outreach')} to write ${total} outreach ${plural(total, 'draft', 'drafts')} (waiting for your approval before anything is sent)`, created.id);
+  await note(supabase, 'outreach', 'task_done', `Wrote ${total} outreach ${plural(total, 'draft', 'drafts')} (${written.ai} with AI openings). Nothing sent.`, created.id);
+  return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [{ id: created.id, agentKey: created.agent_key, agentName: nameOf(created.agent_key), title: created.title, status: created.status, link: `/outreach/drafts/${created.id}` }] } });
+}
+
+const outreachTask = async (supabase: any, taskId: string) => {
+  const { data: task } = await supabase.from('agent_tasks').select('*').eq('id', taskId).maybeSingle();
+  if (!task || task.agent_key !== 'outreach') throw new Error('Outreach batch not found');
+  return task;
+};
+const outreachView = (task: any) => ({ id: task.id, title: task.title, status: task.status, createdAt: task.created_at, mailReady: mailReady(), drafts: (Array.isArray(task.output?.drafts) ? task.output.drafts : []) as OutreachDraft[] });
+
+// The ONE approval: saves the owner's edits and unlocks sending. Nothing is sent by this call.
+async function approveOutreach(supabase: any, body: any) {
+  if (body?.confirm !== true) return { status: 403, body: { success: false, error: 'Sending needs your approval' } };
+  const task = await outreachTask(supabase, String(body?.taskId || ''));
+  if (task.status !== 'waiting_approval') return { status: 409, body: { success: false, error: `This batch is already ${task.status}` } };
+  if (!mailReady()) return { status: 400, body: { success: false, error: 'Email sending is not set up: the Brevo settings are missing in Vercel. Nothing was sent.' } };
+  const drafts = applyEdits(outreachView(task).drafts, body?.drafts);
+  const toSend = drafts.filter((draft) => draft.state === 'pending').length;
+  if (!toSend) return { status: 400, body: { success: false, error: 'Every draft is left out, so there is nothing to send' } };
+  const now = new Date().toISOString();
+  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: now, updated_at: now, output: { ...task.output, drafts, summary: `Approved: ${toSend} to send.` } }).eq('id', task.id).eq('status', 'waiting_approval').select('id');
+  if (!claimed?.length) return { status: 409, body: { success: false, error: 'This batch was already approved' } };
+  await note(supabase, 'master', 'approved', `You approved sending ${toSend} outreach ${plural(toSend, 'email', 'emails')}`, task.id);
+  return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
+}
+
+async function sendOutreach(supabase: any, body: any) {
+  const task = await outreachTask(supabase, String(body?.taskId || ''));
+  if (task.status !== 'running') return { status: 403, body: { success: false, error: task.status === 'waiting_approval' ? 'This batch needs your approval first' : `This batch is already ${task.status}` } };
+  const out = await sendOneDraft(supabase, task, String(body?.leadId || ''));
+  if (out.draft.state === 'sent') await note(supabase, 'outreach', 'sent', `Sent the first email to ${out.draft.name}`, task.id, out.draft.leadId);
+  if (out.finished) {
+    await note(supabase, 'outreach', out.sent ? 'task_done' : 'task_failed', `Outreach batch finished: ${out.sent} sent${out.failed ? `, ${out.failed} failed` : ''}.`, task.id);
+    await closeParent(supabase, task.parent_task_id);
+  }
+  return { status: 200, body: { success: true, data: out } };
+}
+
 // An approved batch becomes one queued task per lead. The app then runs them one at a time.
 async function startBatch(supabase: any, task: any, res: VercelResponse) {
   const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: 1, started_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', task.id).eq('status', 'waiting_approval').select('id');
@@ -211,6 +278,7 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if (!taskId) return res.status(400).json({ success: false, error: 'taskId is required' });
   const { data: task } = await supabase.from('agent_tasks').select('*').eq('id', taskId).maybeSingle();
   if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+  if (task.agent_key === 'outreach') return res.status(400).json({ success: false, error: 'Open the drafts to review and send them' });
   if (!canRun(task.agent_key)) return res.status(400).json({ success: false, error: 'This agent is not active yet' });
   if (task.status === 'waiting_approval' && req.body?.approve !== true) return res.status(403).json({ success: false, error: 'This task needs your approval first' });
   if (task.input?.batch && task.status === 'waiting_approval') return await startBatch(supabase, task, res);
@@ -272,6 +340,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'tracker-save' || action === 'tracker-delete') {
         const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
         return res.status(out.status).json(out.json);
+      }
+      if (action === 'outreach-approve' || action === 'outreach-send') {
+        const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : await sendOutreach(supabase, req.body);
+        return res.status(out.status).json(out.body);
       }
       if (action === 'duplicate-separate') {
         const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
@@ -336,6 +408,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  if (req.query?.view === 'outreach-drafts') {
+    const supabase = teamClient();
+    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+    try { return res.status(200).json({ success: true, data: outreachView(await outreachTask(supabase, String(req.query?.taskId || ''))) }); } catch (error) { return res.status(404).json({ success: false, error: error instanceof Error ? error.message : 'Not found' }); }
+  }
   if (req.query?.view === 'duplicates') {
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
@@ -348,7 +425,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const found = await outdatedDemos(supabase, MAX_BATCH);
     // Business names saved more than once, so the owner can review them.
     const repeated = await listDuplicates(supabase);
-    return res.status(200).json({ success: true, data: { duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.leads.length, 0), likelySame: repeated.filter((entry) => entry.hint === 'same').length }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
+    return res.status(200).json({ success: true, data: { outreach: await outreachReady(supabase).catch(() => ({ ready: 0, noEmail: 0 })), duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.leads.length, 0), likelySame: repeated.filter((entry) => entry.hint === 'same').length }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
   }
   if (req.query?.view === 'tracker') {
     const supabase = teamClient();
@@ -389,10 +466,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           agentName: nameOf(child.agent_key),
           title: child.title,
           // A task left "running" for over two minutes was interrupted; show it as failed so it can be retried.
-          status: child.status === 'running' && Date.now() - new Date(child.created_at).getTime() > 120000 ? 'failed' : child.status,
+          // An outreach batch stays "running" while its emails go out, so it is shown as it is.
+          status: child.agent_key !== 'outreach' && child.status === 'running' && Date.now() - new Date(child.created_at).getTime() > 120000 ? 'failed' : child.status,
+          link: child.agent_key === 'outreach' ? `/outreach/drafts/${child.id}` : undefined,
           summary: child.output?.summary || (child.error ? `Could not finish "${child.title}": ${child.error}` : ''),
           error: child.error,
-          output: child.output,
+          output: child.agent_key === 'outreach' ? { summary: child.output?.summary } : child.output,
         })),
       }));
       res.setHeader('Cache-Control', 'no-store');
