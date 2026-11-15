@@ -124,7 +124,7 @@ function readContent(content: any) {
     phone: contact.phone ? String(contact.phone) : '',
     email: contact.email ? String(contact.email) : '',
     instagram,
-    photos: (Array.isArray(content?.photos) ? content.photos : []).filter((photo: any) => photo && typeof photo.url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(photo.url)).slice(0, 12).map((photo: any) => ({ url: String(photo.url), sample: photo.kind !== 'own', alt: String(photo.alt || ''), credit: String(photo.credit || ''), link: typeof photo.link === 'string' && /^https:\/\/www\.pexels\.com\//.test(photo.link) ? photo.link : 'https://www.pexels.com' })) as { url: string; sample: boolean; alt: string; credit: string; link: string }[],
+    photos: (Array.isArray(content?.photos) ? content.photos : []).filter((photo: any) => photo && typeof photo.url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(photo.url)).slice(0, 12).map((photo: any) => ({ url: String(photo.url), sample: photo.kind !== 'own', alt: String(photo.alt || ''), credit: String(photo.credit || ''), unsplash: photo.source === 'unsplash', link: typeof photo.link === 'string' && /^https:\/\/(www\.pexels\.com|unsplash\.com)\/[^\s"'<>]*$/.test(photo.link) ? photo.link : photo.source === 'unsplash' ? 'https://unsplash.com/?utm_source=clientradar_ai&utm_medium=referral' : 'https://www.pexels.com' })) as { url: string; sample: boolean; alt: string; credit: string; link: string; unsplash: boolean }[],
     disclaimer: String(content?.disclaimer || 'Demo concept content. Confirm business details before production use.'),
     colors,
     onAccent: readableOn(colors.accent),
@@ -379,7 +379,8 @@ function footer(model: Model) {
   ].filter(Boolean);
   const samples = model.photos.filter((photo, index) => photo.sample && shownPhotos.has(index));
   const names = samples.filter((photo, index, all) => photo.credit && all.findIndex((other) => other.credit === photo.credit) === index).slice(0, 8).map((photo) => `<a href="${esc(photo.link)}" target="_blank" rel="noopener noreferrer">${esc(photo.credit)}</a>`).join(', ');
-  const credit = samples.length ? `<p class="small credit">Sample photos provided by <a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>${names ? ` (photos by ${names})` : ''}. They show the type of business, not this business. Replace with real photographs before launch.</p>` : '';
+  const from = samples.some((photo) => photo.unsplash) ? '<a href="https://unsplash.com/?utm_source=clientradar_ai&amp;utm_medium=referral" target="_blank" rel="noopener noreferrer">Unsplash</a>' : '<a href="https://www.pexels.com" target="_blank" rel="noopener noreferrer">Pexels</a>';
+  const credit = samples.length ? `<p class="small credit">Sample photos provided by ${from}${names ? ` (photos by ${names})` : ''}. They show the type of business, not this business. Replace with real photographs before launch.</p>` : '';
   return `<footer class="ft"><div class="wrap ft-top"><div class="ft-brand"><p class="logo">${esc(model.name)}</p>${where ? `<p>${where}</p>` : ''}</div><nav class="ft-col" aria-label="Footer"><p class="ft-h">Explore</p>${links.join('')}</nav>${reach.length ? `<div class="ft-col"><p class="ft-h">Contact</p>${reach.join('')}</div>` : ''}</div><div class="wrap ft-in"><div><p class="small">${esc(model.disclaimer)}</p>${credit}</div><a class="ft-up" href="#top">Back to top</a></div></footer>`;
 }
 
@@ -825,7 +826,7 @@ export function buildDemoSite(content: any): SiteFiles {
     '',
     '## Before this goes live',
     '- Replace every dashed placeholder (search the HTML for `class="ph"`): phone, email, street address, opening hours.',
-    model.photos.some((photo) => photo.sample) ? '- Photos marked "Sample photo" come from Pexels and show the type of business, not this business. Replace them with real photographs. Keep the Pexels credit in the footer while any sample photo remains.' : '',
+    model.photos.some((photo) => photo.sample) ? '- Photos marked "Sample photo" are stock photographs (Unsplash or Pexels, see the footer credit). They show the type of business, not this business, and load from the photo service. Replace them with real photographs; keep the footer credit while any sample photo remains.' : '',
     model.photos.some((photo) => !photo.sample) ? '- Unmarked photos were read from the business\'s current website and still load from there. Confirm with the owner that they may be used, then save copies into this folder.' : '',
     '- Replace any remaining decorative artwork with real photographs of the business.',
     model.showcase.length ? `- The ${SHOWCASE[model.kind].nav.toLowerCase()} section holds SAMPLE content. Replace it with real items.` : '',
