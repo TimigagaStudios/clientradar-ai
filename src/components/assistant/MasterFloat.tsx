@@ -38,6 +38,8 @@ const startSpot = (): Spot => {
   return clampSpot({ x: window.innerWidth, y: window.innerHeight - SIZE - 14 });
 };
 
+const HIDE_AFTER = 8000;
+
 export default function MasterFloat() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -180,6 +182,20 @@ export default function MasterFloat() {
 
   // ---- Voice: reads the current message aloud when asked. Never speaks by itself.
   useEffect(() => { setVoiceNote(''); }, [text]);
+
+  // The panel tucks itself away: at once when you touch or scroll the page behind it,
+  // and after a few quiet seconds. It stays while you type, while an answer is on its way, or while it is speaking.
+  const busy = typing || thinking || voice !== 'idle' || draft.trim().length > 0;
+  const [touched, setTouched] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const inside = (event: Event) => event.target instanceof Element && Boolean(event.target.closest('[data-master-float]'));
+    const away = (event: Event) => { if (inside(event)) setTouched(Date.now()); else setOpen(false); };
+    document.addEventListener('pointerdown', away, true);
+    document.addEventListener('wheel', away, { capture: true, passive: true });
+    const timer = busy ? 0 : window.setTimeout(() => setOpen(false), HIDE_AFTER);
+    return () => { document.removeEventListener('pointerdown', away, true); document.removeEventListener('wheel', away, true); if (timer) window.clearTimeout(timer); };
+  }, [open, busy, touched, text, chat.length]);
   function stopVoice() {
     audio.current.seq += 1;
     try { audio.current.source?.stop(); } catch { /* already stopped */ }
