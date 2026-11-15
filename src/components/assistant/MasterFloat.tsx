@@ -76,7 +76,7 @@ export default function MasterFloat() {
         const repeats = body?.data?.duplicates;
         if (body?.success && repeats?.names > 0 && Date.now() - Number(localStorage.getItem(DUP_KEY) || 0) > 7 * 24 * 3600 * 1000) {
           localStorage.setItem(DUP_KEY, String(Date.now()));
-          addNotice({ to: '/leads', yes: 'Open leads', text: `${repeats.names} business ${repeats.names === 1 ? 'name is' : 'names are'} saved more than once (for example ${repeats.example}). When I build demos in a batch I now make only one per business name. Nothing was deleted.` });
+          addNotice({ to: '/leads/duplicates', yes: 'Review them', text: `${repeats.names} business ${repeats.names === 1 ? 'name is' : 'names are'} saved more than once (for example ${repeats.example})${repeats.likelySame ? `; ${repeats.likelySame} look like the same business saved twice` : ''}. You can merge them or keep them as separate branches. Nothing was deleted.` });
         }
         const count = Number(body?.data?.count) || 0;
         if (!body?.success || !count) return;
