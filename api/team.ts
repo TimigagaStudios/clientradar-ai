@@ -4,6 +4,7 @@ import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
+import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
@@ -139,11 +140,8 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   });
 }
 
-// "Coldwell Banker", "coldwell banker." and "Coldwell Banker LLC" compare equal.
-const nameKey = (name: unknown) => String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(ltd|limited|llc|inc|plc|co|company|corp|corporation|the)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
-
 async function handleBatchDemos(supabase: any, res: VercelResponse, message: string, wish: { count: number; noWebsite: boolean; level: 'mid' | 'hybrid' | 'ultra' }) {
-  let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website').order('lead_score', { ascending: false }).limit(400);
+  let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website, notes').order('lead_score', { ascending: false }).limit(400);
   if (wish.noWebsite) query = query.is('website', null);
   const { data: leads } = await query;
   const { data: active } = await supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']);
@@ -151,7 +149,8 @@ async function handleBatchDemos(supabase: any, res: VercelResponse, message: str
   // Only leads with no demo yet; the strongest first.
   // One demo per business name: a name saved twice (two branches, or the same business imported twice)
   // gets a single demo, and a name that already has a demo is not built again.
-  const keyOf = (lead: any) => `${nameKey(lead.business_name)}`;
+  // Leads the owner marked as different branches each count as their own business.
+  const keyOf = (lead: any) => (keptApart(lead) ? `${nameKey(lead.business_name)}:${lead.id}` : nameKey(lead.business_name));
   const taken = new Set((leads || []).filter((lead: any) => busy.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')).map(keyOf));
   let sameName = 0;
   const open = (leads || []).filter((lead: any) => {
@@ -274,6 +273,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
         return res.status(out.status).json(out.json);
       }
+      if (action === 'duplicate-separate') {
+        const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+        if (ids.length < 2) return res.status(400).json({ success: false, error: 'Choose the leads to keep apart' });
+        const marked = await keepApart(supabase, ids);
+        await note(supabase, 'records-upkeep', 'duplicate_separate', `You marked ${marked} leads with the same name as different businesses.`);
+        return res.status(200).json({ success: true, data: { marked } });
+      }
+      if (action === 'duplicate-merge') {
+        // Removing a lead needs the owner's explicit confirmation from the review screen.
+        if (req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'Merging needs your confirmation' });
+        const merged = await mergeLeads(supabase, String(req.body?.keepId || ''), String(req.body?.removeId || ''));
+        await note(supabase, 'records-upkeep', 'duplicate_merged', `You merged two records of ${merged.name}${merged.filled.length ? `; ${merged.filled.length} missing ${merged.filled.length === 1 ? 'detail was' : 'details were'} filled from the removed record` : ''}.`, null, String(req.body.keepId));
+        return res.status(200).json({ success: true, data: merged });
+      }
       if (action === 'demo-refresh-start') {
         // The owner said yes to the orb's offer: one queued update task per outdated demo.
         const found = await outdatedDemos(supabase, MAX_BATCH);
@@ -323,17 +336,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
+  if (req.query?.view === 'duplicates') {
+    const supabase = teamClient();
+    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+    return res.status(200).json({ success: true, data: await listDuplicates(supabase) });
+  }
   if (req.query?.view === 'demo-updates') {
     // Records Upkeep Agent check: finished demos that were built before new sections existed.
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
     const found = await outdatedDemos(supabase, MAX_BATCH);
     // Business names saved more than once, so the owner can review them.
-    const { data: named } = await supabase.from('leads').select('business_name').limit(2000);
-    const counts = new Map<string, { name: string; total: number }>();
-    (named || []).forEach((row: any) => { const key = nameKey(row.business_name); if (!key) return; const entry = counts.get(key) || { name: String(row.business_name), total: 0 }; entry.total += 1; counts.set(key, entry); });
-    const repeated = [...counts.values()].filter((entry) => entry.total > 1).sort((first, second) => second.total - first.total);
-    return res.status(200).json({ success: true, data: { duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.total, 0) }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
+    const repeated = await listDuplicates(supabase);
+    return res.status(200).json({ success: true, data: { duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.leads.length, 0), likelySame: repeated.filter((entry) => entry.hint === 'same').length }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
   }
   if (req.query?.view === 'tracker') {
     const supabase = teamClient();
