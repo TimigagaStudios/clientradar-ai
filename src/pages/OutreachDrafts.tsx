@@ -40,11 +40,17 @@ export default function OutreachDrafts() {
   const sendAll = async (list: Draft[]) => {
     setSending(true);
     stop.current = false;
+    let sent = 0;
+    let failed = 0;
     for (const draft of list.filter((item) => item.state === 'pending')) {
       if (stop.current) break;
       try {
         const out = await call('/api/team', { action: 'outreach-send', taskId, leadId: draft.leadId });
         change(draft.leadId, { state: out.draft.state, error: out.draft.error });
+        if (out.draft.state === 'sent') sent += 1;
+        if (out.draft.state === 'failed') failed += 1;
+        // The key itself was refused: every other email would fail the same way, so stop here.
+        if (out.draft.state === 'failed' && /did not accept the API key/i.test(String(out.draft.error || ''))) { setError('Brevo did not accept the API key, so I stopped. Nothing else was tried. Replace the key, then tap "Try again".'); break; }
       } catch (reason) {
         setError(`Stopped at ${draft.name}: ${reason instanceof Error ? reason.message : 'no connection'}. The rest were not sent; tap "Send the rest" to carry on.`);
         break;
@@ -53,7 +59,10 @@ export default function OutreachDrafts() {
     }
     setSending(false);
     await load();
-    window.dispatchEvent(new CustomEvent('cr-notice', { detail: { text: 'The outreach batch has finished sending. The leads are now marked "Email Sent".', to: '/leads', yes: 'Open leads' } }));
+    // The orb reports what really happened, never more.
+    const mails = (count: number) => `${count} ${count === 1 ? 'email' : 'emails'}`;
+    const text = sent && !failed ? `${mails(sent)} sent. ${sent === 1 ? 'That lead is' : 'Those leads are'} now marked "Email Sent".` : sent ? `${mails(sent)} sent, ${failed} could not be sent. The drafts page shows why.` : failed ? `No email was sent: ${failed === 1 ? 'the email' : `all ${failed} emails`} failed. The drafts page shows why; nothing was marked as sent.` : '';
+    if (text) window.dispatchEvent(new CustomEvent('cr-notice', { detail: sent ? { text, to: '/leads', yes: 'Open leads' } : { text } }));
   };
 
   const approve = async () => {
@@ -64,6 +73,14 @@ export default function OutreachDrafts() {
       setBatch(approved);
       await sendAll(approved.drafts);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not approve'); }
+  };
+  const retry = async () => {
+    setError('');
+    try {
+      const again: Batch = await call('/api/team', { action: 'outreach-retry', taskId });
+      setBatch(again);
+      await sendAll(again.drafts);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not try again'); }
   };
   const decline = async () => {
     try { await call('/api/team', { action: 'cancel', taskId }); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not decline'); }
@@ -113,7 +130,7 @@ export default function OutreachDrafts() {
         </section>
       ))}
 
-      {batch && (batch.status === 'waiting_approval' || batch.status === 'running') && (
+      {batch && (batch.status === 'waiting_approval' || batch.status === 'running' || count('failed') > 0) && (
         <div className="sticky bottom-3 z-10 neo-card p-3 flex flex-wrap items-center gap-2" style={{ backdropFilter: 'blur(14px)' }}>
           {batch.status === 'waiting_approval' && !sending && <>
             <button type="button" disabled={!toSend || !batch.mailReady} onClick={() => setConfirm(true)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }} data-approve>Approve and send {toSend}</button>
@@ -123,6 +140,7 @@ export default function OutreachDrafts() {
             <p className="text-sm font-semibold text-[var(--text-primary)]" role="status">Sending... {count('sent')} sent, {toSend} to go. Keep this page open.</p>
             <button type="button" onClick={() => { stop.current = true; }} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)]">Hold on</button>
           </>}
+          {!sending && batch.status !== 'waiting_approval' && count('failed') > 0 && <button type="button" onClick={() => void retry()} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }} data-retry>Try again ({count('failed')} not sent)</button>}
           {batch.status === 'running' && !sending && toSend > 0 && <button type="button" onClick={() => void sendAll(drafts)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }}>Send the rest ({toSend})</button>}
         </div>
       )}
