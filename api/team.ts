@@ -5,7 +5,7 @@ import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } 
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
-import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
+import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
@@ -239,6 +239,15 @@ async function approveOutreach(supabase: any, body: any) {
   return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
 }
 
+async function retryOutreach(supabase: any, body: any) {
+  const task = await outreachTask(supabase, String(body?.taskId || ''));
+  if (!['failed', 'done', 'running'].includes(task.status)) return { status: 403, body: { success: false, error: 'This batch was never approved' } };
+  if (!outreachView(task).drafts.some((draft) => draft.state === 'failed')) return { status: 400, body: { success: false, error: 'No unsent email to try again' } };
+  const drafts = await retryFailed(supabase, task);
+  await note(supabase, 'master', 'approved', 'You asked to try the unsent outreach emails again', task.id);
+  return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
+}
+
 async function sendOutreach(supabase: any, body: any) {
   const task = await outreachTask(supabase, String(body?.taskId || ''));
   if (task.status !== 'running') return { status: 403, body: { success: false, error: task.status === 'waiting_approval' ? 'This batch needs your approval first' : `This batch is already ${task.status}` } };
@@ -341,8 +350,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
         return res.status(out.status).json(out.json);
       }
-      if (action === 'outreach-approve' || action === 'outreach-send') {
-        const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : await sendOutreach(supabase, req.body);
+      if (action === 'outreach-approve' || action === 'outreach-send' || action === 'outreach-retry') {
+        const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : action === 'outreach-retry' ? await retryOutreach(supabase, req.body) : await sendOutreach(supabase, req.body);
         return res.status(out.status).json(out.body);
       }
       if (action === 'duplicate-separate') {
