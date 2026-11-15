@@ -41,7 +41,10 @@ async function note(supabase: any, agentKey: string, kind: string, summary: stri
 // When every task the Master handed out is finished, the Master's own task is closed with a report.
 async function closeParent(supabase: any, parentId: string | null) {
   if (!parentId) return;
-  const { data: children } = await supabase.from('agent_tasks').select('status, agent_key, output, error, title').eq('parent_task_id', parentId);
+  const { data: all } = await supabase.from('agent_tasks').select('status, agent_key, output, error, title, input').eq('parent_task_id', parentId);
+  // The one-tap approval of a batch is not itself a piece of work, so it is not counted.
+  const work = (all || []).filter((row: any) => !row.input?.batch);
+  const children = work.length ? work : all;
   if (!children?.length || children.some((row: any) => ['queued', 'running', 'waiting_approval'].includes(row.status))) return;
   const done = children.filter((row: any) => row.status === 'done').length;
   const report = `${done} of ${children.length} ${children.length === 1 ? 'task' : 'tasks'} completed.`;
@@ -136,6 +139,9 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   });
 }
 
+// "Coldwell Banker", "coldwell banker." and "Coldwell Banker LLC" compare equal.
+const nameKey = (name: unknown) => String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(ltd|limited|llc|inc|plc|co|company|corp|corporation|the)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+
 async function handleBatchDemos(supabase: any, res: VercelResponse, message: string, wish: { count: number; noWebsite: boolean; level: 'mid' | 'hybrid' | 'ultra' }) {
   let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website').order('lead_score', { ascending: false }).limit(400);
   if (wish.noWebsite) query = query.is('website', null);
@@ -143,7 +149,18 @@ async function handleBatchDemos(supabase: any, res: VercelResponse, message: str
   const { data: active } = await supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']);
   const busy = new Set((active || []).map((row: any) => row.lead_id));
   // Only leads with no demo yet; the strongest first.
-  const open = (leads || []).filter((lead: any) => !busy.has(lead.id) && (!lead.demo_status || lead.demo_status === 'Not Started'));
+  // One demo per business name: a name saved twice (two branches, or the same business imported twice)
+  // gets a single demo, and a name that already has a demo is not built again.
+  const keyOf = (lead: any) => `${nameKey(lead.business_name)}`;
+  const taken = new Set((leads || []).filter((lead: any) => busy.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')).map(keyOf));
+  let sameName = 0;
+  const open = (leads || []).filter((lead: any) => {
+    if (busy.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')) return false;
+    const key = keyOf(lead);
+    if (key && taken.has(key)) { sameName += 1; return false; }
+    if (key) taken.add(key);
+    return true;
+  });
   const picked = open.slice(0, wish.count);
   const now = new Date().toISOString();
   const say = async (reply: string, child: any | null) => {
@@ -159,7 +176,7 @@ async function handleBatchDemos(supabase: any, res: VercelResponse, message: str
   const listed = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
   const more = open.length > picked.length ? ` ${open.length - picked.length} more are waiting after this batch.` : '';
   const capped = wish.count === MAX_BATCH && open.length > MAX_BATCH ? ` I keep a batch to ${MAX_BATCH} so the free AI limit is not used up at once.` : '';
-  const reply = `I picked the ${picked.length} strongest ${picked.length === 1 ? 'lead' : 'leads'}${wish.noWebsite ? ' without a website' : ''} that have no demo yet: ${listed}. Approve once and the Demo Creation Agent builds them one after another; I will tell you when they are ready. Nothing is sent to anyone.${capped}${more}`;
+  const reply = `I picked the ${picked.length} strongest ${picked.length === 1 ? 'lead' : 'leads'}${wish.noWebsite ? ' without a website' : ''} that have no demo yet: ${listed}. Approve once and the Demo Creation Agent builds them one after another; I will tell you when they are ready. Nothing is sent to anyone.${capped}${more}${sameName ? ` I left out ${sameName} ${sameName === 1 ? 'lead that shares its' : 'leads that share their'} business name with another lead, so no business gets two demos.` : ''}`;
   return await say(reply, {
     agent_key: 'demo-creation',
     title: `Build ${picked.length} ${LEVEL_NAMES[wish.level]} ${picked.length === 1 ? 'demo' : 'demos'} (one approval for all)`,
@@ -311,7 +328,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
     const found = await outdatedDemos(supabase, MAX_BATCH);
-    return res.status(200).json({ success: true, data: { count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
+    // Business names saved more than once, so the owner can review them.
+    const { data: named } = await supabase.from('leads').select('business_name').limit(2000);
+    const counts = new Map<string, { name: string; total: number }>();
+    (named || []).forEach((row: any) => { const key = nameKey(row.business_name); if (!key) return; const entry = counts.get(key) || { name: String(row.business_name), total: 0 }; entry.total += 1; counts.set(key, entry); });
+    const repeated = [...counts.values()].filter((entry) => entry.total > 1).sort((first, second) => second.total - first.total);
+    return res.status(200).json({ success: true, data: { duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.total, 0) }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
   }
   if (req.query?.view === 'tracker') {
     const supabase = teamClient();
