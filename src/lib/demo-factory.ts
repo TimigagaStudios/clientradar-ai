@@ -10,6 +10,7 @@ export type DemoJob = {
   templateKey: string;
   styleLevel: DemoStyleLevel;
   generatedBy: 'ai' | 'fallback' | null;
+  learned: boolean;
   aiError: string | null;
   status: DemoJobStatus;
   prompt: string;
@@ -145,6 +146,7 @@ export function mapDemoJob(row: any): DemoJob {
     templateKey: template,
     styleLevel: level,
     generatedBy: generatedBy === 'ai' || generatedBy === 'fallback' ? generatedBy : null,
+    learned: generatedBy === 'fallback' && Boolean(row.content?.learnedFrom),
     aiError: typeof row.content?.aiError === 'string' ? row.content.aiError : null,
     status: row.status,
     prompt: row.prompt,
