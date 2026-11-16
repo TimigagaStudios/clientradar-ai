@@ -72,13 +72,9 @@ export function searchWishes(message: string): { count?: number; noWebsite?: boo
 export const tidyCategory = (value: string) => clean(value.replace(/^\s*(?:about|around|up to|at least)?\s*\d{1,4}\s+/i, '').replace(/\s+(?:that|which|who)\b.*$/i, '').replace(/\s+(?:without|with no|with)\b.*$/i, ''), 60);
 export const tidyCity = (value: string) => clean(value.replace(/[,;]?\s+(?:without|with no|with|that|which|who|and)\b.*$/i, ''), 60);
 
-const asksUpkeepInbox = (text: string) => /\b(?:records?\s+upkeep|upkeep agent)\b/i.test(text) && /\b(?:email|contact|gmail|inbox|website|site|scan)\b/i.test(text);
-const upkeepInboxAnswer = 'Records Upkeep reads public websites already attached to saved leads and fills missing email, phone or Instagram; it does not open Gmail. Gmail link scanning is a separate, opt-in feature and only runs after the updated app is deployed and the Google Apps Script helper is installed and authorized. It checks up to 10 recent inbox emails, sends link metadata but not the email body, and leaves translated/extracted results for your review—nothing is saved as a lead automatically.';
-
 // Used when no AI key is set or the AI call fails. Handles factual count questions without AI.
 export function planByRules(message: string, context: MasterContext): Omit<MasterPlan, 'source' | 'aiError'> {
   const text = clean(message, 400);
-  if (asksUpkeepInbox(text)) return { reply: upkeepInboxAnswer, tasks: [] };
   if (/\b(?:how many|count|number of|total)\b/i.test(text) && /\b(?:leads?|business(?:es)?)\b/i.test(text) && /\bemail(?:s| address(?:es)?)?\b/i.test(text)) {
     const totals = context.totals;
     if (Number.isFinite(totals.withEmail) && Number.isFinite(totals.withoutEmail)) {
@@ -117,7 +113,6 @@ function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
 
 export async function planRequest(message: string, history: string[], context: MasterContext): Promise<MasterPlan> {
   const text = clean(message, 400);
-  if (asksUpkeepInbox(text)) return { reply: upkeepInboxAnswer, tasks: [], source: 'rules', aiError: null };
   if (/\b(?:how many|count|number of|total)\b/i.test(text) && /\b(?:leads?|business(?:es)?)\b/i.test(text) && /\bemail(?:s| address(?:es)?)?\b/i.test(text)) {
     return { ...planByRules(text, context), source: 'rules', aiError: null };
   }
@@ -135,8 +130,6 @@ export async function planRequest(message: string, history: string[], context: M
     '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (use "mid" unless told otherwise).',
     '- "outreach" with "kind": "first": the Outreach Agent writes first-contact emails for many leads at once. Use it whenever the owner wants leads emailed, in whatever words he says it. "count" is how many (default 25). Nothing is sent without his approval.',
     '- "outreach" with "kind": "followup": the Outreach Agent writes polite follow-up emails to leads written to at least 3 days ago that have not replied. Use it whenever he wants non-repliers chased, in whatever words he says it. A lead is never followed up twice.',
-    'Records Upkeep reads public websites already attached to saved lead records and fills missing email, phone or Instagram fields; it never reads the owner’s Gmail inbox.',
-    'Email Link Scan is separate. Only after the owner accepts the orb prompt, the configured Google Apps Script checks up to 10 received inbox messages from the last 30 days and sends sender, subject, date, Gmail message ID, website link and link label—not the email body—to ClientRadar. The public website text may be sent to the configured Gemini API for English translation and extraction. Results stay in Import Review; they do not become leads until the owner imports them. If the helper script or its authorized time trigger has not been set up, say it will not run yet.',
     'Client replies to outreach emails are collected and sorted on the Replies page by the Customer Communication Agent, and a suggested answer is written for promising replies. The owner reads it there and only his approval sends it. You cannot answer clients.',
     'Quality checks, reports, scheduling and social posts are planned agents that are NOT active yet. If asked for those, say so plainly and create no task.',
     'You cannot send messages, save leads, delete anything or spend money. The owner saves found businesses himself with the Save buttons under the results.',

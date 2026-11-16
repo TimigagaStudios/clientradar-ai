@@ -143,10 +143,7 @@ export async function listPendingImports(supabase: any) {
   if (error) return { ready: !tableMissing(error), records: [] as any[] };
   return {
     ready: true,
-    records: (data || []).map((row: any) => {
-      const source = row.data?.source === 'email-link' ? 'email-link' : 'screenshot';
-      return { ...cleanBusiness(row.data), source, sourceMeta: row.data?.sourceMeta || null, confidence: Number(row.confidence ?? row.data?.confidence ?? 0.5), id: row.id, batchId: row.batch_id, fileName: source === 'email-link' ? row.data?.sourceMeta?.subject || 'Email link' : row.file_name || 'screenshot', extractedAt: row.created_at, saved: true };
-    }),
+    records: (data || []).map((row: any) => ({ ...cleanBusiness(row.data), confidence: Number(row.confidence ?? row.data?.confidence ?? 0.5), id: row.id, batchId: row.batch_id, fileName: row.file_name || 'screenshot', extractedAt: row.created_at, saved: true })),
   };
 }
 
@@ -157,11 +154,7 @@ export async function handleImportUpdate(supabase: any, body: any) {
   const now = new Date().toISOString();
   const removeIds = (Array.isArray(body?.removeIds) ? body.removeIds : []).filter(isUuid).slice(0, 600);
   if (removeIds.length) await supabase.from('lead_import_records').update({ status: 'removed', updated_at: now }).in('id', removeIds);
-  if (isUuid(body?.id) && body?.data) {
-    const source = body.data?.source === 'email-link' ? 'email-link' : 'screenshot';
-    const data = { ...cleanBusiness(body.data), source, sourceMeta: body.data?.sourceMeta || null };
-    await supabase.from('lead_import_records').update({ data, updated_at: now }).eq('id', body.id);
-  }
+  if (isUuid(body?.id) && body?.data) await supabase.from('lead_import_records').update({ data: cleanBusiness(body.data), updated_at: now }).eq('id', body.id);
   return { status: 200, json: { success: true } };
 }
 
@@ -183,14 +176,10 @@ export async function handleImportSave(supabase: any, body: any) {
   const rows = usable.map(({ raw, business }) => {
     const { score, priority } = scoreLead(business);
     const batchId = text(raw.batchId, 60);
-    const sourceKind = raw.source === 'email-link' ? 'email-link' : 'screenshot';
     const fileName = text(raw.fileName, 160);
-    const sourceMeta = raw.sourceMeta && typeof raw.sourceMeta === 'object' ? raw.sourceMeta : {};
     const extractedAt = typeof raw.extractedAt === 'string' && !Number.isNaN(Date.parse(raw.extractedAt)) ? raw.extractedAt : now;
-    const sourceLine = sourceKind === 'email-link'
-      ? `Imported from an owner-approved email link scan on ${extractedAt.slice(0, 10)}. Original email: "${text(sourceMeta.subject, 160) || 'no subject'}"${text(sourceMeta.sender, 160) ? ` from ${text(sourceMeta.sender, 160)}` : ''}. Website: ${business.website || 'not listed'}. Language detected: ${text(sourceMeta.originalLanguage, 50) || 'unknown'}.`
-      : `Imported from screenshot "${fileName || 'screenshot'}"${batchId ? ` (batch ${batchId})` : ''} on ${extractedAt.slice(0, 10)}. AI confidence ${Math.round(business.confidence * 100)}%.`;
-    const notes = [sourceLine, business.address ? `Address: ${business.address}` : '', business.description ? `${sourceKind === 'email-link' ? 'Translated website summary' : 'Seen on listing'}: ${business.description}` : '', text(sourceMeta.scanSummary, 300)].filter(Boolean).join('\n');
+    const sourceLine = `Imported from screenshot "${fileName || 'screenshot'}"${batchId ? ` (batch ${batchId})` : ''} on ${extractedAt.slice(0, 10)}. AI confidence ${Math.round(business.confidence * 100)}%.`;
+    const notes = [sourceLine, business.address ? `Address: ${business.address}` : '', business.description ? `Seen on listing: ${business.description}` : ''].filter(Boolean).join('\n');
     const base = {
       business_name: business.name,
       category: business.category || 'Uncategorised',
@@ -214,7 +203,7 @@ export async function handleImportSave(supabase: any, body: any) {
       outreach_history: [],
       timeline: [],
     };
-    const source = { address: business.address || null, source: sourceKind, source_batch_id: batchId || null, source_ref: sourceKind === 'email-link' ? text(sourceMeta.messageId, 200) || business.website || null : fileName || null, source_confidence: business.confidence, source_extracted_at: extractedAt };
+    const source = { address: business.address || null, source: 'screenshot', source_batch_id: batchId || null, source_ref: fileName || null, source_confidence: business.confidence, source_extracted_at: extractedAt };
     return { base, source };
   });
   // With migration 005 the source is stored in its own columns; without it the same facts stay in the notes.
@@ -224,12 +213,9 @@ export async function handleImportSave(supabase: any, body: any) {
     sourceColumns = false;
     result = await supabase.from('leads').insert(rows.map((row) => row.base)).select('id, business_name, website, email');
   }
-  const hasEmailLinks = usable.some((item) => item.raw.source === 'email-link');
-  const agentKey = hasEmailLinks ? 'lead-research' : 'screenshot-intelligence';
-  const sourceLabel = hasEmailLinks ? (usable.every((item) => item.raw.source === 'email-link') ? 'email links' : 'screenshots and email links') : 'screenshots';
   if (result.error || !Array.isArray(result.data)) {
     const message = String(result.error?.message || 'Could not save the leads').slice(0, 200);
-    await recordTask({ agentKey, title: `Import ${rows.length} leads from ${sourceLabel}`, status: 'failed', summary: `Could not import ${rows.length} leads from ${sourceLabel}: ${message}`, error: message, startedAt });
+    await recordTask({ agentKey: 'screenshot-intelligence', title: `Import ${rows.length} leads from screenshots`, status: 'failed', summary: `Could not import ${rows.length} leads from screenshots: ${message}`, error: message, startedAt });
     return { status: 500, json: { success: false, error: message } };
   }
   const created: any[] = result.data;
@@ -238,10 +224,10 @@ export async function handleImportSave(supabase: any, body: any) {
   const batches = [...new Set(usable.map((item) => text(item.raw.batchId, 60)).filter(Boolean))];
   const files = new Set(usable.map((item) => text(item.raw.fileName, 160)).filter(Boolean)).size;
   await recordTask({
-    agentKey,
-    title: `Import ${created.length} leads from ${sourceLabel}`,
+    agentKey: 'screenshot-intelligence',
+    title: `Import ${created.length} leads from screenshots`,
     status: 'done',
-    summary: `Imported ${created.length} ${created.length === 1 ? 'lead' : 'leads'} from ${sourceLabel} after your review.`,
+    summary: `Imported ${created.length} ${created.length === 1 ? 'lead' : 'leads'} from ${files || 1} ${files === 1 ? 'screenshot' : 'screenshots'} after your review.`,
     input: { batches, records: usable.length },
     output: { imported: created.length, sourceColumns },
     startedAt,
