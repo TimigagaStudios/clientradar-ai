@@ -589,7 +589,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
 
     const reply = String(data.reply || '');
     const tasks: ChatTask[] = Array.isArray(data.tasks) ? data.tasks : [];
-    const note = data.source === 'rules' ? (data.aiError ? `AI not used: ${data.aiError}. Simple mode answered.` : 'Simple mode: no AI key is set.') : undefined;
+    const note = data.source === 'rules' ? (data.aiError ? `AI not used: ${data.aiError}. Simple mode answered.` : 'Answered from your database; AI was not needed.') : undefined;
     setThinking(false);
     setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(reply), tasks, note }]);
 
