@@ -21,6 +21,7 @@ import Invoices from './pages/Invoices';
 import Tracker from './pages/Tracker';
 import Duplicates from './pages/Duplicates';
 import OutreachDrafts from './pages/OutreachDrafts';
+import FollowUps from './pages/FollowUps';
 import Replies from './pages/Replies';
 import Team from './pages/Team';
 import Assistant from './pages/Assistant'; // âœ… NEW â€” Executive Agent home
@@ -89,6 +90,7 @@ const App = () => {
               <Route path="/leads" element={<RequireAuth><Layout><Leads /></Layout></RequireAuth>} />
               <Route path="/replies" element={<RequireAuth><Layout><Replies /></Layout></RequireAuth>} />
               <Route path="/outreach/drafts/:taskId" element={<RequireAuth><Layout><OutreachDrafts /></Layout></RequireAuth>} />
+              <Route path="/outreach/follow-ups/:taskId" element={<RequireAuth><Layout><FollowUps /></Layout></RequireAuth>} />
               <Route path="/leads/duplicates" element={<RequireAuth><Layout><Duplicates /></Layout></RequireAuth>} />
               <Route path="/leads/:id" element={<RequireAuth><Layout><LeadDetail /></Layout></RequireAuth>} />
               <Route path="/outreach" element={<RequireAuth><Layout><Outreach /></Layout></RequireAuth>} />
