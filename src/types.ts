@@ -68,6 +68,12 @@ export type SearchResult = {
   longitude?: number;
   email?: string;
   instagram?: string;
+  emailSource?: 'map' | 'website';
+  phoneSource?: 'map' | 'website';
+  websiteChecked?: boolean;
+  websiteRead?: boolean;
+  websiteError?: string;
+  websiteScanSummary?: string;
   category?: string;
   city?: string;
   country?: string;
