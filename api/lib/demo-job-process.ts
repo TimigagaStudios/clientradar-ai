@@ -273,6 +273,8 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
     const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
     if (error) throw error;
     await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
+    // Lock-screen notification when the demo is ready (never breaks the build).
+    try { const { sendPush } = await import('./_push.js'); await sendPush(supabase, { title: 'ClientRadar', body: `Demo ready for ${businessName}. Tap to preview.`, url: '/demos', tag: 'demo' }); } catch { /* notifications are optional */ }
     if (record) await recordTask({
       agentKey: 'demo-creation',
       title: `Build ${levelName} demo for ${businessName}`,
