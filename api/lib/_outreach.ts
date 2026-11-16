@@ -1,4 +1,5 @@
 import { nameKey } from './_duplicates.js';
+import { aiConfig, aiUnavailableReason } from './_ai-config.js';
 
 // Outreach Agent: writes first-contact emails for many leads at once and sends them
 // only after the owner has approved the batch. Its tools: read the chosen leads, write drafts,
@@ -88,9 +89,9 @@ const safeLine = (value: unknown, min: number, max: number) => {
 // ONE AI call writes a short personal opening and subject for every lead in the batch.
 async function aiOpenings(leads: any[]): Promise<{ lines: Map<string, { opening: string; subject: string }>; error: string | null }> {
   const lines = new Map<string, { opening: string; subject: string }>();
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) return { lines, error: 'no AI key set' };
+  const { provider, apiKey } = aiConfig();
+  const unavailable = aiUnavailableReason(provider, apiKey);
+  if (unavailable) return { lines, error: unavailable };
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [
     'You write the opening of first-contact emails for Timigaga Studios, a web design studio. The email offers a sample website concept that was already built for the business.',

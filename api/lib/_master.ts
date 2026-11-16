@@ -2,6 +2,7 @@
 // specialist gets which task. It never does a specialist's work itself and has no tools of its
 // own except "hand a task over". The specialists run separately (see _agents.ts).
 // Optional setting (name only): MASTER_AI_MODEL. Uses the same server key as the Demo Factory.
+import { aiConfig, aiUnavailableReason } from './_ai-config.js';
 
 export interface PlannedTask {
   agent: 'lead-research' | 'demo-creation' | 'outreach';
@@ -37,7 +38,10 @@ function levelFrom(text: string): 'mid' | 'hybrid' | 'ultra' {
 
 export function statusLine(context: MasterContext) {
   const t = context.totals;
-  return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.`;
+  const emailLine = Number.isFinite(t.withEmail) && Number.isFinite(t.withoutEmail)
+    ? ` ${t.withEmail} have an email address, ${t.withoutEmail} do not; ${t.readyNoEmail || 0} ready demos are missing one.`
+    : '';
+  return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.${emailLine}`;
 }
 
 // "Build demos for my top 20 leads without a website": a request for MANY demos at once.
@@ -68,9 +72,15 @@ export function searchWishes(message: string): { count?: number; noWebsite?: boo
 export const tidyCategory = (value: string) => clean(value.replace(/^\s*(?:about|around|up to|at least)?\s*\d{1,4}\s+/i, '').replace(/\s+(?:that|which|who)\b.*$/i, '').replace(/\s+(?:without|with no|with)\b.*$/i, ''), 60);
 export const tidyCity = (value: string) => clean(value.replace(/[,;]?\s+(?:without|with no|with|that|which|who|and)\b.*$/i, ''), 60);
 
-// Used when no AI key is set or the AI call fails. Understands two plain requests.
+// Used when no AI key is set or the AI call fails. Handles factual count questions without AI.
 export function planByRules(message: string, context: MasterContext): Omit<MasterPlan, 'source' | 'aiError'> {
   const text = clean(message, 400);
+  if (/\b(?:how many|count|number of|total)\b/i.test(text) && /\b(?:leads?|business(?:es)?)\b/i.test(text) && /\bemail(?:s| address(?:es)?)?\b/i.test(text)) {
+    const totals = context.totals;
+    if (Number.isFinite(totals.withEmail) && Number.isFinite(totals.withoutEmail)) {
+      return { reply: `I found ${totals.withEmail} ${totals.withEmail === 1 ? 'lead' : 'leads'} with an email address and ${totals.withoutEmail} without one. ${totals.readyNoEmail || 0} ready ${totals.readyNoEmail === 1 ? 'demo is' : 'demos are'} missing an email.`, tasks: [] };
+    }
+  }
   const demo = text.match(/\bdemo\b.*?\bfor\s+(.+?)[.?!]*$/i);
   if (demo) {
     return { reply: `I will ask the Demo Creation Agent to prepare a demo for ${clean(demo[1], 80)}.`, tasks: [{ agent: 'demo-creation', leadName: clean(demo[1], 80), level: levelFrom(text) }] };
@@ -102,9 +112,13 @@ function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
 }
 
 export async function planRequest(message: string, history: string[], context: MasterContext): Promise<MasterPlan> {
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) return { ...planByRules(message, context), source: 'rules', aiError: null };
+  const text = clean(message, 400);
+  if (/\b(?:how many|count|number of|total)\b/i.test(text) && /\b(?:leads?|business(?:es)?)\b/i.test(text) && /\bemail(?:s| address(?:es)?)?\b/i.test(text)) {
+    return { ...planByRules(text, context), source: 'rules', aiError: null };
+  }
+  const { provider, apiKey } = aiConfig();
+  const unavailable = aiUnavailableReason(provider, apiKey);
+  if (unavailable) return { ...planByRules(message, context), source: 'rules', aiError: unavailable };
 
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [
@@ -155,9 +169,9 @@ export async function planRequest(message: string, history: string[], context: M
 
 // Turns a short voice recording into text with the same AI key. Returns only what was said.
 export async function transcribeAudio(base64: string, mimeType: string): Promise<string> {
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) throw new Error('voice input needs the AI key');
+  const { provider, apiKey } = aiConfig();
+  const unavailable = aiUnavailableReason(provider, apiKey);
+  if (unavailable) throw new Error(`Voice input needs Gemini: ${unavailable}`);
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
@@ -267,9 +281,8 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
   if (!isNew) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
 
   // The AI writes the headline from the facts, so it sounds like a person, not a template.
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+  const { provider, apiKey } = aiConfig();
+  if (aiUnavailableReason(provider, apiKey)) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const facts = [
     promising.length ? `${plural(promising.length, 'promising reply is', 'promising replies are')} waiting (${promising.slice(0, 3).map(nameOfReply).join(', ')}), suggested answers ready for ${draftsReady.length}` : 'no replies waiting',

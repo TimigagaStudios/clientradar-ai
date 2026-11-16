@@ -5,6 +5,7 @@
 // are kept and marked, never dropped; nothing becomes a lead until the owner imports it.
 
 import { recordTask } from './_team.js';
+import { aiConfig, aiUnavailableReason } from './_ai-config.js';
 
 export interface ExtractedBusiness {
   name: string;
@@ -67,9 +68,9 @@ const PROMPT = [
 
 // Sends ONE image to the AI and returns the businesses it can see.
 export async function extractBusinesses(base64: string, mimeType: string): Promise<{ businesses: ExtractedBusiness[]; model: string }> {
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) throw new Error('Screenshot import needs the AI key (DEMO_AI_PROVIDER and GEMINI_API_KEY in Vercel)');
+  const { provider, apiKey } = aiConfig();
+  const unavailable = aiUnavailableReason(provider, apiKey);
+  if (unavailable) throw new Error(`Screenshot import needs Gemini: ${unavailable}`);
   const model = process.env.SCREENSHOT_AI_MODEL || process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',

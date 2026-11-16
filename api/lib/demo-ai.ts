@@ -1,3 +1,5 @@
+import { aiConfig } from './_ai-config.js';
+
 type DemoLead = {
   business_name: string;
   category?: string;
@@ -149,8 +151,7 @@ export function normalizeDemoContent(parsed: any, level: DemoStyleLevel) {
 }
 
 export async function generateDemoContent(lead: DemoLead, templateKey: string, prompt: string, styleLevel: DemoStyleLevel = 'mid') {
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.DEMO_AI_API_KEY || process.env.GEMINI_API_KEY;
+  const { provider, apiKey } = aiConfig();
   if (provider === 'fallback' || !apiKey) return null;
 
   const model = process.env.DEMO_AI_MODEL || (provider === 'gemini' ? 'gemini-3.5-flash-lite' : '');

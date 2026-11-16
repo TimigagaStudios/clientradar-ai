@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { mailReady, sendEmail } from './_outreach.js';
+import { aiConfig } from './_ai-config.js';
 
 // Customer Communication Agent, first step: the reply inbox.
 // Replies to outreach emails arrive from the owner's own mailbox (a small script in his Google account
@@ -76,8 +77,7 @@ const LABELS: ReplyLabel[] = ['interested', 'question', 'not_interested', 'auto_
 // ONE AI call sorts all new replies of a delivery. It may only label and give a short reason.
 async function scoreByAi(items: { subject: string; text: string }[]): Promise<Map<number, { label: ReplyLabel; score: number; reason: string }>> {
   const out = new Map<number, { label: ReplyLabel; score: number; reason: string }>();
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
+  const { provider, apiKey } = aiConfig();
   if (provider !== 'gemini' || !apiKey || !items.length) return out;
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [
@@ -117,8 +117,7 @@ const builtInAnswer = (label: ReplyLabel) => label === 'question'
 
 export async function draftReplyFor(lead: any, label: ReplyLabel, replyText: string): Promise<{ text: string; by: 'ai' | 'built-in' }> {
   const fallback = builtInAnswer(label);
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
+  const { provider, apiKey } = aiConfig();
   if (provider !== 'gemini' || !apiKey) return { text: fallback, by: 'built-in' };
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [

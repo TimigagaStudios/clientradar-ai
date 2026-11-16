@@ -1,4 +1,5 @@
 import { nameKey } from './_duplicates.js';
+import { aiConfig, aiUnavailableReason } from './_ai-config.js';
 import { applyEdits, mailReady, retryFailed, sendEmail, type OutreachDraft } from './_outreach.js';
 
 // Follow-up Agent (part of Outreach): a polite second email to leads that were written to a few
@@ -86,9 +87,9 @@ const safeLine = (value: unknown, min: number, max: number) => {
 // ONE AI call writes a short follow-up opening and subject for every lead in the batch.
 async function aiNudges(leads: any[]): Promise<{ lines: Map<string, { opening: string; subject: string }>; error: string | null }> {
   const lines = new Map<string, { opening: string; subject: string }>();
-  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
-  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
-  if (provider !== 'gemini' || !apiKey) return { lines, error: 'no AI key set' };
+  const { provider, apiKey } = aiConfig();
+  const unavailable = aiUnavailableReason(provider, apiKey);
+  if (unavailable) return { lines, error: unavailable };
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [
     'You write short follow-up emails for Timigaga Studios, a web design studio. A first email offering a sample website concept was sent a few days ago and the business has not replied.',
