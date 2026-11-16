@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { runUpkeep } from '../lib/upkeep';
-import { Lead, ActivityLog, LeadStatus, OutreachLog, DemoStatus } from '../types';
+import { clearWork } from '../lib/workQueue';
+import { Lead, LeadStatus, OutreachLog, DemoStatus } from '../types';
 
 interface LeadContextType {
   leads: Lead[];
@@ -15,14 +16,14 @@ interface LeadContextType {
   deleteLead: (id: string) => Promise<void>;
   importLeads: (leads: Lead[]) => Promise<void>;
   getLeadsByStatus: (status: LeadStatus) => Lead[];
-  resetData: () => Promise<void>;
+  resetData: () => Promise<number>;
   refreshLeads: () => Promise<void>;
 }
 
 const LeadContext = createContext<LeadContextType | undefined>(undefined);
 
 function mapSupabaseLead(row: any): Lead {
-  return {
+  return ({
     id: row.id,
     businessName: row.business_name,
     category: row.category,
@@ -43,12 +44,12 @@ function mapSupabaseLead(row: any): Lead {
     notes: row.notes || '',
     demoLink: row.demo_link || undefined,
     dealValue: row.deal_value || undefined,
-    clientReplies: row.client_replies || [],   // ÃÂ¢ÃÂÃ¢ÂÂ¦ NEW
+    clientReplies: row.client_replies || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     timeline: row.timeline || [],
     outreachHistory: row.outreach_history || [],
-  };
+  } as unknown) as Lead;
 }
 
 export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -188,11 +189,24 @@ export const LeadProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return leads.filter((lead) => lead.status === status);
   };
 
-  const resetData = async () => {
-    for (const lead of leads) {
-      await fetch(`/api/leads/${lead.id}`, { method: 'DELETE' });
+  const resetData = async (): Promise<number> => {
+    const response = await fetch('/api/leads?all=1', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: 'RESET_ALL_LEADS' }),
+    });
+    const raw = await response.text();
+    let result: any = null;
+    try { result = JSON.parse(raw); } catch { /* non-JSON */ }
+
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || `Could not reset lead database (${response.status})`);
     }
+
+    try { clearWork(); } catch { /* ignore */ }
+    setLeads([]);
     await refreshLeads();
+    return Number(result.deleted) || 0;
   };
 
   return (
