@@ -4,11 +4,13 @@
 // Optional setting (name only): MASTER_AI_MODEL. Uses the same server key as the Demo Factory.
 
 export interface PlannedTask {
-  agent: 'lead-research' | 'demo-creation';
+  agent: 'lead-research' | 'demo-creation' | 'outreach';
   category?: string;
   city?: string;
   leadName?: string;
   level?: 'mid' | 'hybrid' | 'ultra';
+  kind?: 'first' | 'followup';
+  count?: number;
 }
 
 export interface MasterPlan {
@@ -92,6 +94,8 @@ function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
       tasks.push({ agent: 'lead-research', category: tidyCategory(String(raw.category)), city: tidyCity(String(raw.city)) });
     } else if (raw?.agent === 'demo-creation' && clean(raw.leadName, 80)) {
       tasks.push({ agent: 'demo-creation', leadName: clean(raw.leadName, 80), level: ['mid', 'hybrid', 'ultra'].includes(raw.level) ? raw.level : 'mid' });
+    } else if (raw?.agent === 'outreach') {
+      tasks.push({ agent: 'outreach', kind: raw?.kind === 'followup' ? 'followup' : 'first', count: Math.max(1, Math.min(25, Number(raw.count) || 25)) });
     }
   }
   return { reply, tasks };
@@ -105,20 +109,19 @@ export async function planRequest(message: string, history: string[], context: M
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const system = [
     'You are the Master Agent of ClientRadar AI, chief of staff to Timothy, owner of Timigaga Studios (a web design studio).',
-    'You coordinate a team of specialist agents. You never do their work yourself and you never invent results, numbers, leads, prices or promises.',
+    'Talk like a sharp, warm chief of staff texting the owner: plain words, 1 to 4 short sentences, no markdown, no lists, no robot talk. You may discuss ideas, answer questions and think things through with him, not only hand out tasks. Understand what he means in whatever words he uses; never make him repeat himself in exact phrases.',
+    'You coordinate specialist agents and never do their work yourself. You never invent results, numbers, leads, prices or promises. Answer questions about the business only from the records given below; if the records do not contain the answer, say you do not have it.',
     'Specialists you may hand tasks to right now:',
     '- "lead-research": searches public business listings in ANY country. Needs "category" (only the type of business, no numbers) and "city" (only the place, any city in the world). How many and "without a website" are read from the owner message automatically.',
     '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (use "mid" unless told otherwise).',
-    'The Outreach Agent writes first-contact emails for many leads at once, but you cannot start it with a task here: if the owner wants that, tell him to say "draft outreach emails". Outreach for a single named lead is done on the Outreach page.',
-    'The Outreach Agent also writes polite follow-up emails to leads that were written to at least 3 days ago and have not replied; if the owner wants that, tell him to say "follow up with the leads that did not reply". A lead is never followed up twice.',
-    'Client replies to outreach emails are collected and sorted on the Replies page by the Customer Communication Agent; what came in is listed under recent team activity. You cannot answer clients.',
-    'The Customer Communication Agent also writes a suggested answer for promising replies. The owner reads it on the Replies page and only his approval sends it. You cannot answer clients.',
+    '- "outreach" with "kind": "first": the Outreach Agent writes first-contact emails for many leads at once. Use it whenever the owner wants leads emailed, in whatever words he says it. "count" is how many (default 25). Nothing is sent without his approval.',
+    '- "outreach" with "kind": "followup": the Outreach Agent writes polite follow-up emails to leads written to at least 3 days ago that have not replied. Use it whenever he wants non-repliers chased, in whatever words he says it. A lead is never followed up twice.',
+    'Client replies to outreach emails are collected and sorted on the Replies page by the Customer Communication Agent, and a suggested answer is written for promising replies. The owner reads it there and only his approval sends it. You cannot answer clients.',
     'Quality checks, reports, scheduling and social posts are planned agents that are NOT active yet. If asked for those, say so plainly and create no task.',
     'You cannot send messages, save leads, delete anything or spend money. The owner saves found businesses himself with the Save buttons under the results.',
-    'Answer questions about the business only from the records given below. If the records do not contain the answer, say you do not have it.',
-    `Create at most ${MAX_TASKS} tasks. Create none when the request is only a question. If a needed detail is missing (for example the city), ask for it and create no task.`,
-    'Reply in one to three short plain sentences, no markdown, no lists. When you create tasks, say which agent you are asking and for what; do not claim the work is already done.',
-    'Return only JSON: {"reply": string, "tasks": [{"agent": string, "category"?: string, "city"?: string, "leadName"?: string, "level"?: string}]}',
+    `Create at most ${MAX_TASKS} tasks. Create none when the request is only a question or an idea. If a needed detail is missing (for example the city), ask for it and create no task.`,
+    'When you create tasks, say which agent you are asking and for what; do not claim the work is already done.',
+    'Return only JSON: {"reply": string, "tasks": [{"agent": string, "category"?: string, "city"?: string, "leadName"?: string, "level"?: string, "kind"?: string, "count"?: number}]}',
   ].join('\n');
   const records = [
     `Pipeline: ${statusLine(context)}`,
@@ -172,4 +175,128 @@ export async function transcribeAudio(base64: string, mimeType: string): Promise
   const body: any = await response.json();
   const text = body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || '';
   return clean(text, 600);
+}
+
+// The opening briefing: the most important things first, then the numbers only if asked.
+// The client sends the signature of the last briefing it showed; when nothing important has
+// changed, the Master says so instead of repeating itself. One AI call at most per login,
+// and none at all when nothing is new. Free tier only, like everything else here.
+
+export interface Briefing {
+  headline: string;
+  brief: string;
+  nextStep: string;
+  signature: string;
+  isNew: boolean;
+  source: 'ai' | 'rules';
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+export async function briefingFor(supabase: any, storedSig: string): Promise<Briefing> {
+  const [repliesRes, tasksRes, leadsRes, activityRes] = await Promise.all([
+    supabase.from('outreach_replies').select('id, label, draft_state, from_name, from_email').eq('status', 'new').order('created_at', { ascending: false }).limit(50),
+    supabase.from('agent_tasks').select('id, title, status, created_at').in('status', ['waiting_approval', 'failed', 'running', 'queued']).order('created_at', { ascending: false }).limit(50),
+    supabase.from('leads').select('status, demo_status, deal_value, created_at').order('created_at', { ascending: false }).limit(2000),
+    supabase.from('agent_activity').select('summary').order('created_at', { ascending: false }).limit(3),
+  ]);
+  const replies: any[] = repliesRes?.data || [];
+  const tasks: any[] = tasksRes?.data || [];
+  const leads: any[] = leadsRes?.data || [];
+  const recent: string[] = (activityRes?.data || []).map((row: any) => clean(row.summary, 160)).filter(Boolean);
+
+  const promising = replies.filter((row: any) => row.label === 'interested' || row.label === 'question');
+  const draftsReady = promising.filter((row: any) => row.draft_state === 'ready');
+  const approvals = tasks.filter((row: any) => row.status === 'waiting_approval');
+  const failed = tasks.filter((row: any) => row.status === 'failed');
+  const running = tasks.filter((row: any) => row.status === 'running' || row.status === 'queued');
+  const nameOfReply = (row: any) => clean(row.from_name || row.from_email, 60);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const count = (test: (row: any) => boolean) => leads.filter(test).length;
+  const totals = {
+    total: leads.length,
+    newToday: count((row: any) => String(row.created_at || '').slice(0, 10) === today),
+    fresh: count((row: any) => row.status === 'New'),
+    pendingReply: count((row: any) => row.status === 'Pending Reply'),
+    warm: count((row: any) => row.status === 'Interested' || row.status === 'Negotiating'),
+    closed: count((row: any) => row.status === 'Deal Closed'),
+    demosReady: count((row: any) => row.demo_status === 'Ready'),
+    pipeline: leads.reduce((sum: number, row: any) => sum + (Number(row.deal_value) || 0), 0),
+  };
+
+  // The signature covers everything the Master would brief about. Same signature = nothing new.
+  const signature = [
+    ...promising.map((row: any) => `r${row.id}`),
+    ...approvals.map((row: any) => `a${row.id}`),
+    ...failed.map((row: any) => `f${row.id}`),
+    ...running.map((row: any) => `w${row.id}`),
+  ].sort().join('|');
+  const isNew = signature !== String(storedSig || '');
+
+  const nextStep = draftsReady.length
+    ? `approve the suggested answer for ${nameOfReply(draftsReady[0])}`
+    : promising.length
+      ? `read the ${plural(promising.length, 'reply', 'replies')} waiting on the Replies page`
+      : approvals.length
+        ? `review the waiting drafts (${clean(approvals[0].title, 80)})`
+        : failed.length
+          ? `retry ${clean(failed[0].title, 80)}`
+          : totals.fresh
+            ? 'draft outreach emails for the new leads'
+            : totals.demosReady
+              ? 'send the ready demos to their businesses'
+              : 'find more leads to grow the pipeline';
+
+  const brief = `The full picture: ${plural(totals.total, 'lead', 'leads')} in the pipeline, ${totals.newToday} added today, ${totals.fresh} still new, ${totals.pendingReply} awaiting reply, ${totals.warm} warm and ${totals.closed} closed. ${plural(totals.demosReady, 'demo is', 'demos are')} ready to send. Pipeline value $${totals.pipeline.toLocaleString()}.`;
+
+  const builtInHeadline = () => {
+    if (!isNew) {
+      const recap = recent.length ? ` Last thing done: ${recent[0]}` : '';
+      return `Nothing new since we last spoke.${recap} Next: ${nextStep}.`;
+    }
+    const parts: string[] = [];
+    if (promising.length) parts.push(`${plural(promising.length, 'reply is', 'replies are')} waiting${draftsReady.length ? ` and suggested ${draftsReady.length === 1 ? 'answer is' : 'answers are'} ready` : ''} - ${promising.slice(0, 3).map(nameOfReply).join(', ')}`);
+    if (approvals.length) parts.push(`${plural(approvals.length, 'batch is', 'batches are')} waiting for your approval`);
+    if (failed.length) parts.push(`${plural(failed.length, 'thing failed', 'things failed')} - ${clean(failed[0].title, 60)}`);
+    if (running.length) parts.push(`${plural(running.length, 'task is', 'tasks are')} running`);
+    if (!parts.length) return `Everything is quiet. ${brief} Next: ${nextStep}.`;
+    return `${parts.join('. ')}. Next: ${nextStep}.`;
+  };
+
+  if (!isNew) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+
+  // The AI writes the headline from the facts, so it sounds like a person, not a template.
+  const provider = (process.env.DEMO_AI_PROVIDER || 'fallback').toLowerCase();
+  const apiKey = process.env.GEMINI_API_KEY || process.env.DEMO_AI_API_KEY;
+  if (provider !== 'gemini' || !apiKey) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+  const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
+  const facts = [
+    promising.length ? `${plural(promising.length, 'promising reply is', 'promising replies are')} waiting (${promising.slice(0, 3).map(nameOfReply).join(', ')}), suggested answers ready for ${draftsReady.length}` : 'no replies waiting',
+    approvals.length ? `${plural(approvals.length, 'batch is', 'batches are')} waiting for approval` : 'no drafts waiting for approval',
+    failed.length ? `${plural(failed.length, 'thing failed', 'things failed')}: ${clean(failed[0].title, 80)}` : 'nothing failed',
+    running.length ? `${plural(running.length, 'task is', 'tasks are')} running now` : 'no work running',
+    `pipeline: ${totals.total} leads, ${totals.newToday} added today, ${totals.warm} warm, ${totals.closed} closed, ${totals.demosReady} demos ready, value $${totals.pipeline.toLocaleString()}`,
+    recent.length ? `recently done: ${recent.join(' | ')}` : 'nothing done recently',
+    `next thing to do: ${nextStep}`,
+  ].join('\n');
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: 'You are the Master Agent briefing Timothy, owner of Timigaga Studios. Write his opening briefing in 2 to 4 short plain sentences, warm and direct, no markdown, no lists. Lead with the most important thing. Use only the facts given; never invent numbers or results. End by mentioning the next thing to do.' }] },
+        contents: [{ role: 'user', parts: [{ text: `FACTS\n${facts}` }] }],
+        generationConfig: { temperature: 0.5 },
+      }),
+    });
+    if (!response.ok) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+    const body: any = await response.json().catch(() => null);
+    const text = clean(body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join(''), 600);
+    if (text.length < 30) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+    return { headline: text, brief, nextStep, signature, isNew, source: 'ai' };
+  } catch {
+    return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
+  }
 }
