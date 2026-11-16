@@ -14,7 +14,6 @@ import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { scanLead, scanWebsite, scanSummary } from './lib/_website.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
-import { claimEmailLinkScan, completeEmailLinkScan, createEmailLinkScanRequest, importEmailLinkCandidate, latestEmailLinkScan } from './lib/_email-links.js';
 
 // AI team endpoint.
 // GET                      team register with live task and activity records.
@@ -28,8 +27,6 @@ import { claimEmailLinkScan, completeEmailLinkScan, createEmailLinkScanRequest, 
 // POST action "import-save"   reviewed records become leads in the normal leads table.
 // GET  ?view=imports          records still waiting for review.
 // POST action "scan-site"     Lead Research reads ONE lead's own website: fills a missing email, phone or Instagram and notes the brand colours.
-// POST action "email-link-scan-request" queues a one-time Gmail scan only after the logged-in owner accepts the orb prompt.
-// GET  ?view=email-link-scan-status returns the latest scan's completion status to the logged-in owner.
 
 // Reading a screenshot with the AI can take longer than the default time allowed for a server call.
 export const config = { maxDuration: 60 };
@@ -427,14 +424,6 @@ async function handleMailbox(req: VercelRequest, res: VercelResponse) {
   if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
   try {
     if (req.body.action === 'reply-senders') return res.status(200).json({ success: true, data: await replySenders(supabase) });
-    if (req.body.action === 'email-links-next') return res.status(200).json({ success: true, data: await claimEmailLinkScan(supabase) });
-    if (req.body.action === 'email-links-candidate') return res.status(200).json({ success: true, data: await importEmailLinkCandidate(supabase, req.body) });
-    if (req.body.action === 'email-links-complete') {
-      const result = await completeEmailLinkScan(supabase, req.body);
-      await note(supabase, 'lead-research', 'task_done', result.summary, String(req.body?.taskId || ''));
-      if (result.candidatesReady) await sendPush(supabase, { title: 'ClientRadar', body: `${result.candidatesReady} business ${result.candidatesReady === 1 ? 'record is' : 'records are'} ready for review from email links.`, url: '/', tag: 'email-link-imports' });
-      return res.status(200).json({ success: true, data: result });
-    }
     const taken = await takeInReplies(supabase, req.body?.replies);
     if (taken.saved) {
       await note(supabase, 'customer-communication', 'task_done', `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} came in${taken.good ? `; ${taken.good} look promising (${taken.names.slice(0, 3).join(', ')})` : '; none looks promising yet'}.`);
@@ -447,17 +436,13 @@ async function handleMailbox(req: VercelRequest, res: VercelResponse) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === 'POST' && ['reply-in', 'reply-senders', 'email-links-next', 'email-links-candidate', 'email-links-complete'].includes(String(req.body?.action || ''))) return await handleMailbox(req, res);
+  if (req.method === 'POST' && (req.body?.action === 'reply-in' || req.body?.action === 'reply-senders')) return await handleMailbox(req, res);
   if (!(await requireUser(req, res))) return;
   if (req.method === 'POST') {
     try {
       const supabase = teamClient();
       if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
       const action = req.body?.action;
-      if (action === 'email-link-scan-request') {
-        const request = await createEmailLinkScanRequest(supabase);
-        return res.status(200).json({ success: true, data: request });
-      }
       if (action === 'briefing') {
         // The opening briefing: important things first, memory of what was already said.
         return res.status(200).json({ success: true, data: await briefingFor(supabase, String(req.body?.sig || '')) });
@@ -580,12 +565,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (req.method !== 'GET') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
-  if (req.query?.view === 'email-link-scan-status') {
-    const supabase = teamClient();
-    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
-    try { return res.status(200).json({ success: true, data: await latestEmailLinkScan(supabase) }); }
-    catch (error) { return res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Could not read email scan status' }); }
-  }
   if (req.query?.view === 'outreach-drafts') {
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
