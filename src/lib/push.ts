@@ -56,7 +56,12 @@ export async function enablePush(): Promise<void> {
 export async function disablePush(): Promise<void> {
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
-  if (subscription) await subscription.unsubscribe();
+  if (subscription) {
+    const endpoint = subscription.endpoint;
+    await subscription.unsubscribe();
+    // Also remove the server record, so a stale subscription can never linger.
+    try { await call({ action: 'push-unsubscribe', endpoint }); } catch { /* already gone */ }
+  }
 }
 
 export async function testPush(): Promise<{ sent: number; errors: string[] }> {
