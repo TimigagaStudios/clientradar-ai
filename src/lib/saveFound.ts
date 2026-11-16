@@ -34,7 +34,7 @@ export function existingLeadFor(leads: Lead[], result: SearchResult): Lead | und
 }
 
 // Saves one business and returns the new lead's id. The caller refreshes the lead list once at the end.
-export async function saveFoundBusiness(result: SearchResult, typed: { category?: string; city?: string; source?: string }): Promise<string> {
+export async function saveFoundBusiness(result: SearchResult, typed: { category?: string; city?: string; source?: string; websiteScanSummary?: string }): Promise<string> {
   const { score, priority } = scoreFound(result);
   const response = await fetch('/api/leads', {
     method: 'POST',
@@ -55,7 +55,7 @@ export async function saveFoundBusiness(result: SearchResult, typed: { category?
       priority,
       status: 'New',
       demoStatus: 'Not Started',
-      notes: `Found via ${typed.source || 'Lead Finder'}. Address: ${result.address || 'not listed'}${result.country ? ` (${result.country})` : ''}`,
+      notes: [`Found via ${typed.source || 'Lead Finder'}. Address: ${result.address || 'not listed'}${result.country ? ` (${result.country})` : ''}`, typed.websiteScanSummary || ''].filter(Boolean).join('\n'),
       outreachHistory: [],
     }),
   });
