@@ -258,7 +258,7 @@ export default function MasterFloat() {
       setThinking(false);
       say({ side: 'ai', text: String(data.reply || ''), tasks });
       // In voice mode the answer is spoken back, like a phone call.
-      if (voiceMode && String(data.reply || '')) { stopVoice(); void playWords(String(data.reply)); }
+      if (!onAssistant && voiceMode && String(data.reply || '')) { stopVoice(); void playWords(String(data.reply)); }
       // Tasks that need no approval start straight away, one after another.
       for (const task of tasks.filter((item) => item.status === 'queued')) await runTask(task, false);
     } catch (error) {

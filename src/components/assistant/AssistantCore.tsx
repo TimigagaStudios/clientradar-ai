@@ -526,10 +526,10 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     const text = results.map((result) => result.summary || '').join(' ').trim();
     setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(text) }]);
     setPresenceState(results.every((result) => result.status === 'done') ? 'success' : 'error');
+    // Home-dashboard chat and task results stay text-only. Only the startup briefing may speak here.
     speakTimerRef.current = window.setTimeout(() => {
       speakTimerRef.current = null;
-      if (voiceOn) void say(toSpeech(esc(text)).slice(0, 600));
-      else setPresenceState('idle');
+      setPresenceState('idle');
     }, 1400);
   };
 
@@ -603,13 +603,8 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       return;
     }
 
-    setPresenceState('speaking');
-    if (voiceOn) {
-      void say(toSpeech(esc(reply)));
-      return;
-    }
-
-    // Voice off: stay in the responding state for a reading-time estimate.
+    // Home-dashboard chat answers are always silent, even when the startup briefing voice is on.
+    setPresenceState('success');
     speakTimerRef.current = window.setTimeout(() => {
       setPresenceState('idle');
       speakTimerRef.current = null;
