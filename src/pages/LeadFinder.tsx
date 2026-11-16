@@ -18,6 +18,12 @@ import FinderMap, { type MapArea } from '../components/FinderMap';
 import { existingLeadFor, foundKey, saveFoundBusiness, scoreFound } from '../lib/saveFound';
 
 type LastSearch = { category: string; city: string; bounds: MapArea | null };
+type WebsitePreview = {
+  emails: string[]; phones: string[]; instagram: string | null; colors: string[]; accent: string | null;
+  darkDesign: boolean | null; fonts: string[]; platform: string | null; mobileReady: boolean; secure: boolean;
+  pagesRead: string[]; summary: string;
+};
+type CandidateScan = { status: 'loading' } | { status: 'done'; data: WebsitePreview } | { status: 'failed'; error: string };
 
 const LeadFinder = () => {
   const { leads, refreshLeads } = useLeads();
@@ -35,7 +41,8 @@ const LeadFinder = () => {
   const [onlyNoSite, setOnlyNoSite] = useState(false);
   const [hideKnown, setHideKnown] = useState(true);
   const [knownKeys, setKnownKeys] = useState<Set<string>>(new Set()); // found by this search but already in the leads
-  const [bulk, setBulk] = useState<{ done: number; total: number } | null>(null);
+  const [bulk, setBulk] = useState<{ done: number; total: number; mode: 'scan' | 'save' } | null>(null);
+  const [candidateScans, setCandidateScans] = useState<Record<string, CandidateScan>>({});
 
   const [searchParams, setSearchParams] = useState({
     category: '',
@@ -64,6 +71,7 @@ const LeadFinder = () => {
       const found: SearchResult[] = result.data || [];
       const merged = offset > 0 ? [...results, ...found.filter((item) => !results.some((old) => foundKey(old) === foundKey(item)))] : found;
       setResults(merged);
+      if (offset === 0) setCandidateScans({});
       // Businesses that were already saved before this search are remembered, so they can be hidden.
       const known = new Set(offset > 0 ? knownKeys : []);
       found.forEach((item) => { if (existingLeadFor(leads, item)) known.add(foundKey(item)); });
@@ -108,27 +116,82 @@ const LeadFinder = () => {
     return existing ? { saved: true, leadId: existing.id } : { saved: false };
   }, [savedIds, leads]);
 
+  const scanCandidate = async (result: SearchResult): Promise<WebsitePreview | null> => {
+    const key = foundKey(result);
+    setCandidateScans((current) => ({ ...current, [key]: { status: 'loading' } }));
+    try {
+      const response = await fetch('/api/team', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'scan-candidate', website: result.website }),
+      });
+      const raw = await response.text();
+      let body: any = null;
+      try { body = JSON.parse(raw); } catch { /* not JSON */ }
+      if (!response.ok || !body?.success) throw new Error(body?.error || 'Website scan failed');
+      if (!body?.data?.read) throw new Error(body?.data?.reason || 'The site could not be read.');
+      const data: WebsitePreview = {
+        emails: Array.isArray(body.data.emails) ? body.data.emails : [],
+        phones: Array.isArray(body.data.phones) ? body.data.phones : [],
+        instagram: body.data.instagram || null,
+        colors: Array.isArray(body.data.colors) ? body.data.colors : [],
+        accent: /^#[0-9a-f]{6}$/i.test(String(body.data.accent || '')) ? body.data.accent : null,
+        darkDesign: typeof body.data.darkDesign === 'boolean' ? body.data.darkDesign : null,
+        fonts: Array.isArray(body.data.fonts) ? body.data.fonts : [],
+        platform: body.data.platform || null,
+        mobileReady: Boolean(body.data.mobileReady), secure: Boolean(body.data.secure),
+        pagesRead: Array.isArray(body.data.pagesRead) ? body.data.pagesRead : [],
+        summary: String(body.data.summary || ''),
+      };
+      setCandidateScans((current) => ({ ...current, [key]: { status: 'done', data } }));
+      return data;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'The website could not be read.';
+      setCandidateScans((current) => ({ ...current, [key]: { status: 'failed', error: reason } }));
+      return null;
+    }
+  };
+
   const saveOne = async (result: SearchResult) => {
-    const id = await saveFoundBusiness(result, { category: last?.category || searchParams.category, city: last?.city || searchParams.city });
+    const scanState = candidateScans[foundKey(result)];
+    const scan = scanState?.status === 'done' ? scanState.data : null;
+    const enriched: SearchResult = {
+      ...result,
+      email: result.email || scan?.emails[0] || undefined,
+      phone: result.phone || scan?.phones[0] || '',
+      instagram: result.instagram || scan?.instagram || undefined,
+    };
+    const id = await saveFoundBusiness(enriched, {
+      category: last?.category || searchParams.category, city: last?.city || searchParams.city,
+      source: source || 'Lead Finder', websiteScanSummary: scan?.summary,
+    });
     setSavedIds((prev) => ({ ...prev, [foundKey(result)]: id }));
   };
 
   const handleSaveLead = async (result: SearchResult) => {
+    const key = foundKey(result);
+    const scanState = candidateScans[key];
+    if (result.website && !scanState) {
+      const scan = await scanCandidate(result);
+      showToast({
+        type: scan ? 'success' : 'error',
+        title: scan ? 'Website scan complete' : 'Site could not be read',
+        message: scan
+          ? `${scan.emails[0] ? `Email found: ${scan.emails[0]}.` : 'No public email found on the scanned pages.'}${scan.accent ? ` Brand colour ${scan.accent}.` : ''}${scan.fonts.length ? ` Font: ${scan.fonts[0]}.` : ''} Review the result, then tap Save Lead to add it.`
+          : 'No lead was added. Review the listed details; you can tap Save without scan if you still want this lead.',
+      });
+      return;
+    }
+    if (scanState?.status === 'loading') return;
     try {
       await saveOne(result);
       await refreshLeads();
       showToast({
-        type: 'success',
-        title: 'Lead saved',
-        message: `${result.businessName} was added to your lead database.`,
+        type: 'success', title: 'Lead saved',
+        message: `${result.businessName} was added${scanState?.status === 'done' && scanState.data.emails[0] ? ` with ${scanState.data.emails[0]}` : ''}.`,
       });
     } catch (error) {
       console.error(error);
-      showToast({
-        type: 'error',
-        title: 'Save failed',
-        message: 'Could not save this lead.',
-      });
+      showToast({ type: 'error', title: 'Save failed', message: error instanceof Error ? error.message : 'Could not save this lead.' });
     }
   };
 
@@ -138,21 +201,32 @@ const LeadFinder = () => {
   const saveAll = async () => {
     const list = unsaved;
     if (!list.length || bulk) return;
+    const needsScan = list.filter((item) => item.website && !candidateScans[foundKey(item)]);
+    if (needsScan.length) {
+      setBulk({ done: 0, total: needsScan.length, mode: 'scan' });
+      let readable = 0;
+      for (const item of needsScan) {
+        if (await scanCandidate(item)) readable += 1;
+        setBulk((current) => current ? { ...current, done: current.done + 1 } : null);
+      }
+      setBulk(null);
+      showToast({
+        type: 'success', title: 'Website review finished',
+        message: `Read ${readable} of ${needsScan.length} sites. No leads were added yet. Review the extracted details, then tap Save all shown to add them.`,
+      });
+      return;
+    }
     let done = 0;
     let failed = 0;
-    setBulk({ done: 0, total: list.length });
+    setBulk({ done: 0, total: list.length, mode: 'save' });
     for (const item of list) {
       try { await saveOne(item); } catch { failed += 1; }
       done += 1;
-      setBulk({ done, total: list.length });
+      setBulk({ done, total: list.length, mode: 'save' });
     }
     await refreshLeads();
     setBulk(null);
-    showToast({
-      type: failed ? 'error' : 'success',
-      title: failed ? 'Some leads were not saved' : 'Leads saved',
-      message: `${done - failed} saved${failed ? `, ${failed} failed` : ''}.`,
-    });
+    showToast({ type: failed ? 'error' : 'success', title: failed ? 'Some leads were not saved' : 'Leads saved', message: `${done - failed} saved${failed ? `, ${failed} failed` : ''}.` });
   };
 
   const inputClasses =
@@ -287,7 +361,7 @@ const LeadFinder = () => {
                 disabled={!unsaved.length || Boolean(bulk)}
                 className="neo-button px-4 py-2 rounded-full text-sm font-semibold text-[var(--text-primary)] disabled:opacity-50"
               >
-                {bulk ? `Saving ${bulk.done} of ${bulk.total}...` : unsaved.length ? `Save all ${unsaved.length} shown` : 'All shown are saved'}
+                {bulk ? bulk.mode === 'scan' ? `Scanning ${bulk.done} of ${bulk.total} sites...` : `Saving ${bulk.done} of ${bulk.total}...` : unsaved.length ? `Save all ${unsaved.length} shown (scan first)` : 'All shown are saved'}
               </button>
             </div>
           </div>
@@ -309,6 +383,7 @@ const LeadFinder = () => {
                   const { score, priority } = calculateScore(result);
                   const state = stateOf(result);
                   const isSaved = state.saved;
+                  const websiteScan = candidateScans[foundKey(result)];
 
                   return (
                     <tr
@@ -349,6 +424,19 @@ const LeadFinder = () => {
                           >
                             <Globe size={14} /> Visit Site
                           </a>
+                        )}
+                        {websiteScan?.status === 'loading' && <p className="mt-2 text-xs text-[var(--text-secondary)]">Reading public site before saving...</p>}
+                        {websiteScan?.status === 'failed' && <p className="mt-2 max-w-xs text-xs text-amber-300">Scan unavailable: {websiteScan.error} Saving without scan remains your choice.</p>}
+                        {websiteScan?.status === 'done' && (
+                          <div className="mt-2 max-w-xs rounded-xl border border-white/10 bg-black/10 p-2.5 text-xs text-[var(--text-secondary)]" data-website-scan>
+                            <p className="font-semibold text-[var(--text-primary)]">Website facts checked</p>
+                            <p className="mt-1">{(result.email || websiteScan.data.emails[0]) ? `Email: ${result.email || websiteScan.data.emails[0]}` : 'No public email found on the scanned pages.'}</p>
+                            {websiteScan.data.phones[0] && <p>Phone: {websiteScan.data.phones[0]}</p>}
+                            <p className="mt-1 flex items-center gap-1.5">Brand colour: {websiteScan.data.accent ? <><span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: websiteScan.data.accent }} />{websiteScan.data.accent}</> : 'not clear'}</p>
+                            {websiteScan.data.fonts.length > 0 && <p>Fonts: {websiteScan.data.fonts.join(', ')}</p>}
+                            {websiteScan.data.darkDesign !== null && <p>Look: {websiteScan.data.darkDesign ? 'dark' : 'light'} design</p>}
+                            <p className="mt-1">{websiteScan.data.pagesRead.length} site page(s) checked. These are public-page details, not guesses.</p>
+                          </div>
                         )}
                       </td>
 
@@ -395,7 +483,7 @@ const LeadFinder = () => {
                         ) : (
                           <button
                             onClick={() => handleSaveLead(result)}
-                            disabled={isSaved || Boolean(bulk)}
+                            disabled={isSaved || Boolean(bulk) || websiteScan?.status === 'loading'}
                             className={cn(
                               'px-4 py-2 rounded-full text-sm font-semibold transition-all inline-flex items-center gap-2',
                               isSaved
@@ -403,15 +491,7 @@ const LeadFinder = () => {
                                 : 'neo-button text-[var(--text-primary)] hover:text-[var(--accent)]'
                             )}
                           >
-                            {isSaved ? (
-                              <>
-                                <Check size={14} /> Saved
-                              </>
-                            ) : (
-                              <>
-                                <Plus size={14} /> Save Lead
-                              </>
-                            )}
+                            {isSaved ? <><Check size={14} /> Saved</> : websiteScan?.status === 'loading' ? 'Scanning site...' : result.website && !websiteScan ? 'Scan site first' : websiteScan?.status === 'failed' ? 'Save without scan' : <><Plus size={14} /> Save Lead</>}
                           </button>
                         )}
                       </td>
