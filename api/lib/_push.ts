@@ -1,4 +1,5 @@
 import { sendNotification, setVapidDetails } from 'web-push';
+import { createECDH } from 'node:crypto';
 
 // Lock-screen push notifications for the installed PWA (Phase 0 of the app plan).
 // The owner subscribes from Settings; the server sends when something important happens:
@@ -24,6 +25,10 @@ export function vapidProblem(): string | null {
     if (pub.length !== 65 || pub[0] !== 4) return 'The public key in Vercel is not a valid VAPID public key. Generate fresh keys and paste them again.';
     const priv = Buffer.from(String(process.env.VAPID_PRIVATE_KEY || '').trim(), 'base64url');
     if (priv.length !== 32) return 'The private key in Vercel has the wrong shape (it must decode to 32 bytes). Generate fresh keys and paste them again.';
+    // Prove the two keys are a matching pair: derive the public key from the private key.
+    const ecdh = createECDH('prime256v1');
+    ecdh.setPrivateKey(priv);
+    if (!ecdh.getPublicKey().equals(pub)) return 'The public and private keys in Vercel do not belong together. Generate one fresh pair and paste both again.';
   } catch {
     return 'One of the VAPID keys in Vercel is not readable. Generate fresh keys and paste them again.';
   }
@@ -50,12 +55,22 @@ export async function saveSubscription(supabase: any, sub: any) {
   return { saved: true };
 }
 
+export async function deleteSubscription(supabase: any, endpoint: string): Promise<{ deleted: boolean }> {
+  const ep = String(endpoint || '').trim();
+  if (!ep) return { deleted: false };
+  const { error } = await supabase.from('push_subscriptions').delete().eq('endpoint', ep);
+  if (error) throw new Error(error.message);
+  return { deleted: true };
+}
+
 export interface PushMessage { title: string; body: string; url?: string; tag?: string }
 
 // Sends to every subscribed device. Expired subscriptions are removed. Never throws:
 // a notification failure must never break the work that triggered it.
 export async function sendPush(supabase: any, message: PushMessage): Promise<{ sent: number; errors: string[] }> {
   if (!pushConfigured()) return { sent: 0, errors: ['The VAPID keys are missing in Vercel.'] };
+  const problem = vapidProblem();
+  if (problem) return { sent: 0, errors: [problem] };
   const errors: string[] = [];
   try {
     ensureVapid();
@@ -71,6 +86,11 @@ export async function sendPush(supabase: any, message: PushMessage): Promise<{ s
       } catch (error: any) {
         const status = Number(error?.statusCode || 0);
         if (status === 404 || status === 410) await supabase.from('push_subscriptions').delete().eq('id', row.id);
+        else if (status === 400) {
+          // Stale subscription (made with old keys): remove it so it stops failing.
+          await supabase.from('push_subscriptions').delete().eq('id', row.id);
+          errors.push('An old subscription was removed. Turn notifications off and on again to reconnect this phone.');
+        }
         else errors.push(`Push service said ${status || 'error'}: ${String(error?.message || error).slice(0, 120)}`);
       }
     }));
