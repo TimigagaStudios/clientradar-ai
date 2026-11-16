@@ -5,7 +5,7 @@ import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } 
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
-import { listReplies, replyNews, replySenders, secretOk, setReplyStatus, takeInReplies } from './lib/_replies.js';
+import { listReplies, replyNews, replySenders, secretOk, sendReplyAnswer, setReplyStatus, skipReplyDraft, takeInReplies } from './lib/_replies.js';
 import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFollowUps } from './lib/_followup.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
@@ -445,6 +445,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(out.status).json(out.body);
       }
       if (action === 'reply-status') return res.status(200).json({ success: true, data: await setReplyStatus(supabase, String(req.body?.id || ''), String(req.body?.status || '')) });
+      if (action === 'reply-skip-draft') return res.status(200).json({ success: true, data: await skipReplyDraft(supabase, String(req.body?.id || '')) });
+      if (action === 'reply-send') {
+        // Sending an answer to a client needs the owner's approval, like every other send.
+        if (req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'Sending an answer needs your approval' });
+        const out = await sendReplyAnswer(supabase, String(req.body?.id || ''), String(req.body?.text || ''));
+        await note(supabase, 'customer-communication', 'sent', `You answered a reply from ${out.to}`, null, null);
+        return res.status(200).json({ success: true, data: out });
+      }
       if (action === 'duplicate-separate') {
         const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
         if (ids.length < 2) return res.status(400).json({ success: false, error: 'Choose the leads to keep apart' });
