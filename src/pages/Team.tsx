@@ -30,6 +30,7 @@ interface TeamTask {
   status: string;
   leadId: string | null;
   leadName: string | null;
+  followUp?: boolean;
   error: string | null;
   createdAt: string;
 }
@@ -221,7 +222,7 @@ const Team = () => {
                   <p className="text-xs text-[var(--text-secondary)] mt-0.5">
                     {nameOf(task.agentKey)} - {task.status.replace('_', ' ')} - {timeAgo(task.createdAt)}
                     {task.leadId && <> - <Link to={`/leads/${task.leadId}`} className="underline">{task.leadName || 'Open lead'}</Link></>}
-                    {task.agentKey === 'outreach' && <> - <Link to={`/outreach/drafts/${task.id}`} className="underline" data-drafts-link>Open drafts</Link></>}
+                    {task.agentKey === 'outreach' && <> - <Link to={task.followUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`} className="underline" data-drafts-link>Open drafts</Link></>}
                   </p>
                   {task.error && <p className="text-xs text-red-400 mt-1 break-words">{task.error}</p>}
                 </div>
