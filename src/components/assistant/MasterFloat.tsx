@@ -18,6 +18,7 @@ const DUP_KEY = 'cr-duplicate-notice';
 const MAIL_KEY = 'cr-outreach-offer';
 const FOLLOWUP_KEY = 'cr-followup-offer';
 const REPLY_KEY = 'cr-replies-told';
+const PUSH_KEY = 'cr-push-offer';
 const lineId = () => Math.random().toString(36).slice(2, 9);
 const postTeam = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -63,6 +64,24 @@ export default function MasterFloat() {
   const [recording, setRecording] = useState(false);
   const [voiceMode, setVoiceMode] = useState(() => { try { return localStorage.getItem('cr-voice-on') === '1'; } catch { return false; } });
   const recorder = useRef<{ media: MediaRecorder; stream: MediaStream; chunks: Blob[]; timer: number } | null>(null);
+  // Summoned by voice: a Siri Shortcut (or any link) opens the app with ?talk=1 and the
+  // orb opens straight away with the mic ready. Phones need one tap for the microphone.
+  const [talkMode, setTalkMode] = useState(false);
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('talk') !== '1') return;
+      setTalkMode(true);
+      setOpen(true);
+      setVoiceNote('Tap Mic and talk to the Master Agent.');
+      params.delete('talk');
+      const clean = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+      window.history.replaceState(null, '', clean);
+      const timer = window.setTimeout(() => setTalkMode(false), 20000);
+      return () => window.clearTimeout(timer);
+    } catch { /* no query string */ }
+    return undefined;
+  }, []);
   const setVoiceModeBoth = (on: boolean) => { setVoiceMode(on); try { localStorage.setItem('cr-voice-on', on ? '1' : '0'); } catch { /* ignore */ } };
 
   const addNotice = (notice: Notice) => { setNotices((current) => (current.some((item) => item.text === notice.text) ? current : [...current, notice])); setOpen(true); };
@@ -105,6 +124,17 @@ export default function MasterFloat() {
         if (body?.success && follow?.ready > 0 && Date.now() - Number(localStorage.getItem(FOLLOWUP_KEY) || 0) > 24 * 3600 * 1000) {
           localStorage.setItem(FOLLOWUP_KEY, String(Date.now()));
           addNotice({ action: 'draft-followup', yes: 'Yes, write them', text: `${follow.ready} ${follow.ready === 1 ? 'lead was' : 'leads were'} written to at least 3 days ago and ${follow.ready === 1 ? 'has' : 'have'} not replied. Shall I have the Outreach Agent write a polite follow-up for ${follow.ready === 1 ? 'it' : 'them'}? You read ${follow.ready === 1 ? 'it' : 'them'} and approve once; nothing is sent before that.` });
+        }
+        // Lock-screen notifications: offered once a week at most, only when not subscribed yet.
+        if (body?.success && Date.now() - Number(localStorage.getItem(PUSH_KEY) || 0) > 7 * 24 * 3600 * 1000) {
+          try {
+            const registration = await navigator.serviceWorker?.ready;
+            const subscription = await registration?.pushManager?.getSubscription();
+            if (!subscription) {
+              localStorage.setItem(PUSH_KEY, String(Date.now()));
+              addNotice({ to: '/settings', yes: 'Turn them on', text: 'Want new replies, drafts ready and finished demos on your lock screen, even when ClientRadar is closed? Turn on notifications in Settings.' });
+            }
+          } catch { /* push is optional */ }
         }
         const count = Number(body?.data?.count) || 0;
         if (!body?.success || !count || snoozed) return;
@@ -245,11 +275,11 @@ export default function MasterFloat() {
   };
 
   // ---- Voice: reads the current message aloud when asked. Never speaks by itself.
-  useEffect(() => { setVoiceNote(''); }, [text]);
+  useEffect(() => { if (text) setVoiceNote(''); }, [text]);
 
   // The panel tucks itself away: at once when you touch or scroll the page behind it,
   // and after a few quiet seconds. It stays while you type, while an answer is on its way, or while it is speaking.
-  const busy = typing || thinking || recording || voice !== 'idle' || draft.trim().length > 0;
+  const busy = typing || thinking || recording || (talkMode && chat.length === 0) || voice !== 'idle' || draft.trim().length > 0;
   const [touched, setTouched] = useState(0);
   useEffect(() => {
     if (!open) return;
@@ -393,7 +423,7 @@ export default function MasterFloat() {
   };
 
   // On the home page the full chat is already there, so the orb only appears when it has something to report.
-  if (!text && onAssistant) return null;
+  if (!text && onAssistant && !talkMode) return null;
   const lastReply = [...chat].reverse().find((line) => line.side === 'ai')?.text || '';
   const toRead = text || lastReply;
 
