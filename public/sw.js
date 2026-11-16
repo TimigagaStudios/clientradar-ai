@@ -57,3 +57,34 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+// Push notifications: replies, drafts ready, demos finished. The server sends a small
+// JSON payload { title, body, url }; tapping the notification opens that page.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { /* plain text */ }
+  const title = data.title || 'ClientRadar';
+  const options = {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: data.tag || 'clientradar',
+    data: { url: data.url || '/' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeControlled: true }).then((list) => {
+      for (const client of list) {
+        if ('focus' in client) {
+          if ('navigate' in client) client.navigate(url).catch(() => undefined);
+          return client.focus();
+        }
+      }
+      return clients.openWindow(url);
+    })
+  );
+});
