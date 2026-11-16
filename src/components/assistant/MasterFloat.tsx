@@ -16,6 +16,7 @@ const POS_KEY = 'cr-orb-pos';
 const SNOOZE_KEY = 'cr-demo-update-later';
 const DUP_KEY = 'cr-duplicate-notice';
 const MAIL_KEY = 'cr-outreach-offer';
+const REPLY_KEY = 'cr-replies-told';
 const lineId = () => Math.random().toString(36).slice(2, 9);
 const postTeam = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -72,7 +73,8 @@ export default function MasterFloat() {
     // The Records Upkeep Agent checks for demos built before the newest sections existed and reports here.
     const timer = window.setTimeout(async () => {
       try {
-        if (Date.now() - Number(localStorage.getItem(SNOOZE_KEY) || 0) < 24 * 3600 * 1000 || workActive()) return;
+        if (workActive()) return;
+        const snoozed = Date.now() - Number(localStorage.getItem(SNOOZE_KEY) || 0) < 24 * 3600 * 1000;
         const response = await fetch('/api/team?view=demo-updates');
         const body = JSON.parse(await response.text());
         // Business names saved more than once: said once a week at most.
@@ -81,6 +83,12 @@ export default function MasterFloat() {
           localStorage.setItem(DUP_KEY, String(Date.now()));
           addNotice({ to: '/leads/duplicates', yes: 'Review them', text: `${repeats.names} business ${repeats.names === 1 ? 'name is' : 'names are'} saved more than once (for example ${repeats.example})${repeats.likelySame ? `; ${repeats.likelySame} look like the same business saved twice` : ''}. You can merge them or keep them as separate branches. Nothing was deleted.` });
         }
+        // Client replies not yet looked at: said once for each newest reply.
+        const news = body?.data?.replies;
+        if (body?.success && news?.fresh > 0 && news.newest && localStorage.getItem(REPLY_KEY) !== news.newest) {
+          localStorage.setItem(REPLY_KEY, String(news.newest));
+          addNotice({ to: '/replies', yes: 'Read them', text: `${news.fresh} ${news.fresh === 1 ? 'reply' : 'replies'} to your outreach ${news.fresh === 1 ? 'is' : 'are'} waiting${news.good ? `; ${news.good} ${news.good === 1 ? 'looks' : 'look'} promising` : ''}.` });
+        }
         // Demos that are ready but were never emailed: offered once a day at most.
         const mail = body?.data?.outreach;
         if (body?.success && mail?.ready > 0 && Date.now() - Number(localStorage.getItem(MAIL_KEY) || 0) > 24 * 3600 * 1000) {
@@ -88,7 +96,7 @@ export default function MasterFloat() {
           addNotice({ action: 'draft-outreach', yes: 'Yes, write them', text: `${mail.ready} ${mail.ready === 1 ? 'lead has' : 'leads have'} a ready demo and an email address but ${mail.ready === 1 ? 'has' : 'have'} not been written to. Shall I have the Outreach Agent write the emails? You read them and approve once; nothing is sent before that.` });
         }
         const count = Number(body?.data?.count) || 0;
-        if (!body?.success || !count) return;
+        if (!body?.success || !count || snoozed) return;
         const label: Record<string, string> = { faq: 'a "Common questions" section', process: 'a "How it works" section', photos: 'photos' };
         const sections = (body.data.sections || []).map((key: string) => label[key] || key).join(', ');
         addNotice({ action: 'refresh-demos', yes: `Yes, update ${count === 1 ? 'it' : 'them'}`, text: `The records agent found ${count} ${count === 1 ? 'demo' : 'demos'} built before the latest upgrade. What can be added: ${sections}. Shall I update ${count === 1 ? 'it' : 'them'}? The existing wording and the link stay the same.` });
