@@ -21,13 +21,15 @@
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.0",
     "tailwind-merge": "^3.4.0",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.17",
     "@types/node": "^22.0.0",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "@types/web-push": "^3.6.4",
     "@vercel/node": "^13.0.0",
     "@vitejs/plugin-react": "5.1.1",
     "tailwindcss": "4.1.17",
