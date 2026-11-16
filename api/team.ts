@@ -6,7 +6,7 @@ import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
 import { listReplies, replyNews, replySenders, secretOk, sendReplyAnswer, setReplyStatus, skipReplyDraft, takeInReplies } from './lib/_replies.js';
-import { pushConfigured, pushPublicKey, saveSubscription, sendPush } from './lib/_push.js';
+import { pushConfigured, pushPublicKey, saveSubscription, sendPush, vapidProblem } from './lib/_push.js';
 import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFollowUps } from './lib/_followup.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
@@ -463,11 +463,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(out.status).json(out.body);
       }
       if (action === 'reply-status') return res.status(200).json({ success: true, data: await setReplyStatus(supabase, String(req.body?.id || ''), String(req.body?.status || '')) });
-      if (action === 'push-key') return res.status(200).json({ success: true, data: { configured: pushConfigured(), publicKey: pushPublicKey() } });
+      if (action === 'push-key') return res.status(200).json({ success: true, data: { configured: pushConfigured(), publicKey: pushPublicKey(), problem: vapidProblem() } });
       if (action === 'push-subscribe') return res.status(200).json({ success: true, data: await saveSubscription(supabase, req.body?.subscription) });
       if (action === 'push-test') {
         const out = await sendPush(supabase, { title: 'ClientRadar', body: 'Notifications are working. Replies, drafts and demos will reach you here.', url: '/', tag: 'test' });
-        return res.status(200).json({ success: true, data: { sent: out.sent, configured: pushConfigured() } });
+        return res.status(200).json({ success: true, data: { sent: out.sent, configured: pushConfigured(), errors: out.errors } });
       }
       if (action === 'reply-skip-draft') return res.status(200).json({ success: true, data: await skipReplyDraft(supabase, String(req.body?.id || '')) });
       if (action === 'reply-send') {
