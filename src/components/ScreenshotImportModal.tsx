@@ -19,7 +19,6 @@ type ImportRecord = {
   id: string; batchId: string; fileName: string; extractedAt: string; saved: boolean; confidence: number;
   name: string; category: string; address: string; city: string; country: string; phone: string; website: string; email: string;
   rating: number | null; reviewCount: number | null; description: string; merged?: number;
-  source?: 'screenshot' | 'email-link'; sourceMeta?: { originalLanguage?: string; sender?: string; subject?: string; translated?: boolean; scanSummary?: string } | null;
 };
 const MERGE_FIELDS = ['name', 'category', 'address', 'city', 'country', 'phone', 'website', 'email', 'rating', 'reviewCount', 'description'];
 
@@ -91,10 +90,7 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
     fetch('/api/team?view=imports').then((response) => response.json()).then((result) => {
       const waiting: ImportRecord[] = result?.data?.records || [];
       setStoreReady(result?.data?.ready !== false);
-      if (waiting.length) setRecords((current) => {
-        const known = new Set(current.map((record) => record.id));
-        return [...current, ...waiting.filter((record) => !known.has(record.id))];
-      });
+      if (waiting.length) setRecords((current) => (current.length ? current : waiting));
     }).catch(() => undefined);
   }, [open]);
 
@@ -297,8 +293,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
       <div className="neo-card w-full max-w-3xl p-5 md:p-8 max-h-[92vh] overflow-y-auto" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 mb-5">
           <div>
-            <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2"><Images size={20} className="text-[var(--accent)]" />Business Import Review</h2>
-            <p className="text-sm text-[var(--text-secondary)] mt-1">Review records extracted from screenshots or owner-approved email website links. Nothing becomes a lead until you select it and import.</p>
+            <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2"><Images size={20} className="text-[var(--accent)]" />AI Screenshot Import</h2>
+            <p className="text-sm text-[var(--text-secondary)] mt-1">Add screenshots of business listings (Apple Maps, Google Maps or any directory). The AI reads every business into its own record for you to review before anything is saved.</p>
           </div>
           <button onClick={close} className="p-2 rounded-xl neo-button text-[var(--text-secondary)]" aria-label="Close" disabled={importing}><X size={16} /></button>
         </div>
@@ -372,11 +368,8 @@ const ScreenshotImportModal: React.FC<{ open: boolean; onClose: () => void }> = 
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-[var(--text-primary)] break-words">{record.name || 'Name not readable'}</p>
                         <p className="text-xs text-[var(--text-secondary)] break-words">{[record.category, record.city || record.address, record.phone, record.website, record.email, record.rating !== null ? `${record.rating} stars${record.reviewCount !== null ? ` (${record.reviewCount})` : ''}` : ''].filter(Boolean).join(' | ') || 'No other details visible'}</p>
-                        {record.description && <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">{record.description}</p>}
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <span className={`${chip} ${flag.low ? 'bg-amber-500/15 text-amber-500' : 'bg-emerald-500/15 text-emerald-500'}`}>{Math.round(record.confidence * 100)}% sure</span>
-                          {record.source === 'email-link' && <span className={`${chip} bg-sky-500/15 text-sky-500`}>Email link{record.sourceMeta?.originalLanguage ? ` · ${record.sourceMeta.originalLanguage}` : ''}{record.sourceMeta?.translated ? ' · translated to English' : ''}</span>}
-                          {record.source === 'email-link' && record.sourceMeta?.sender && <span className={`${chip} bg-black/10 dark:bg-white/10 text-[var(--text-secondary)]`}>From: {record.sourceMeta.sender}</span>}
                           {(record.merged || 0) > 1 && <span className={`${chip} bg-emerald-500/15 text-emerald-500`}>Joined from {record.merged} screenshots</span>}
                           {flag.duplicate && <span className={`${chip} bg-red-500/15 text-red-500`}><AlertTriangle size={11} />{flag.duplicate}</span>}
                           {flag.missing.length > 0 && <span className={`${chip} bg-black/10 dark:bg-white/10 text-[var(--text-secondary)]`}>Missing: {flag.missing.join(', ')}</span>}

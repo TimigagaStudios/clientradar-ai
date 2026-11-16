@@ -61,12 +61,6 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const openImports = () => setIsShotImportOpen(true);
-    window.addEventListener('cr-open-imports', openImports);
-    return () => window.removeEventListener('cr-open-imports', openImports);
-  }, []);
-
   const displayName = 'Timigaga Studios';
 
   const maskEmail = (email: string | null) => {
