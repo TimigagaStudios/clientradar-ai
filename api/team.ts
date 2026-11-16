@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
-import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } from './lib/_master.js';
+import { planRequest, transcribeAudio, searchWishes, batchDemoWish, briefingFor, MAX_BATCH } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
@@ -96,6 +96,14 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   const context = await masterContext(supabase);
   const plan = await planRequest(message, history, context);
   let reply = plan.reply;
+
+  // The Master Agent understood an outreach or follow-up request in the owner's own words.
+  const mailTask = plan.tasks.find((task) => task.agent === 'outreach');
+  if (mailTask) {
+    return mailTask.kind === 'followup'
+      ? await handleFollowUp(supabase, req, res, message, mailTask.count || 25)
+      : await handleBatchOutreach(supabase, req, res, message, mailTask.count || 25);
+  }
 
   // Turn the plan into task rows. Demo tasks must point at exactly one saved lead.
   const rows: any[] = [];
@@ -417,6 +425,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const supabase = teamClient();
       if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
       const action = req.body?.action;
+      if (action === 'briefing') {
+        // The opening briefing: important things first, memory of what was already said.
+        return res.status(200).json({ success: true, data: await briefingFor(supabase, String(req.body?.sig || '')) });
+      }
       if (action === 'chat') return await handleChat(supabase, req, res);
       if (action === 'run') return await handleRun(supabase, req, res);
       if (action === 'cancel') return await handleCancel(supabase, req, res);
