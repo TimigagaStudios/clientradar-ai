@@ -7,7 +7,7 @@ import './fluidOrb.css';
 // says when work is finished and offers the next step. It only shows real task results.
 // The orb can be dragged anywhere on the screen, and it can read its message aloud.
 
-type Notice = { text: string; to?: string; yes?: string; action?: 'refresh-demos' | 'draft-outreach' | 'draft-followup' };
+type Notice = { text: string; to?: string; yes?: string; action?: 'refresh-demos' | 'draft-outreach' | 'draft-followup' | 'scan-email-links' | 'review-email-imports' };
 type Spot = { x: number; y: number };
 type ChatTask = { id: string; agentName?: string; title: string; status: string; summary?: string; error?: string | null; link?: string };
 type ChatLine = { id: string; side: 'me' | 'ai'; text: string; tasks?: ChatTask[] };
@@ -19,6 +19,9 @@ const MAIL_KEY = 'cr-outreach-offer';
 const FOLLOWUP_KEY = 'cr-followup-offer';
 const REPLY_KEY = 'cr-replies-told';
 const PUSH_KEY = 'cr-push-offer';
+const EMAIL_LINK_PROMPT_KEY = 'cr-email-link-scan-accepted';
+const EMAIL_LINK_DECLINED_KEY = 'cr-email-link-scan-declined';
+const EMAIL_LINK_RESULT_KEY = 'cr-email-link-scan-result-seen';
 const lineId = () => Math.random().toString(36).slice(2, 9);
 const postTeam = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -86,6 +89,43 @@ export default function MasterFloat() {
 
   const addNotice = (notice: Notice) => { setNotices((current) => (current.some((item) => item.text === notice.text) ? current : [...current, notice])); setOpen(true); };
   const dropNotice = () => setNotices((current) => current.slice(1));
+
+  // One-time opt-in: Gmail remains untouched until the owner explicitly accepts.
+  useEffect(() => {
+    let cancelled = false;
+    const checkLatest = async () => {
+      try {
+        if (!Number(localStorage.getItem(EMAIL_LINK_PROMPT_KEY) || 0)) return;
+        const response = await fetch('/api/team?view=email-link-scan-status');
+        const result = await response.json();
+        const latest = result?.data;
+        if (cancelled || !result?.success || latest?.status !== 'done') return;
+        if (localStorage.getItem(EMAIL_LINK_RESULT_KEY) === latest.id) return;
+        localStorage.setItem(EMAIL_LINK_RESULT_KEY, latest.id);
+        const candidates = Math.max(0, Number(latest.output?.candidatesReady) || 0);
+        addNotice(candidates ? {
+          action: 'review-email-imports', yes: 'Review extracted data',
+          text: `Email-link scan finished: ${candidates} business ${candidates === 1 ? 'record is' : 'records are'} waiting for your review. Nothing has been added as a lead yet.`,
+        } : { text: 'Email-link scan finished, but no readable business records were extracted. No email or lead was changed.' });
+      } catch { /* optional completion notice */ }
+    };
+    const timer = window.setTimeout(() => {
+      try {
+        const acceptedAt = Number(localStorage.getItem(EMAIL_LINK_PROMPT_KEY) || 0);
+        const declinedAt = Number(localStorage.getItem(EMAIL_LINK_DECLINED_KEY) || 0);
+        if (Date.now() - acceptedAt > 24 * 60 * 60 * 1000 && Date.now() - declinedAt > 7 * 24 * 60 * 60 * 1000) {
+          addNotice({
+            action: 'scan-email-links', yes: 'Yes, scan links',
+            text: 'May I check received inbox emails from the last 30 days for business website links? If you accept, the Gmail helper sends only each match’s sender, subject, date, Gmail message ID, website link and link label—not the email body—to ClientRadar. I’ll read the public sites; their visible text may go to your configured Gemini API for English translation and extraction. Up to 10 matching emails. No email is changed and nothing becomes a lead until you review and import it.'
+          });
+        }
+      } catch { /* consent prompt storage is optional */ }
+      void checkLatest();
+    }, 2200);
+    const poll = window.setInterval(() => void checkLatest(), 60_000);
+    return () => { cancelled = true; window.clearTimeout(timer); window.clearInterval(poll); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const stop = subscribeWork((next) => { setWork({ ...next }); setOpen(true); });
@@ -186,6 +226,25 @@ export default function MasterFloat() {
     setThinking(false);
   };
 
+  const startEmailLinkScan = async () => {
+    dropNotice();
+    setOpen(true);
+    setThinking(true);
+    try {
+      const data = await postTeam({ action: 'email-link-scan-request' });
+      try { localStorage.setItem(EMAIL_LINK_PROMPT_KEY, String(Date.now())); localStorage.removeItem(EMAIL_LINK_DECLINED_KEY); } catch { /* consent decision is best-effort */ }
+      addNotice({ text: data?.alreadyQueued ? 'An approved email-link scan is already waiting or running. The Gmail helper will process it on its next check.' : 'Approved. The Gmail helper will check your recent inbox on its next scheduled run (usually within 10 minutes). Extracted details will wait for your review; nothing is auto-saved.' });
+    } catch (error) {
+      say({ side: 'ai', text: `I could not queue the scan: ${error instanceof Error ? error.message : 'unknown reason'}. No email was accessed.` });
+    }
+    setThinking(false);
+  };
+
+  const openEmailImports = () => {
+    dropNotice();
+    window.dispatchEvent(new Event('cr-open-imports'));
+  };
+
   const sum = workSummary(work);
   const active = workActive();
   const onAssistant = location.pathname === '/';
@@ -209,7 +268,13 @@ export default function MasterFloat() {
     no = { label: 'Later', run: clearWork };
   } else if (notice) {
     text = notice.text;
-    if (notice.action === 'draft-outreach') {
+    if (notice.action === 'scan-email-links') {
+      yes = { label: notice.yes || 'Yes, scan links', run: () => void startEmailLinkScan() };
+      no = { label: 'Not now', run: () => { try { localStorage.setItem(EMAIL_LINK_DECLINED_KEY, String(Date.now())); } catch { /* ignore */ } dropNotice(); } };
+    } else if (notice.action === 'review-email-imports') {
+      yes = { label: notice.yes || 'Review extracted data', run: openEmailImports };
+      no = { label: 'Later', run: dropNotice };
+    } else if (notice.action === 'draft-outreach') {
       yes = { label: notice.yes || 'Yes', run: () => void startOutreach() };
       no = { label: 'Not now', run: dropNotice };
     } else if (notice.action === 'draft-followup') {
