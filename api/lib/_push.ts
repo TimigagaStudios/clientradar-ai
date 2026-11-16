@@ -15,6 +15,21 @@ export function pushPublicKey(): string {
   return String(process.env.VAPID_PUBLIC_KEY || '').trim();
 }
 
+// Catches the classic mistakes (swapped keys, truncated copy, wrong format) before
+// they turn into silent failures. Returns a plain message, or null when all is well.
+export function vapidProblem(): string | null {
+  if (!pushConfigured()) return 'The VAPID keys are missing in Vercel.';
+  try {
+    const pub = Buffer.from(pushPublicKey(), 'base64url');
+    if (pub.length !== 65 || pub[0] !== 4) return 'The public key in Vercel is not a valid VAPID public key. Generate fresh keys and paste them again.';
+    const priv = Buffer.from(String(process.env.VAPID_PRIVATE_KEY || '').trim(), 'base64url');
+    if (priv.length !== 32) return 'The private key in Vercel has the wrong shape (it must decode to 32 bytes). Generate fresh keys and paste them again.';
+  } catch {
+    return 'One of the VAPID keys in Vercel is not readable. Generate fresh keys and paste them again.';
+  }
+  return null;
+}
+
 let vapidSet = false;
 function ensureVapid() {
   if (vapidSet) return;
@@ -39,12 +54,13 @@ export interface PushMessage { title: string; body: string; url?: string; tag?: 
 
 // Sends to every subscribed device. Expired subscriptions are removed. Never throws:
 // a notification failure must never break the work that triggered it.
-export async function sendPush(supabase: any, message: PushMessage): Promise<{ sent: number }> {
-  if (!pushConfigured()) return { sent: 0 };
+export async function sendPush(supabase: any, message: PushMessage): Promise<{ sent: number; errors: string[] }> {
+  if (!pushConfigured()) return { sent: 0, errors: ['The VAPID keys are missing in Vercel.'] };
+  const errors: string[] = [];
   try {
     ensureVapid();
     const { data: rows } = await supabase.from('push_subscriptions').select('id, endpoint, p256dh, auth').limit(20);
-    if (!rows?.length) return { sent: 0 };
+    if (!rows?.length) return { sent: 0, errors: ['No device is subscribed yet.'] };
     const payload = JSON.stringify({ title: message.title, body: message.body, url: message.url || '/', tag: message.tag || 'clientradar' });
     let sent = 0;
     await Promise.all((rows || []).map(async (row: any) => {
@@ -55,10 +71,11 @@ export async function sendPush(supabase: any, message: PushMessage): Promise<{ s
       } catch (error: any) {
         const status = Number(error?.statusCode || 0);
         if (status === 404 || status === 410) await supabase.from('push_subscriptions').delete().eq('id', row.id);
+        else errors.push(`Push service said ${status || 'error'}: ${String(error?.message || error).slice(0, 120)}`);
       }
     }));
-    return { sent };
-  } catch {
-    return { sent: 0 };
+    return { sent, errors };
+  } catch (error: any) {
+    return { sent: 0, errors: [String(error?.message || error).slice(0, 160)] };
   }
 }
