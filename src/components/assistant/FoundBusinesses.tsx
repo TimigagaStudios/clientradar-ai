@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Check, ChevronDown, ChevronUp, ExternalLink, Globe, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { useLeads } from '../../context/LeadContext';
 import { useToast } from '../ui/useToast';
@@ -17,24 +17,85 @@ import type { SearchResult } from '../../types';
 // Results from a Lead Research task in the Master Agent chat:
 // enforces the same strict two-route qualification (email + phone required) as Lead Finder.
 
-type Output = { category?: string; city?: string; source?: string; businesses?: SearchResult[] };
+export type FoundBusinessesProps = {
+  businesses?: any[];
+  category?: string;
+  city?: string;
+  source?: string;
+  output?: Record<string, unknown> | null;
+};
 
-export default function FoundBusinesses({ output }: { output: Record<string, unknown> }) {
-  const data = output as Output;
-  const list = Array.isArray(data.businesses) ? data.businesses : [];
+function normalizeItem(raw: any): SearchResult | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const businessName = String(raw.businessName || raw.name || '').trim();
+  if (!businessName) return null;
+  return {
+    ...raw,
+    businessName,
+    address: String(raw.address || ''),
+    mapLink: String(raw.mapLink || ''),
+    website: raw.website ? String(raw.website) : undefined,
+    phone: raw.phone ? String(raw.phone) : undefined,
+    email: raw.email ? String(raw.email) : undefined,
+    instagram: raw.instagram ? String(raw.instagram) : undefined,
+    category: raw.category ? String(raw.category) : undefined,
+    city: raw.city ? String(raw.city) : undefined,
+    country: raw.country ? String(raw.country) : undefined,
+    outdatedWebsite: Boolean(raw.outdatedWebsite),
+    rating: Number(raw.rating) || 0,
+    reviewCount: Number(raw.reviewCount) || 0,
+    latitude: Number.isFinite(Number(raw.latitude)) ? Number(raw.latitude) : undefined,
+    longitude: Number.isFinite(Number(raw.longitude)) ? Number(raw.longitude) : undefined,
+  };
+}
+
+export default function FoundBusinesses(props: FoundBusinessesProps) {
   const { leads, refreshLeads } = useLeads();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [saved, setSaved] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [scans, setScans] = useState<Record<string, CandidateScan>>({});
   const [showIncomplete, setShowIncomplete] = useState(false);
 
+  const fallback = props?.output && typeof props.output === 'object' ? (props.output as Record<string, any>) : null;
+  const rawBusinesses = Array.isArray(props?.businesses)
+    ? props.businesses
+    : Array.isArray(fallback?.businesses)
+      ? fallback.businesses
+      : [];
+  const resolvedCategory = typeof props?.category === 'string'
+    ? props.category
+    : typeof fallback?.category === 'string'
+      ? fallback.category
+      : undefined;
+  const resolvedCity = typeof props?.city === 'string'
+    ? props.city
+    : typeof fallback?.city === 'string'
+      ? fallback.city
+      : undefined;
+  const resolvedSource = typeof props?.source === 'string'
+    ? props.source
+    : typeof fallback?.source === 'string'
+      ? fallback.source
+      : undefined;
+
+  const list: SearchResult[] = rawBusinesses
+    .map(normalizeItem)
+    .filter((item): item is SearchResult => item !== null);
+
   if (!list.length) return null;
+
+  const safeLeads = Array.isArray(leads) ? leads : [];
+  const keyOf = (item: SearchResult, index?: number) => {
+    const base = foundKey(item);
+    return index === undefined ? base : `${base}|${index}`;
+  };
 
   const stateOf = (item: SearchResult) => {
     const key = foundKey(item);
     if (key in saved) return { done: true, id: saved[key] };
-    const known = existingLeadFor(leads, item);
+    const known = existingLeadFor(safeLeads, item);
     return known ? { done: true, id: known.id } : { done: false, id: '' };
   };
 
@@ -72,9 +133,9 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
         instagram: qual.instagram || item.instagram || undefined,
       },
       {
-        category: data.category,
-        city: data.city,
-        source: `Master chat (${data.source || 'Lead Research'})`,
+        category: resolvedCategory,
+        city: resolvedCity,
+        source: `Master chat (${resolvedSource || 'Lead Research'})`,
         websiteScanSummary: qual.summary || undefined,
         qualificationRoute: qual.route,
         emailSource: qual.emailSource,
@@ -145,7 +206,7 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
   };
 
   return (
-    <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-2.5 text-xs" data-found-businesses>
+    <div className="mt-2 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-black/20 p-2.5 text-xs" data-found-businesses>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="font-semibold text-[var(--text-secondary)]">
           {unsavedQualified.length} qualified ready | {incompleteRows.length} incomplete
@@ -177,13 +238,13 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
       </div>
 
       {activeRows.length > 0 ? (
-        <ul className="max-h-60 space-y-1.5 overflow-y-auto pr-1">
-          {activeRows.map((item) => {
-            const key = foundKey(item);
+        <ul className="max-h-60 space-y-1.5 overflow-y-auto pr-1" data-found-list>
+          {activeRows.map((item, idx) => {
+            const rawKey = foundKey(item);
             const state = stateOf(item);
             const qual = qualifyOf(item);
             return (
-              <li key={key} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 px-2.5 py-1.5">
+              <li key={keyOf(item, idx)} className="flex items-center justify-between gap-2 rounded-lg border border-black/10 dark:border-white/10 px-2.5 py-1.5">
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-[var(--text-primary)]">{item.businessName}</p>
                   <p className="truncate text-[11px] text-[var(--text-secondary)]">
@@ -196,7 +257,7 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
                       href={/^https?:\/\//i.test(item.website) ? item.website : `https://${item.website}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:underline"
+                      className="inline-flex items-center gap-1 text-[11px] text-blue-500 dark:text-blue-400 hover:underline"
                     >
                       <ExternalLink size={10} />Official site
                     </a>
@@ -204,20 +265,24 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
                 </div>
                 {state.done ? (
                   state.id ? (
-                    <Link to={`/leads/${state.id}`} className="shrink-0 rounded-full bg-green-500/15 px-2.5 py-1 text-[11px] font-semibold text-green-400">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/leads/${state.id}`)}
+                      className="shrink-0 rounded-full bg-green-500/15 px-2.5 py-1 text-[11px] font-semibold text-green-500"
+                    >
                       <Check size={11} className="mr-1 inline" />Open
-                    </Link>
+                    </button>
                   ) : (
-                    <span className="shrink-0 text-[11px] font-semibold text-green-400">Saved</span>
+                    <span className="shrink-0 text-[11px] font-semibold text-green-500">Saved</span>
                   )
                 ) : (
                   <button
                     type="button"
                     onClick={() => void handleSave(item)}
                     disabled={Boolean(busy) || qual.status === 'checking'}
-                    className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)] hover:border-white/40 disabled:opacity-50"
+                    className="shrink-0 inline-flex items-center gap-1 rounded-full border border-black/15 dark:border-white/15 px-2.5 py-1 text-[11px] font-semibold text-[var(--text-primary)] hover:border-black/40 dark:hover:border-white/40 disabled:opacity-50"
                   >
-                    {busy === key || qual.status === 'checking' ? (
+                    {busy === rawKey || qual.status === 'checking' ? (
                       <Loader2 size={11} className="animate-spin" />
                     ) : qual.canSave ? (
                       <><Plus size={11} />Save</>
@@ -237,7 +302,7 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
       )}
 
       {incompleteRows.length > 0 && (
-        <div className="mt-2 border-t border-white/10 pt-2">
+        <div className="mt-2 border-t border-black/10 dark:border-white/10 pt-2">
           <button
             type="button"
             onClick={() => setShowIncomplete((prev) => !prev)}
@@ -250,23 +315,29 @@ export default function FoundBusinesses({ output }: { output: Record<string, unk
           </button>
           {showIncomplete && (
             <ul className="mt-1.5 max-h-40 space-y-1 overflow-y-auto pr-1">
-              {incompleteRows.map((item) => {
+              {incompleteRows.map((item, idx) => {
                 const qual = qualifyOf(item);
                 const state = stateOf(item);
                 return (
-                  <li key={foundKey(item)} className="flex items-center justify-between gap-2 rounded-lg border border-white/5 bg-black/15 px-2 py-1 opacity-80">
+                  <li key={keyOf(item, idx)} className="flex items-center justify-between gap-2 rounded-lg border border-black/5 dark:border-white/5 bg-black/[0.03] dark:bg-black/15 px-2 py-1 opacity-85">
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-[var(--text-primary)]">{item.businessName}</p>
-                      <p className="truncate text-[10px] text-amber-300">{qual.badge}</p>
+                      <p className="truncate text-[10px] text-amber-600 dark:text-amber-300">{qual.badge}</p>
                     </div>
                     {state.done && state.id ? (
-                      <Link to={`/leads/${state.id}`} className="shrink-0 text-[10px] font-semibold text-green-400 hover:underline">Open</Link>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/leads/${state.id}`)}
+                        className="shrink-0 text-[10px] font-semibold text-green-500 hover:underline"
+                      >
+                        Open
+                      </button>
                     ) : qual.canCheckSite ? (
                       <button
                         type="button"
                         onClick={() => void checkOneSite(item, true)}
                         disabled={Boolean(busy)}
-                        className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]"
+                        className="shrink-0 inline-flex items-center gap-1 rounded-full border border-black/15 dark:border-white/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--text-primary)]"
                       >
                         <RefreshCw size={10} />Retry
                       </button>
