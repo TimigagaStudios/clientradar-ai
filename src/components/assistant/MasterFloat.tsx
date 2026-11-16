@@ -88,7 +88,7 @@ export default function MasterFloat() {
         const news = body?.data?.replies;
         if (body?.success && news?.fresh > 0 && news.newest && localStorage.getItem(REPLY_KEY) !== news.newest) {
           localStorage.setItem(REPLY_KEY, String(news.newest));
-          addNotice({ to: '/replies', yes: 'Read them', text: `${news.fresh} ${news.fresh === 1 ? 'reply' : 'replies'} to your outreach ${news.fresh === 1 ? 'is' : 'are'} waiting${news.good ? `; ${news.good} ${news.good === 1 ? 'looks' : 'look'} promising` : ''}.` });
+          addNotice({ to: '/replies', yes: 'Read them', text: `${news.fresh} ${news.fresh === 1 ? 'reply' : 'replies'} to your outreach ${news.fresh === 1 ? 'is' : 'are'} waiting${news.good ? `; ${news.good} ${news.good === 1 ? 'looks' : 'look'} promising` : ''}${news.drafts ? `; suggested ${news.drafts === 1 ? 'answer is' : 'answers are'} ready for ${news.drafts === 1 ? 'it' : 'them'}` : ''}.` });
         }
         // Demos that are ready but were never emailed: offered once a day at most.
         const mail = body?.data?.outreach;
