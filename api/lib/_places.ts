@@ -2,6 +2,7 @@
 // refused (for example billing is not switched on), the free OpenStreetMap search answers
 // instead. OpenStreetMap has fewer listings and no ratings, and nothing here is invented:
 // missing phone, website or rating stays empty.
+import { isValidContactEmail, isValidContactPhone } from './_website.js';
 
 export interface FoundBusiness {
   businessName: string;
@@ -65,6 +66,8 @@ export async function osmSearch(category: string, city: string, limit = 10): Pro
     .filter((row) => String(row?.name || '').trim() && !['boundary', 'place', 'highway'].includes(String(row?.category)))
     .map((row) => {
       const tags = row.extratags || {};
+      const rawPhone = tags.phone || tags['contact:phone'] || tags.mobile || tags['contact:mobile'] || null;
+      const rawEmail = tags.email || tags['contact:email'] || null;
       return {
         businessName: String(row.name).trim(),
         address: String(row.display_name || '').replace(`${row.name}, `, ''),
@@ -73,7 +76,8 @@ export async function osmSearch(category: string, city: string, limit = 10): Pro
         rating: 0,
         reviewCount: 0,
         website: tags.website || tags['contact:website'] || null,
-        phone: tags.phone || tags['contact:phone'] || null,
+        phone: rawPhone && isValidContactPhone(rawPhone) ? String(rawPhone).split(';')[0].trim() : null,
+        email: rawEmail && isValidContactEmail(rawEmail) ? String(rawEmail).split(';')[0].trim().toLowerCase() : null,
         mapLink: `https://www.google.com/maps/search/?api=1&query=${row.lat},${row.lon}`,
       };
     });
@@ -196,9 +200,20 @@ function geoapifyBusiness(feature: any, wanted: string[]): FoundBusiness | null 
   const lon = Number(info.lon ?? feature?.geometry?.coordinates?.[0]);
   if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   const first = (...values: unknown[]) => { const value = values.find((item) => typeof item === 'string' && item.trim()); return value ? String(value).split(';')[0].trim() : null; };
+  const firstValid = (check: (candidate: unknown) => boolean, ...values: unknown[]) => {
+    for (const item of values) {
+      if (typeof item !== 'string' || !item.trim()) continue;
+      for (const piece of item.split(';')) {
+        const trimmed = piece.trim();
+        if (check(trimmed)) return trimmed;
+      }
+    }
+    return null;
+  };
   const categories: string[] = Array.isArray(info.categories) ? info.categories : [];
   const own = categories.filter((key) => wanted.some((want) => key === want || key.startsWith(`${want}.`))).sort((a, b) => b.length - a.length)[0] || categories.sort((a, b) => b.length - a.length)[0];
   const address = first(info.address_line2, info.formatted) || '';
+  const foundEmail = firstValid(isValidContactEmail, info.contact?.email, info.email, raw.email, raw['contact:email']);
   return {
     businessName: name,
     address: address.replace(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},\\s*`), ''),
@@ -207,8 +222,8 @@ function geoapifyBusiness(feature: any, wanted: string[]): FoundBusiness | null 
     rating: 0,
     reviewCount: 0,
     website: first(info.website, info.contact?.website, raw.website, raw['contact:website'], raw.url),
-    phone: first(info.contact?.phone, info.phone, raw.phone, raw['contact:phone'], raw['contact:mobile']),
-    email: first(info.contact?.email, info.email, raw.email, raw['contact:email']),
+    phone: firstValid(isValidContactPhone, info.contact?.phone, info.phone, raw.phone, raw['contact:phone'], raw['contact:mobile'], raw.mobile, raw['phone:mobile']),
+    email: foundEmail ? foundEmail.toLowerCase() : null,
     category: own ? pretty(own) : null,
     city: first(info.city, info.town, info.village, info.county, info.state),
     country: first(info.country),

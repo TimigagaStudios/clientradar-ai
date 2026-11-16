@@ -29,6 +29,9 @@ export interface WebsiteScan {
 
 const AGENT = { 'User-Agent': 'Mozilla/5.0 (compatible; ClientRadarAI/1.0; website scan)', Accept: 'text/html,text/css,*/*' };
 
+// Social profiles, third-party directories, booking portals, map links and shorteners are NOT a business's own official website.
+const NON_OFFICIAL_HOST = /(?:^|\.)(facebook\.com|fb\.com|fb\.me|instagram\.com|linkedin\.com|twitter\.com|x\.com|tiktok\.com|youtube\.com|youtu\.be|pinterest\.com|snapchat\.com|reddit\.com|yelp\.[a-z.]+|tripadvisor\.[a-z.]+|yellowpages\.[a-z.]+|yell\.com|trustpilot\.com|foursquare\.com|angi\.com|homeadvisor\.com|thumbtack\.com|houzz\.com|bark\.com|checkatrade\.com|nextdoor\.com|bbb\.org|booking\.com|expedia\.com|airbnb\.[a-z.]+|agoda\.com|hotels\.com|opentable\.com|ubereats\.com|doordash\.com|deliveroo\.[a-z.]+|just-eat\.[a-z.]+|grubhub\.com|linktr\.ee|beacons\.ai|bit\.ly|tinyurl\.com|t\.co|goo\.gl|wa\.me|whatsapp\.com|t\.me|telegram\.me|google\.[a-z.]+|maps\.apple\.com)$/i;
+
 // Only ordinary public web addresses are fetched: no local, private or numeric hosts.
 function safeUrl(value: string, base?: string): URL | null {
   let parsed: URL;
@@ -38,6 +41,14 @@ function safeUrl(value: string, base?: string): URL | null {
   if (!host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':') || /(^|\.)(localhost|local|internal|lan|home|corp)$/.test(host)) return null;
   if (parsed.port && !['80', '443'].includes(parsed.port)) return null;
   return parsed;
+}
+
+export function isOfficialWebsiteUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const parsed = safeUrl(String(value).trim());
+  if (!parsed) return false;
+  const host = parsed.hostname.toLowerCase().replace(/^(?:www|m|mobile)\./, '');
+  return !NON_OFFICIAL_HOST.test(host);
 }
 
 async function read(url: URL, ms: number, max: number): Promise<{ text: string; finalUrl: string } | null> {
@@ -62,13 +73,30 @@ function cloudflareEmail(hex: string) {
   } catch { return ''; }
 }
 
-const JUNK_EMAIL = /(\.(png|jpe?g|gif|webp|svg|css|js|woff2?)$)|sentry|wixpress|example\.|domain\.com|email\.com|yourname|your-?email|name@|user@|test@|godaddy|schema\.org|w3\.org/i;
+const JUNK_EMAIL = /(\.(png|jpe?g|gif|webp|avif|ico|svg|css|js|woff2?|pdf|mp4)$)|^(no-?reply|donotreply|mailer-daemon)@|@[23]x\.|sentry|wixpress|example\.|domain\.com|email\.com|yourname|your-?email|name@|user@|test@|godaddy|schema\.org|w3\.org/i;
+
+export function isValidContactEmail(raw: unknown): boolean {
+  const email = decode(String(raw || '')).trim().toLowerCase().replace(/^mailto:/, '').split('?')[0].replace(/[.,;:]+$/, '');
+  return email.length > 4 && email.length <= 100 && /^[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && !JUNK_EMAIL.test(email);
+}
+
+export function isValidContactPhone(raw: unknown): boolean {
+  const text = decode(String(raw || '')).trim().replace(/^tel:/i, '').split(/[?;#]/)[0].trim();
+  if (!text || text.length > 32) return false;
+  // Reject calendar dates (2026-11-16, 16/11/2026) and decimal coordinates (34.049544).
+  if (/^(?:19|20)\d{2}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(text) || /^\d{1,2}[-/.]\d{1,2}[-/.](?:19|20)\d{2}$/.test(text)) return false;
+  if (/^-?\d{1,3}\.\d{4,}$/.test(text)) return false;
+  const digits = text.replace(/\D/g, '');
+  if (digits.length < 7 || digits.length > 15) return false;
+  if (/^(\d)\1{6,}$/.test(digits) || /^(?:0123456|1234567)/.test(digits)) return false;
+  return true;
+}
 
 export function findEmails(html: string, siteHost: string): string[] {
   const found = new Set<string>();
   const add = (raw: string) => {
     const email = decode(raw).trim().toLowerCase().replace(/^mailto:/, '').split('?')[0].replace(/[.,;:]+$/, '');
-    if (/^[a-z0-9._%+-]{1,64}@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && !JUNK_EMAIL.test(email) && email.length <= 100) found.add(email);
+    if (isValidContactEmail(email)) found.add(email);
   };
   (html.match(/mailto:[^"'\s<>]+/gi) || []).forEach((item) => { try { add(decodeURIComponent(item)); } catch { add(item); } });
   (html.match(/data-cfemail="([0-9a-f]+)"/gi) || []).forEach((item) => add(cloudflareEmail(item.replace(/data-cfemail="|"/gi, ''))));
@@ -78,6 +106,38 @@ export function findEmails(html: string, siteHost: string): string[] {
   // Addresses on the business's own domain come first; they are the most likely to be the right contact.
   const root = siteHost.replace(/^www\./, '');
   return [...found].sort((first, second) => Number(second.endsWith(`@${root}`)) - Number(first.endsWith(`@${root}`))).slice(0, 5);
+}
+
+// Extracts phone numbers from tel: links first, then plainly written visible contact numbers on the page.
+export function findPhones(html: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (raw: string) => {
+    const cleaned = decode(raw).replace(/^tel:/i, '').split(/[?;#]/)[0].replace(/\s+/g, ' ').replace(/^[\s:.,;-]+|[\s:.,;-]+$/g, '');
+    if (!isValidContactPhone(cleaned)) return;
+    const key = cleaned.replace(/\D/g, '').slice(-9);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(cleaned);
+  };
+  (html.match(/href=["']tel:([^"']+)["']/gi) || []).forEach((item) => {
+    try { push(decodeURIComponent(item.replace(/href=["']tel:|["']/gi, ''))); } catch { /* skip */ }
+  });
+  const visible = decode(
+    html
+      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|<noscript[\s\S]*?<\/noscript>/gi, '\n')
+      .replace(/<[^>]+>/g, '\n'),
+  );
+  for (const match of visible.matchAll(/(?:tel(?:ephone)?|phone|call(?:\s+us)?|mobile|cell|office|desk|ph)\s*(?:number|no\.?)?\s*[:.-]?\s*(\+?\(?\d[\d \t().-]{5,20}\d)/gi)) {
+    push(match[1].split('\n')[0]);
+  }
+  for (const match of visible.matchAll(/(?<![\w.])(\+\d{1,3}[ \t.-]?\(?\d{1,4}\)?[ \t.-]\d{2,4}[ \t.-]\d{2,5}(?:[ \t.-]\d{1,4})?)(?![\w.])/g)) {
+    push(match[1]);
+  }
+  for (const match of visible.matchAll(/(?<![\w.])(\(\d{2,5}\)[ \t]*\d{3,4}[ \t.-]\d{3,5})(?![\w.])/g)) {
+    push(match[1]);
+  }
+  return out.slice(0, 3);
 }
 
 function toHex(value: string): string | null {
@@ -144,11 +204,12 @@ function platformOf(html: string) {
 const strip = (value: string | undefined | null, max: number) => (value ? decode(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, max) || null : null);
 
 export async function scanWebsite(address: string | null | undefined): Promise<WebsiteScan | null> {
-  if (!address) return null;
+  if (!address || !isOfficialWebsiteUrl(address)) return null;
   const start = safeUrl(String(address));
   if (!start) return null;
   const home = await read(start, 5000, 400_000);
   if (!home || !/<html|<head|<body/i.test(home.text)) return null;
+  if (!isOfficialWebsiteUrl(home.finalUrl)) return null;
   const base = safeUrl(home.finalUrl) || start;
   const html = home.text;
 
@@ -157,7 +218,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     .map((match) => ({ url: safeUrl(decode(match[1]), base.toString()), label: `${match[1]} ${match[2]}`.toLowerCase() }))
     .filter((item) => item.url && item.url.hostname.replace(/^www\./, '') === base.hostname.replace(/^www\./, '') && !/\.(pdf|jpe?g|png|zip|docx?)$/i.test(item.url.pathname));
   const pick = (test: RegExp) => links.find((item) => test.test(item.label))?.url || null;
-  const extraPages = [pick(/contact|kontakt|get-in-touch|reach-us|enquir|inquir/), pick(/about|impressum|who-we-are|our-story|team/)]
+  const extraPages = [pick(/contact|kontakt|contacto|contatti|nous-contacter|get-in-touch|reach-us|enquir|inquir|connect/), pick(/about|impressum|imprint|who-we-are|our-story|team|location|find-us/)]
     .filter((url): url is URL => Boolean(url)).filter((url, index, all) => url.pathname !== base.pathname && all.findIndex((other) => other.toString() === url.toString()) === index);
   const sheets = [...html.matchAll(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi)]
     .map((match) => (match[0].match(/href=["']([^"']+)["']/i) || [])[1])
@@ -173,7 +234,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
   const css = `${inlineCss}\n${styles.map((sheet) => sheet?.text || '').join('\n')}`;
   const themeColor = (html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)/i) || [])[1] || null;
   const palette = readColors(css, themeColor);
-  const phones = [...new Set((allHtml.match(/href=["']tel:([^"']+)["']/gi) || []).map((item) => { try { return decodeURIComponent(item.replace(/href=["']tel:|["']/gi, '')).trim(); } catch { return ''; } }).filter((item) => item.replace(/\D/g, '').length >= 7))].slice(0, 3);
+  const phones = findPhones(allHtml);
   const social = (test: RegExp) => { const match = allHtml.match(test); return match ? match[0].replace(/["'\\].*$/, '') : null; };
   return {
     url: base.toString(),
@@ -200,6 +261,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
 export function scanSummary(scan: WebsiteScan) {
   const parts = [
     scan.emails.length ? `email ${scan.emails[0]}` : 'no email written on the site',
+    scan.phones.length ? `phone ${scan.phones[0]}` : 'no phone written on the site',
     scan.accent ? `brand colour ${scan.accent}` : 'brand colour not clear',
     scan.darkDesign === null ? '' : scan.darkDesign ? 'dark design' : 'light design',
     scan.fonts.length ? `fonts ${scan.fonts.slice(0, 2).join(', ')}` : '',

@@ -38,10 +38,33 @@ function levelFrom(text: string): 'mid' | 'hybrid' | 'ultra' {
 
 export function statusLine(context: MasterContext) {
   const t = context.totals;
+  const bothPart = Number.isFinite(t.withBothContacts) ? ` (${t.withBothContacts} have both email and phone)` : '';
+  const readyMiss = t.readyNoEmail || 0;
   const emailLine = Number.isFinite(t.withEmail) && Number.isFinite(t.withoutEmail)
-    ? ` ${t.withEmail} have an email address, ${t.withoutEmail} do not; ${t.readyNoEmail || 0} ready demos are missing one.`
+    ? ` ${t.withEmail} have an email address${bothPart}, ${t.withoutEmail} do not; ${readyMiss} ready ${readyMiss === 1 ? 'demo is' : 'demos are'} missing an email.`
     : '';
   return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.${emailLine}`;
+}
+
+export const INTRO_PROMO_REPLY = 'For our current introductory phase, present Ultra Premium as an introductory promotion to every business prospect, regardless of category, so they see our strongest offer first. Keep it framed simply as an introductory Ultra Premium offer with no discount figures or countdown terms attached. Later we will match Mid-Level, Hybrid or Ultra Premium to each business based on its value and fit, and demo builds still default to Mid-Level unless you ask for Hybrid or Ultra.';
+
+export function isPromoOfferQuestion(message: string): boolean {
+  const text = clean(message, 400);
+  if (/\b(?:build|create|generate|make|queue)\b[^.?!]{0,40}\bdemos?\b/i.test(text)) return false;
+  if (/\b(?:promo|promotion|introductory\s+offer|intro\s+offer)\b/i.test(text)) return true;
+  if (/\b(?:which|what)\s+(?:\w+\s+){0,2}(?:tier|level|package|offer|plan|option)s?\b/i.test(text) && /\b(?:pitch|present|offer|recommend|sell|propose|prospects?|clients?|businesses|leads?|now)\b/i.test(text)) return true;
+  if (/\b(?:pitch|present|offer|recommend|sell|propose)\b[^.?!]{0,50}\b(?:mid[- ]?level|hybrid|ultra(?:\s+premium)?|tiers?|packages?)\b/i.test(text)) return true;
+  return false;
+}
+
+const FABRICATED_PROMO_CLAIM = /\b\d{1,2}\s*%\s*(?:off|discount|saving)|\b(?:expires?|ending|valid\s+until|ends\s+(?:soon|today|tonight|this\s+week|friday|sunday|on\b)|only\s+\d+\s+(?:spots?|slots?|left)|limited\s+spots?|guarante(?:e|ed|es|eing))\b/i;
+
+export function guardPromoClaims(reply: string, ownerMessage: string): string {
+  if (!/\b(?:ultra\s+premium|introductory|promo(?:tion)?)\b/i.test(reply)) return reply;
+  if (!FABRICATED_PROMO_CLAIM.test(reply)) return reply;
+  // Never allow invented discounts, countdown deadlines, scarcity or guarantees unless the owner wrote them.
+  if (FABRICATED_PROMO_CLAIM.test(ownerMessage)) return reply;
+  return INTRO_PROMO_REPLY;
 }
 
 // "Build demos for my top 20 leads without a website": a request for MANY demos at once.
@@ -72,14 +95,18 @@ export function searchWishes(message: string): { count?: number; noWebsite?: boo
 export const tidyCategory = (value: string) => clean(value.replace(/^\s*(?:about|around|up to|at least)?\s*\d{1,4}\s+/i, '').replace(/\s+(?:that|which|who)\b.*$/i, '').replace(/\s+(?:without|with no|with)\b.*$/i, ''), 60);
 export const tidyCity = (value: string) => clean(value.replace(/[,;]?\s+(?:without|with no|with|that|which|who|and)\b.*$/i, ''), 60);
 
-// Used when no AI key is set or the AI call fails. Handles factual count questions without AI.
+// Used when no AI key is set or the AI call fails. Handles factual count and promo-direction questions without AI.
 export function planByRules(message: string, context: MasterContext): Omit<MasterPlan, 'source' | 'aiError'> {
   const text = clean(message, 400);
   if (/\b(?:how many|count|number of|total)\b/i.test(text) && /\b(?:leads?|business(?:es)?)\b/i.test(text) && /\bemail(?:s| address(?:es)?)?\b/i.test(text)) {
     const totals = context.totals;
     if (Number.isFinite(totals.withEmail) && Number.isFinite(totals.withoutEmail)) {
-      return { reply: `I found ${totals.withEmail} ${totals.withEmail === 1 ? 'lead' : 'leads'} with an email address and ${totals.withoutEmail} without one. ${totals.readyNoEmail || 0} ready ${totals.readyNoEmail === 1 ? 'demo is' : 'demos are'} missing an email.`, tasks: [] };
+      const both = Number.isFinite(totals.withBothContacts) ? ` (${totals.withBothContacts} have both email and phone)` : '';
+      return { reply: `I found ${totals.withEmail} ${totals.withEmail === 1 ? 'lead' : 'leads'} with an email address${both} and ${totals.withoutEmail} without one. ${totals.readyNoEmail || 0} ready ${totals.readyNoEmail === 1 ? 'demo is' : 'demos are'} missing an email.`, tasks: [] };
     }
+  }
+  if (isPromoOfferQuestion(text)) {
+    return { reply: INTRO_PROMO_REPLY, tasks: [] };
   }
   const demo = text.match(/\bdemo\b.*?\bfor\s+(.+?)[.?!]*$/i);
   if (demo) {
@@ -89,10 +116,10 @@ export function planByRules(message: string, context: MasterContext): Omit<Maste
   if (find) {
     const category = tidyCategory(find[1]);
     const city = tidyCity(find[2]);
-    if (category && city) return { reply: `I will ask the Lead Research Agent to look for ${category} in ${city}.`, tasks: [{ agent: 'lead-research', category, city }] };
+    if (category && city) return { reply: `I will ask the Lead Research Agent to look for ${category} in ${city} and check contact qualification.`, tasks: [{ agent: 'lead-research', category, city }] };
   }
   const recent = context.recentActivity.length ? ` Latest team activity: ${context.recentActivity.slice(0, 3).join(' ')}` : '';
-  return { reply: `${statusLine(context)}${recent} You can ask me to find businesses in a city or to build a demo for a lead.`, tasks: [] };
+  return { reply: `${statusLine(context)}${recent} You can ask me to find contact-qualified businesses in a city, build a demo for a lead, or discuss our introductory Ultra Premium offer.`, tasks: [] };
 }
 
 function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
@@ -125,14 +152,16 @@ export async function planRequest(message: string, history: string[], context: M
     'You are the Master Agent of ClientRadar AI, chief of staff to Timothy, owner of Timigaga Studios (a web design studio).',
     'Talk like a sharp, warm chief of staff texting the owner: plain words, 1 to 4 short sentences, no markdown, no lists, no robot talk. You may discuss ideas, answer questions and think things through with him, not only hand out tasks. Understand what he means in whatever words he uses; never make him repeat himself in exact phrases.',
     'You coordinate specialist agents and never do their work yourself. You never invent results, numbers, leads, prices or promises. Answer questions about the business only from the records given below; if the records do not contain the answer, say you do not have it.',
+    'Current sales offer policy (introductory phase): Whenever advising on or presenting website tiers/offers for prospects, recommend and present Ultra Premium as an introductory promotion/offer to every business right now, regardless of category, so prospects are attracted by our strongest package first. Note when relevant that in a later phase ClientRadar will match Mid-Level, Hybrid or Ultra Premium to each business based on its individual value and needs.',
+    'Strict promotion honesty: Do NOT invent discount percentages, exact promotional prices, expiry dates, limited-spots scarcity or guaranteed outcomes; the owner has not supplied those terms. Phrase it strictly as an introductory Ultra Premium offer/promotion, and keep this temporary sales offer distinct from demo-generation build levels and price-stage tables.',
     'Specialists you may hand tasks to right now:',
-    '- "lead-research": searches public business listings in ANY country. Needs "category" (only the type of business, no numbers) and "city" (only the place, any city in the world). How many and "without a website" are read from the owner message automatically.',
-    '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (use "mid" unless told otherwise).',
+    '- "lead-research": searches public business listings in ANY country and checks the two qualification routes: Route 1 (map listing already provides both email and phone) and Route 2 (official business website checked and provides missing contact details so both email and phone are confirmed). Needs "category" (only the type of business, no numbers) and "city" (only the place, any city in the world). How many and "without a website" are read from the owner message automatically.',
+    '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (keep "mid" as the default build level unless the owner explicitly asks for "hybrid" or "ultra", even though our sales offer presents Ultra Premium as the introductory promotion).',
     '- "outreach" with "kind": "first": the Outreach Agent writes first-contact emails for many leads at once. Use it whenever the owner wants leads emailed, in whatever words he says it. "count" is how many (default 25). Nothing is sent without his approval.',
     '- "outreach" with "kind": "followup": the Outreach Agent writes polite follow-up emails to leads written to at least 3 days ago that have not replied. Use it whenever he wants non-repliers chased, in whatever words he says it. A lead is never followed up twice.',
     'Client replies to outreach emails are collected and sorted on the Replies page by the Customer Communication Agent, and a suggested answer is written for promising replies. The owner reads it there and only his approval sends it. You cannot answer clients.',
     'Quality checks, reports, scheduling and social posts are planned agents that are NOT active yet. If asked for those, say so plainly and create no task.',
-    'You cannot send messages, save leads, delete anything or spend money. The owner saves found businesses himself with the Save buttons under the results.',
+    'You cannot send messages, save leads, delete anything or spend money. The owner saves qualified businesses himself with the Save buttons under the results.',
     `Create at most ${MAX_TASKS} tasks. Create none when the request is only a question or an idea. If a needed detail is missing (for example the city), ask for it and create no task.`,
     'When you create tasks, say which agent you are asking and for what; do not claim the work is already done.',
     'Return only JSON: {"reply": string, "tasks": [{"agent": string, "category"?: string, "city"?: string, "leadName"?: string, "level"?: string, "kind"?: string, "count"?: number}]}',
@@ -160,7 +189,7 @@ export async function planRequest(message: string, history: string[], context: M
     const text = body?.candidates?.[0]?.content?.parts?.map((part: any) => part?.text || '').join('') || '';
     const plan = validate(JSON.parse(text.replace(/^```(?:json)?|```$/g, '').trim()));
     if (!plan) throw new Error('AI answer was not usable');
-    return { ...plan, source: 'ai', aiError: null };
+    return { ...plan, reply: guardPromoClaims(plan.reply, message), source: 'ai', aiError: null };
   } catch (error) {
     const reason = error instanceof Error ? (error.name === 'TimeoutError' ? 'AI service took too long' : error.message.slice(0, 120)) : 'AI failed';
     return { ...planByRules(message, context), source: 'rules', aiError: reason };
