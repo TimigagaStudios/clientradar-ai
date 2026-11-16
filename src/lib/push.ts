@@ -2,7 +2,7 @@
 // iPhone only delivers these to the installed app (Add to Home Screen), never to a
 // browser tab. The server sends; this file only subscribes and reports the state.
 
-export type PushState = 'unsupported' | 'not-installed' | 'denied' | 'off' | 'on' | 'not-configured';
+export type PushState = 'unsupported' | 'not-installed' | 'denied' | 'off' | 'on' | 'not-configured' | 'bad-keys';
 
 const call = async (body: Record<string, unknown>) => {
   const response = await fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -32,6 +32,7 @@ export async function pushState(): Promise<PushState> {
   try {
     const key = await call({ action: 'push-key' });
     if (!key?.configured) return 'not-configured';
+    if (key?.problem) return 'bad-keys';
     const registration = await navigator.serviceWorker.ready;
     const subscription = await registration.pushManager.getSubscription();
     return subscription ? 'on' : 'off';
@@ -58,7 +59,7 @@ export async function disablePush(): Promise<void> {
   if (subscription) await subscription.unsubscribe();
 }
 
-export async function testPush(): Promise<number> {
+export async function testPush(): Promise<{ sent: number; errors: string[] }> {
   const out = await call({ action: 'push-test' });
-  return Number(out?.sent || 0);
+  return { sent: Number(out?.sent || 0), errors: Array.isArray(out?.errors) ? out.errors : [] };
 }
