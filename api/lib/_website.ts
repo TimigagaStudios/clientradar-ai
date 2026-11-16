@@ -24,6 +24,7 @@ export interface WebsiteScan {
   mobileReady: boolean;
   secure: boolean;
   pagesRead: string[];
+  pageText: string; // bounded visible text for server-side translation/extraction; never returned to the browser by default
   images: string[]; // pictures found on the business's own pages
 }
 
@@ -169,6 +170,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
   ]);
 
   const allHtml = [html, ...pages.map((page) => page?.text || '')].join('\n');
+  const pageText = decode(allHtml.replace(/<!--[\s\S]*?-->|<(script|style|noscript|svg|iframe|head)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 8000);
   const inlineCss = (html.match(/<style[\s\S]*?<\/style>/gi) || []).join('\n') + (html.match(/style=["'][^"']+["']/gi) || []).join('\n');
   const css = `${inlineCss}\n${styles.map((sheet) => sheet?.text || '').join('\n')}`;
   const themeColor = (html.match(/<meta[^>]+name=["']theme-color["'][^>]+content=["']([^"']+)/i) || [])[1] || null;
@@ -192,6 +194,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
     pagesRead: [base.pathname || '/', ...extraPages.filter((_, index) => pages[index]).map((url) => url.pathname)],
+    pageText,
     images: findImages(allHtml, base.toString()),
   };
 }
