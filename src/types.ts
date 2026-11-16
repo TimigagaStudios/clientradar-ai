@@ -67,6 +67,7 @@ export type SearchResult = {
   latitude?: number;
   longitude?: number;
   email?: string;
+  instagram?: string;
   category?: string;
   city?: string;
   country?: string;
