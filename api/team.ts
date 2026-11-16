@@ -6,6 +6,7 @@ import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
 import { listReplies, replyNews, replySenders, secretOk, sendReplyAnswer, setReplyStatus, skipReplyDraft, takeInReplies } from './lib/_replies.js';
+import { pushConfigured, pushPublicKey, saveSubscription, sendPush } from './lib/_push.js';
 import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFollowUps } from './lib/_followup.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
@@ -225,6 +226,7 @@ async function handleBatchOutreach(supabase: any, req: VercelRequest, res: Verce
   if (error || !created) return res.status(500).json({ success: false, error: error?.message || 'Could not save the drafts' });
   await note(supabase, 'master', 'handoff', `Asked ${nameOf('outreach')} to write ${total} outreach ${plural(total, 'draft', 'drafts')} (waiting for your approval before anything is sent)`, created.id);
   await note(supabase, 'outreach', 'task_done', `Wrote ${total} outreach ${plural(total, 'draft', 'drafts')} (${written.ai} with AI openings). Nothing sent.`, created.id);
+  await sendPush(supabase, { title: 'ClientRadar', body: `${total} outreach ${plural(total, 'draft', 'drafts')} written. Open to read and approve once.`, url: `/outreach/drafts/${created.id}`, tag: 'drafts' });
   return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [{ id: created.id, agentKey: created.agent_key, agentName: nameOf(created.agent_key), title: created.title, status: created.status, link: `/outreach/drafts/${created.id}` }] } });
 }
 
@@ -291,6 +293,7 @@ async function handleFollowUp(supabase: any, req: VercelRequest, res: VercelResp
   if (error || !created) return res.status(500).json({ success: false, error: error?.message || 'Could not save the drafts' });
   await note(supabase, 'master', 'handoff', `Asked ${nameOf('outreach')} to write ${total} follow-up ${plural(total, 'draft', 'drafts')} (waiting for your approval before anything is sent)`, created.id);
   await note(supabase, 'outreach', 'task_done', `Wrote ${total} follow-up ${plural(total, 'draft', 'drafts')} (${written.ai} with AI openings). Nothing sent.`, created.id);
+  await sendPush(supabase, { title: 'ClientRadar', body: `${total} follow-up ${plural(total, 'draft', 'drafts')} written. Open to read and approve once.`, url: `/outreach/follow-ups/${created.id}`, tag: 'drafts' });
   return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [{ id: created.id, agentKey: created.agent_key, agentName: nameOf(created.agent_key), title: created.title, status: created.status, link: `/outreach/follow-ups/${created.id}` }] } });
 }
 
@@ -410,7 +413,10 @@ async function handleMailbox(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.body.action === 'reply-senders') return res.status(200).json({ success: true, data: await replySenders(supabase) });
     const taken = await takeInReplies(supabase, req.body?.replies);
-    if (taken.saved) await note(supabase, 'customer-communication', 'task_done', `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} came in${taken.good ? `; ${taken.good} look promising (${taken.names.slice(0, 3).join(', ')})` : '; none looks promising yet'}.`);
+    if (taken.saved) {
+      await note(supabase, 'customer-communication', 'task_done', `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} came in${taken.good ? `; ${taken.good} look promising (${taken.names.slice(0, 3).join(', ')})` : '; none looks promising yet'}.`);
+      await sendPush(supabase, { title: 'ClientRadar', body: taken.good ? `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} - ${taken.good} look promising (${taken.names.slice(0, 2).join(', ')}). Suggested answers are ready.` : `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} came in.`, url: '/replies', tag: 'replies' });
+    }
     return res.status(200).json({ success: true, data: { received: taken.received, saved: taken.saved, known: taken.known, unmatched: taken.unmatched } });
   } catch (error) {
     return res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Could not take in the replies' });
@@ -457,6 +463,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(out.status).json(out.body);
       }
       if (action === 'reply-status') return res.status(200).json({ success: true, data: await setReplyStatus(supabase, String(req.body?.id || ''), String(req.body?.status || '')) });
+      if (action === 'push-key') return res.status(200).json({ success: true, data: { configured: pushConfigured(), publicKey: pushPublicKey() } });
+      if (action === 'push-subscribe') return res.status(200).json({ success: true, data: await saveSubscription(supabase, req.body?.subscription) });
+      if (action === 'push-test') {
+        const out = await sendPush(supabase, { title: 'ClientRadar', body: 'Notifications are working. Replies, drafts and demos will reach you here.', url: '/', tag: 'test' });
+        return res.status(200).json({ success: true, data: { sent: out.sent, configured: pushConfigured() } });
+      }
       if (action === 'reply-skip-draft') return res.status(200).json({ success: true, data: await skipReplyDraft(supabase, String(req.body?.id || '')) });
       if (action === 'reply-send') {
         // Sending an answer to a client needs the owner's approval, like every other send.
