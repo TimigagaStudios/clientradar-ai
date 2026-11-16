@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
+import { isValidContactEmail, isValidContactPhone } from './lib/_website.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -38,6 +39,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'POST') {
       const lead = req.body;
+
+      if (lead?.requireCompleteContacts === true && (!isValidContactEmail(lead.email) || !isValidContactPhone(lead.phone))) {
+        return res.status(400).json({
+          success: false,
+          error: 'Map-sourced leads qualify only when both a valid business email address and a phone number are present.',
+        });
+      }
 
       const { data, error } = await supabase
         .from('leads')

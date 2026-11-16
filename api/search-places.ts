@@ -87,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const found = await osmSearch(String(category), String(city));
       const results = await Promise.all(found.map(async (item) => {
         const check = await checkWebsite(item.website);
-        return { ...item, website: item.website || undefined, phone: item.phone || undefined, outdatedWebsite: check.outdated, websiteNote: check.note || undefined };
+        return { ...item, website: item.website || undefined, phone: item.phone || undefined, email: item.email || undefined, outdatedWebsite: check.outdated, websiteNote: check.note || undefined };
       }));
       await recordTask({
         agentKey: 'lead-research',

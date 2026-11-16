@@ -12,7 +12,7 @@ import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFol
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
-import { scanLead, scanWebsite, scanSummary } from './lib/_website.js';
+import { isOfficialWebsiteUrl, isValidContactEmail, isValidContactPhone, scanLead, scanWebsite, scanSummary } from './lib/_website.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
 
 // AI team endpoint.
@@ -63,7 +63,7 @@ async function masterContext(supabase: any): Promise<MasterContext> {
   const pageSize = 1000;
   const rows: any[] = [];
   for (let start = 0; ; start += pageSize) {
-    const { data, error } = await supabase.from('leads').select('business_name, status, demo_status, email')
+    const { data, error } = await supabase.from('leads').select('business_name, status, demo_status, email, phone')
       .order('created_at', { ascending: false }).order('id', { ascending: true }).range(start, start + pageSize - 1);
     if (error) throw new Error(`Could not read leads for Master totals: ${error.message || 'database query failed'}`);
     const page: any[] = data || [];
@@ -82,9 +82,10 @@ async function masterContext(supabase: any): Promise<MasterContext> {
       warm: count((row) => row.status === 'Interested' || row.status === 'Negotiating'),
       closed: count((row) => row.status === 'Deal Closed'),
       demosReady: count((row) => row.demo_status === 'Ready'),
-      withEmail: count((row) => Boolean(String(row.email || '').trim())),
-      withoutEmail: count((row) => !String(row.email || '').trim()),
-      readyNoEmail: count((row) => row.demo_status === 'Ready' && !String(row.email || '').trim()),
+      withEmail: count((row) => isValidContactEmail(row.email)),
+      withoutEmail: count((row) => !isValidContactEmail(row.email)),
+      withBothContacts: count((row) => isValidContactEmail(row.email) && isValidContactPhone(row.phone)),
+      readyNoEmail: count((row) => row.demo_status === 'Ready' && !isValidContactEmail(row.email)),
     },
     leadNames: rows.slice(0, 80).map((row) => String(row.business_name || '').slice(0, 60)).filter(Boolean),
     // Bills due within a week go first, so the Master Agent can mention them when asked how things stand.
@@ -451,10 +452,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'scan-candidate') {
         const website = String(req.body?.website || '').trim().slice(0, 500);
         if (!website) return res.status(400).json({ success: false, error: 'website is required' });
+        if (!isOfficialWebsiteUrl(website)) {
+          return res.status(200).json({
+            success: true,
+            data: { read: false, nonOfficial: true, reason: 'This link points to a social media or third-party listing page, not an official business website.' },
+          });
+        }
         const scan = await scanWebsite(website);
-        if (!scan) return res.status(200).json({ success: true, data: { read: false, reason: 'The public site could not be read. It may be down, blocking visitors, or built in a way that hides its text.' } });
+        if (!scan) return res.status(200).json({ success: true, data: { read: false, reason: 'Site could not be read (it may be offline, blocking visitors, or built in a way that hides its text).' } });
         return res.status(200).json({ success: true, data: {
-          read: true, emails: scan.emails, phones: scan.phones, instagram: scan.instagram,
+          read: true, officialUrl: scan.url, emails: scan.emails, phones: scan.phones, instagram: scan.instagram,
           colors: scan.colors, accent: scan.accent, darkDesign: scan.darkDesign, fonts: scan.fonts,
           platform: scan.platform, mobileReady: scan.mobileReady, secure: scan.secure,
           pagesRead: scan.pagesRead, summary: scanSummary(scan),
