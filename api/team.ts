@@ -434,7 +434,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'cancel') return await handleCancel(supabase, req, res);
       if (action === 'transcribe') {
         const audio = String(req.body?.audio || '');
-        const mimeType = ['audio/wav', 'audio/mp3', 'audio/aac', 'audio/ogg', 'audio/flac'].includes(req.body?.mimeType) ? req.body.mimeType : 'audio/wav';
+        const mimeType = ['audio/wav', 'audio/mp3', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/mp4', 'audio/webm', 'audio/mpeg'].includes(req.body?.mimeType) ? req.body.mimeType : 'audio/wav';
         if (audio.length < 2000) return res.status(400).json({ success: false, error: 'The recording was too short' });
         if (audio.length > 3_500_000) return res.status(413).json({ success: false, error: 'The recording was too long' });
         const text = await transcribeAudio(audio, mimeType);
