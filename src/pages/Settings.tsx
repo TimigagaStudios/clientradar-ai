@@ -41,8 +41,8 @@ const Settings = () => {
     setPushBusy(true);
     setPushNote('');
     try {
-      const sent = await testPush();
-      setPushNote(sent ? 'Test sent. Check your lock screen.' : 'No device received it yet. Make sure notifications are on, then try again.');
+      const out = await testPush();
+      setPushNote(out.sent ? 'Test sent. Check your lock screen.' : out.errors.length ? `The push service said: ${out.errors[0]}` : 'No device received it yet. Make sure notifications are on, then try again.');
     } catch (error) {
       setPushNote(error instanceof Error ? error.message : 'Could not send the test.');
     }
@@ -168,12 +168,13 @@ const Settings = () => {
               {push === 'not-installed' && 'ClientRadar must be installed first: Share, then Add to Home Screen, then open it from the icon.'}
               {push === 'denied' && 'Notifications are blocked in the phone settings. Allow them, then come back here.'}
               {push === 'not-configured' && 'The server is not set up for notifications yet (VAPID keys missing in Vercel).'}
+              {push === 'bad-keys' && 'The keys in Vercel do not match. Open the key generator page, generate fresh keys, and paste both into Vercel again.'}
               {push === 'unsupported' && 'This browser cannot do push notifications.'}
               {(push === 'off' || push === 'on') && 'New replies, drafts ready for approval and finished demos reach your lock screen, even when the app is closed.'}
             </p>
             {pushNote && <p className="text-sm text-[var(--text-secondary)]" role="status">{pushNote}</p>}
             <div className="flex flex-wrap gap-2">
-              {(push === 'off' || push === 'denied' || push === 'not-installed') && (
+              {(push === 'off' || push === 'denied' || push === 'not-installed' || push === 'bad-keys') && (
                 <button type="button" onClick={() => void togglePush()} disabled={pushBusy} className="rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }}>
                   <BellRing size={15} className="inline -mt-0.5 mr-1.5" />Turn on notifications
                 </button>
