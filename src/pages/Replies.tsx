@@ -2,9 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 // Reply inbox: what businesses answered to outreach emails, sorted so the promising ones come first.
-// ClientRadar only reads and sorts. Answers are written by the owner, in his own mailbox.
+// The Customer Communication Agent writes a suggested answer for promising replies. Nothing is sent
+// until the owner reads it here and approves it. Answers can also be written in the owner's mail app.
 
-type Reply = { id: string; leadId: string | null; leadName: string; fromEmail: string; fromName: string; subject: string; body: string; receivedAt: string; label: string; score: number; reason: string; scoredBy: string; status: string };
+type Reply = { id: string; leadId: string | null; leadName: string; fromEmail: string; fromName: string; subject: string; body: string; receivedAt: string; label: string; score: number; reason: string; scoredBy: string; status: string; suggestedReply: string; draftState: string; draftBy: string };
 
 const call = async (url: string, body?: Record<string, unknown>) => {
   const response = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
@@ -28,6 +29,9 @@ export default function Replies() {
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState('');
   const [all, setAll] = useState(false);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [confirmId, setConfirmId] = useState('');
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -43,13 +47,31 @@ export default function Replies() {
     try { await call('/api/team', { action: 'reply-status', id: reply.id, status }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save'); void load(); }
   };
 
+  const sendAnswer = async (reply: Reply) => {
+    setConfirmId('');
+    setSending(true);
+    setError('');
+    try {
+      await call('/api/team', { action: 'reply-send', id: reply.id, text: edits[reply.id] ?? reply.suggestedReply, confirm: true });
+      setReplies((current) => (current || []).map((item) => (item.id === reply.id ? { ...item, draftState: 'sent', status: 'handled', suggestedReply: edits[reply.id] ?? reply.suggestedReply } : item)));
+      window.dispatchEvent(new CustomEvent('cr-notice', { detail: { text: `Your answer to ${reply.leadName} was sent.`, to: '/leads', yes: 'Open leads' } }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send'); }
+    setSending(false);
+  };
+
+  const skipDraft = async (reply: Reply) => {
+    setReplies((current) => (current || []).map((item) => (item.id === reply.id ? { ...item, draftState: 'skipped' } : item)));
+    try { await call('/api/team', { action: 'reply-skip-draft', id: reply.id }); } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save'); void load(); }
+  };
+
   const list = (replies || []).filter((reply) => all || reply.status === 'new').sort((first, second) => Number(good(second)) - Number(good(first)) || second.score - first.score);
   const waiting = (replies || []).filter((reply) => reply.status === 'new');
+  const draftsReady = waiting.filter((reply) => reply.draftState === 'ready').length;
   return (
     <div className="space-y-5 pb-24" data-replies>
       <header>
         <h1 className="text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Replies</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">{replies === null ? 'Loading...' : `${waiting.length} to look at${waiting.filter(good).length ? `, ${waiting.filter(good).length} promising` : ''}. Promising ones come first.`}</p>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">{replies === null ? 'Loading...' : `${waiting.length} to look at${waiting.filter(good).length ? `, ${waiting.filter(good).length} promising` : ''}${draftsReady ? `, ${draftsReady} suggested ${draftsReady === 1 ? 'answer' : 'answers'} ready` : ''}. Promising ones come first.`}</p>
       </header>
       {error && <p className="neo-card p-4 text-sm text-red-400" role="alert">{error}</p>}
       {replies !== null && (!setup.ready || !setup.secretSet) && (
@@ -77,6 +99,20 @@ export default function Replies() {
           {openId === reply.id && (
             <div className="mt-3 space-y-3">
               <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--text-secondary)]">{reply.body || 'The reply had no new text.'}</p>
+
+              {reply.draftState === 'ready' && (
+                <div className="rounded-xl border border-[#FF7A00]/40 p-3 space-y-2" data-draft-box>
+                  <p className="text-xs font-bold text-[var(--text-primary)]">Suggested answer {reply.draftBy === 'ai' ? '(written by the AI)' : '(built-in wording)'} - change it if you like. Nothing is sent until you approve.</p>
+                  <textarea value={edits[reply.id] ?? reply.suggestedReply} onChange={(event) => setEdits((current) => ({ ...current, [reply.id]: event.target.value }))} aria-label="Suggested answer" rows={8} className="w-full rounded-xl neo-in px-3 py-2 text-sm leading-6 text-[var(--text-primary)] outline-none" />
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" disabled={sending || !(edits[reply.id] ?? reply.suggestedReply).trim()} onClick={() => setConfirmId(reply.id)} className="rounded-full px-3.5 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }} data-send-answer>Approve and send</button>
+                    <button type="button" onClick={() => void skipDraft(reply)} className="neo-button rounded-full px-3.5 py-2 text-xs font-bold text-[var(--text-primary)]" data-skip-draft>I will answer myself</button>
+                  </div>
+                </div>
+              )}
+              {reply.draftState === 'sent' && <p className="text-xs font-bold text-green-500" data-answered>Answered - your answer was sent.</p>}
+              {reply.draftState === 'skipped' && <p className="text-xs text-[var(--text-secondary)]">You chose to answer this one yourself.</p>}
+
               <div className="flex flex-wrap gap-2">
                 <a href={`mailto:${reply.fromEmail}?subject=${encodeURIComponent(/^re:/i.test(reply.subject) ? reply.subject : `Re: ${reply.subject}`)}`} className="rounded-full px-3.5 py-2 text-xs font-bold text-white" style={{ background: '#FF7A00' }}>Answer in your mail app</a>
                 {reply.leadId && <Link to={`/leads/${reply.leadId}`} className="neo-button rounded-full px-3.5 py-2 text-xs font-bold text-[var(--text-primary)]">Open lead</Link>}
@@ -87,6 +123,19 @@ export default function Replies() {
         </section>
       ))}
       {(replies || []).some((reply) => reply.status === 'handled') && <button type="button" onClick={() => setAll(!all)} className="text-sm font-bold text-[#FF7A00]" data-show-all>{all ? 'Hide finished replies' : 'Show finished replies too'}</button>}
+
+      {confirmId && (
+        <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }} role="dialog" aria-modal="true" aria-label="Confirm sending">
+          <div className="neo-card w-full max-w-md p-5 space-y-3">
+            <h3 className="text-lg font-black text-[var(--text-primary)]">Send this answer now?</h3>
+            <p className="text-sm text-[var(--text-secondary)]">A real email goes to this business from your Brevo sender address. This cannot be taken back.</p>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => { const reply = (replies || []).find((item) => item.id === confirmId); if (reply) void sendAnswer(reply); }} className="rounded-full px-4 py-2 text-sm font-bold text-white" style={{ background: '#FF7A00' }} data-confirm-answer>Yes, send</button>
+              <button type="button" onClick={() => setConfirmId('')} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)]">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
