@@ -60,6 +60,10 @@ export default function MasterFloat() {
   const [voiceNote, setVoiceNote] = useState('');
   const drag = useRef<{ id: number; dx: number; dy: number; sx: number; sy: number; moved: boolean } | null>(null);
   const audio = useRef<{ context: AudioContext | null; source: AudioBufferSourceNode | null; seq: number }>({ context: null, source: null, seq: 0 });
+  const [recording, setRecording] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(() => { try { return localStorage.getItem('cr-voice-on') === '1'; } catch { return false; } });
+  const recorder = useRef<{ media: MediaRecorder; stream: MediaStream; chunks: Blob[]; timer: number } | null>(null);
+  const setVoiceModeBoth = (on: boolean) => { setVoiceMode(on); try { localStorage.setItem('cr-voice-on', on ? '1' : '0'); } catch { /* ignore */ } };
 
   const addNotice = (notice: Notice) => { setNotices((current) => (current.some((item) => item.text === notice.text) ? current : [...current, notice])); setOpen(true); };
   const dropNotice = () => setNotices((current) => current.slice(1));
@@ -109,7 +113,7 @@ export default function MasterFloat() {
         addNotice({ action: 'refresh-demos', yes: `Yes, update ${count === 1 ? 'it' : 'them'}`, text: `The records agent found ${count} ${count === 1 ? 'demo' : 'demos'} built before the latest upgrade. What can be added: ${sections}. Shall I update ${count === 1 ? 'it' : 'them'}? The existing wording and the link stay the same.` });
       } catch { /* the check is optional */ }
     }, 7000);
-    return () => { stop(); window.removeEventListener('cr-notice', onNotice); window.removeEventListener('resize', onResize); window.clearTimeout(timer); stopVoice(); };
+    return () => { stop(); window.removeEventListener('cr-notice', onNotice); window.removeEventListener('resize', onResize); window.clearTimeout(timer); stopVoice(); recorder.current?.stream.getTracks().forEach((track) => track.stop()); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -210,11 +214,8 @@ export default function MasterFloat() {
   const declineTask = async (task: ChatTask) => {
     try { await postTeam({ action: 'cancel', taskId: task.id }); patchTask(task.id, { status: 'cancelled' }); } catch (error) { patchTask(task.id, { error: error instanceof Error ? error.message : 'Could not decline' }); }
   };
-  const send = async (event?: React.FormEvent) => {
-    event?.preventDefault();
-    const words = draft.trim();
+  const ask = async (words: string) => {
     if (!words || thinking) return;
-    setDraft('');
     say({ side: 'me', text: words });
     const word = words.toLowerCase().replace(/[.!?]+$/, '');
     if (/^(hold on|hold up|pause|wait|stop|stop for now|not now)( please)?$/.test(word) && workActive() && !getWork().paused) { pauseWork(); say({ side: 'ai', text: 'Paused. The task running right now will finish, then I wait. Say continue when you are ready.' }); return; }
@@ -226,6 +227,8 @@ export default function MasterFloat() {
       const tasks: ChatTask[] = Array.isArray(data.tasks) ? data.tasks : [];
       setThinking(false);
       say({ side: 'ai', text: String(data.reply || ''), tasks });
+      // In voice mode the answer is spoken back, like a phone call.
+      if (voiceMode && String(data.reply || '')) { stopVoice(); void playWords(String(data.reply)); }
       // Tasks that need no approval start straight away, one after another.
       for (const task of tasks.filter((item) => item.status === 'queued')) await runTask(task, false);
     } catch (error) {
@@ -233,13 +236,20 @@ export default function MasterFloat() {
       say({ side: 'ai', text: `I could not reach the team server: ${error instanceof Error ? error.message : 'unknown reason'}.` });
     }
   };
+  const send = (event?: React.FormEvent) => {
+    event?.preventDefault();
+    const words = draft.trim();
+    if (!words) return;
+    setDraft('');
+    void ask(words);
+  };
 
   // ---- Voice: reads the current message aloud when asked. Never speaks by itself.
   useEffect(() => { setVoiceNote(''); }, [text]);
 
   // The panel tucks itself away: at once when you touch or scroll the page behind it,
   // and after a few quiet seconds. It stays while you type, while an answer is on its way, or while it is speaking.
-  const busy = typing || thinking || voice !== 'idle' || draft.trim().length > 0;
+  const busy = typing || thinking || recording || voice !== 'idle' || draft.trim().length > 0;
   const [touched, setTouched] = useState(0);
   useEffect(() => {
     if (!open) return;
@@ -257,8 +267,7 @@ export default function MasterFloat() {
     try { window.speechSynthesis?.cancel(); } catch { /* not available */ }
     setVoice('idle');
   }
-  const speak = async (words: string) => {
-    if (voice !== 'idle') { stopVoice(); return; }
+  const playWords = async (words: string) => {
     setVoiceNote('');
     const seq = audio.current.seq + 1;
     audio.current.seq = seq;
@@ -295,6 +304,62 @@ export default function MasterFloat() {
         setVoice('idle');
         setVoiceNote('Voice is not available right now.');
       }
+    }
+  };
+  const speak = async (words: string) => {
+    if (voice !== 'idle') { stopVoice(); return; }
+    await playWords(words);
+  };
+
+  // ---- Voice input: tap the mic, speak, tap again. The words are written down on the server,
+  // sent to the Master Agent, and the answer is spoken back when voice replies are on.
+  const finishRecording = () => {
+    const current = recorder.current;
+    if (!current) return;
+    recorder.current = null;
+    window.clearTimeout(current.timer);
+    setRecording(false);
+    current.media.onstop = () => {
+      current.stream.getTracks().forEach((track) => track.stop());
+      const blob = new Blob(current.chunks, { type: current.media.mimeType || 'audio/webm' });
+      if (!blob.size) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = String(reader.result || '').split(',')[1] || '';
+        setThinking(true);
+        postTeam({ action: 'transcribe', audio: base64, mimeType: blob.type })
+          .then((data) => {
+            const words = String(data?.text || '').trim();
+            if (!words) { say({ side: 'ai', text: 'I did not catch that. Try again, or type instead.' }); return null; }
+            return ask(words);
+          })
+          .catch((error) => say({ side: 'ai', text: `Voice input failed: ${error instanceof Error ? error.message : 'unknown reason'}. Type instead.` }))
+          .finally(() => setThinking(false));
+      };
+      reader.readAsDataURL(blob);
+    };
+    current.media.stop();
+  };
+  const toggleMic = async () => {
+    if (recorder.current) { finishRecording(); return; }
+    if (thinking) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setVoiceNote('Voice input is not available in this browser. Please type.');
+      return;
+    }
+    stopVoice();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const media = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      media.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      media.start();
+      recorder.current = { media, stream, chunks, timer: window.setTimeout(() => finishRecording(), 30000) };
+      setRecording(true);
+      setVoiceNote('Listening... tap the mic again to stop.');
+      if (!voiceMode) setVoiceModeBoth(true);
+    } catch {
+      setVoiceNote('The microphone was not allowed. Allow it for this site, or type instead.');
     }
   };
 
@@ -383,11 +448,15 @@ export default function MasterFloat() {
           )}
           <form onSubmit={(event) => void send(event)} className="mt-3 flex gap-2" data-float-form>
             <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ask the Master Agent..." aria-label="Message to the Master Agent" onFocus={() => setTyping(window.innerWidth < 860)} onBlur={() => window.setTimeout(() => setTyping(false), 250)} enterKeyHint="send" className="min-w-0 flex-1 rounded-full px-3.5 py-2 outline-none" style={{ fontSize: 16, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: '#eaf1ff' }} />
+            <button type="button" onClick={() => void toggleMic()} aria-label={recording ? 'Stop recording' : 'Speak to the Master Agent'} className="rounded-full px-3 py-2 text-xs font-bold" style={{ background: recording ? '#ef4444' : 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.18)', color: '#eaf1ff' }} data-float-mic>{recording ? 'Stop' : 'Mic'}</button>
             <button type="submit" disabled={!draft.trim() || thinking} className="rounded-full px-3.5 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: '#ff7a00' }}>Send</button>
           </form>
           <div className="mt-2 flex items-center justify-between text-xs" style={{ color: '#9fb0d0' }}>
             {!onAssistant ? <button type="button" onClick={() => { setOpen(false); navigate('/'); }} className="underline">Open full chat</button> : <span />}
-            <button type="button" onClick={() => setOpen(false)}>Hide</button>
+            <span className="flex items-center gap-3">
+              <button type="button" onClick={() => setVoiceModeBoth(!voiceMode)} className="underline" data-voice-toggle>Voice replies: {voiceMode ? 'on' : 'off'}</button>
+              <button type="button" onClick={() => setOpen(false)}>Hide</button>
+            </span>
           </div>
         </div>
       )}

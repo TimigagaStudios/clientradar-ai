@@ -433,6 +433,28 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [briefingText, voiceUsed]);
 
+  // Speak the briefing as soon as it is on screen, when voice is on. Phones block sound
+  // until the first tap, so the first tap anywhere starts it instead.
+  const briefingSpokenRef = useRef(false);
+  useEffect(() => {
+    if (!briefingText || !voiceOn || briefingSpokenRef.current) return;
+    const context = unlockAudio();
+    if (context && context.state === 'suspended') return;
+    briefingSpokenRef.current = true;
+    void say(`Good ${greeting()}, Timothy. ${briefingText}`);
+  }, [briefingText, voiceOn]);
+  useEffect(() => {
+    if (!voiceOn) return;
+    const onFirstTap = (event: PointerEvent) => {
+      if (briefingSpokenRef.current || !briefingText) return;
+      if (event.target instanceof Element && event.target.closest('[data-float-orb]')) return;
+      briefingSpokenRef.current = true;
+      void say(`Good ${greeting()}, Timothy. ${briefingText}`);
+    };
+    window.addEventListener('pointerdown', onFirstTap);
+    return () => window.removeEventListener('pointerdown', onFirstTap);
+  }, [briefingText, voiceOn]);
+
   const handleOrbTap = () => {
     if (!canVoice()) return;
     if (utteranceRef.current || audioSourceRef.current || loadingVoiceRef.current) {
