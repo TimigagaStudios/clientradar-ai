@@ -12,7 +12,7 @@ import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFol
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
-import { scanLead } from './lib/_website.js';
+import { scanLead, scanWebsite, scanSummary } from './lib/_website.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
 
 // AI team endpoint.
@@ -59,11 +59,20 @@ async function closeParent(supabase: any, parentId: string | null) {
 }
 
 async function masterContext(supabase: any): Promise<MasterContext> {
-  const [{ data: leads }, { data: activity }] = await Promise.all([
-    supabase.from('leads').select('business_name, status, demo_status').order('created_at', { ascending: false }).limit(400),
-    supabase.from('agent_activity').select('agent_key, summary').order('created_at', { ascending: false }).limit(8),
-  ]);
-  const rows: any[] = leads || [];
+  // Read every lead in bounded pages so email totals stay accurate beyond the API's default row cap.
+  const pageSize = 1000;
+  const rows: any[] = [];
+  for (let start = 0; ; start += pageSize) {
+    const { data, error } = await supabase.from('leads').select('business_name, status, demo_status, email')
+      .order('created_at', { ascending: false }).order('id', { ascending: true }).range(start, start + pageSize - 1);
+    if (error) throw new Error(`Could not read leads for Master totals: ${error.message || 'database query failed'}`);
+    const page: any[] = data || [];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
+  const { data: activity, error: activityError } = await supabase.from('agent_activity').select('agent_key, summary')
+    .order('created_at', { ascending: false }).limit(8);
+  if (activityError) console.warn('Could not read recent agent activity:', activityError.message || activityError);
   const count = (test: (row: any) => boolean) => rows.filter(test).length;
   return {
     totals: {
@@ -73,6 +82,9 @@ async function masterContext(supabase: any): Promise<MasterContext> {
       warm: count((row) => row.status === 'Interested' || row.status === 'Negotiating'),
       closed: count((row) => row.status === 'Deal Closed'),
       demosReady: count((row) => row.demo_status === 'Ready'),
+      withEmail: count((row) => Boolean(String(row.email || '').trim())),
+      withoutEmail: count((row) => !String(row.email || '').trim()),
+      readyNoEmail: count((row) => row.demo_status === 'Ready' && !String(row.email || '').trim()),
     },
     leadNames: rows.slice(0, 80).map((row) => String(row.business_name || '').slice(0, 60)).filter(Boolean),
     // Bills due within a week go first, so the Master Agent can mention them when asked how things stand.
@@ -436,6 +448,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ success: true, data: await briefingFor(supabase, String(req.body?.sig || '')) });
       }
       if (action === 'chat') return await handleChat(supabase, req, res);
+      if (action === 'scan-candidate') {
+        const website = String(req.body?.website || '').trim().slice(0, 500);
+        if (!website) return res.status(400).json({ success: false, error: 'website is required' });
+        const scan = await scanWebsite(website);
+        if (!scan) return res.status(200).json({ success: true, data: { read: false, reason: 'The public site could not be read. It may be down, blocking visitors, or built in a way that hides its text.' } });
+        return res.status(200).json({ success: true, data: {
+          read: true, emails: scan.emails, phones: scan.phones, instagram: scan.instagram,
+          colors: scan.colors, accent: scan.accent, darkDesign: scan.darkDesign, fonts: scan.fonts,
+          platform: scan.platform, mobileReady: scan.mobileReady, secure: scan.secure,
+          pagesRead: scan.pagesRead, summary: scanSummary(scan),
+        } });
+      }
       if (action === 'run') return await handleRun(supabase, req, res);
       if (action === 'cancel') return await handleCancel(supabase, req, res);
       if (action === 'transcribe') {
