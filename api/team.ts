@@ -5,6 +5,7 @@ import { planRequest, transcribeAudio, searchWishes, batchDemoWish, MAX_BATCH } 
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
+import { listReplies, replyNews, replySenders, secretOk, setReplyStatus, takeInReplies } from './lib/_replies.js';
 import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_tracker.js';
 import type { MasterContext } from './lib/_master.js';
@@ -324,7 +325,24 @@ async function handleCancel(supabase: any, req: VercelRequest, res: VercelRespon
   return res.status(200).json({ success: true, data: { id: taskId, status: 'cancelled' } });
 }
 
+// The mailbox script has no login. It may use exactly two actions, and only with the shared password.
+async function handleMailbox(req: VercelRequest, res: VercelResponse) {
+  if (!process.env.REPLY_INBOX_SECRET) return res.status(503).json({ success: false, error: 'The reply inbox is not set up: REPLY_INBOX_SECRET is missing in Vercel' });
+  if (!secretOk(req.body?.secret)) return res.status(401).json({ success: false, error: 'Wrong password for the reply inbox' });
+  const supabase = teamClient();
+  if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+  try {
+    if (req.body.action === 'reply-senders') return res.status(200).json({ success: true, data: await replySenders(supabase) });
+    const taken = await takeInReplies(supabase, req.body?.replies);
+    if (taken.saved) await note(supabase, 'customer-communication', 'task_done', `${taken.saved} new ${plural(taken.saved, 'reply', 'replies')} came in${taken.good ? `; ${taken.good} look promising (${taken.names.slice(0, 3).join(', ')})` : '; none looks promising yet'}.`);
+    return res.status(200).json({ success: true, data: { received: taken.received, saved: taken.saved, known: taken.known, unmatched: taken.unmatched } });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Could not take in the replies' });
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'POST' && (req.body?.action === 'reply-in' || req.body?.action === 'reply-senders')) return await handleMailbox(req, res);
   if (!(await requireUser(req, res))) return;
   if (req.method === 'POST') {
     try {
@@ -354,6 +372,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : action === 'outreach-retry' ? await retryOutreach(supabase, req.body) : await sendOutreach(supabase, req.body);
         return res.status(out.status).json(out.body);
       }
+      if (action === 'reply-status') return res.status(200).json({ success: true, data: await setReplyStatus(supabase, String(req.body?.id || ''), String(req.body?.status || '')) });
       if (action === 'duplicate-separate') {
         const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
         if (ids.length < 2) return res.status(400).json({ success: false, error: 'Choose the leads to keep apart' });
@@ -422,6 +441,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
     try { return res.status(200).json({ success: true, data: outreachView(await outreachTask(supabase, String(req.query?.taskId || ''))) }); } catch (error) { return res.status(404).json({ success: false, error: error instanceof Error ? error.message : 'Not found' }); }
   }
+  if (req.query?.view === 'replies') {
+    const supabase = teamClient();
+    if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
+    return res.status(200).json({ success: true, data: { ...(await listReplies(supabase)), secretSet: Boolean(process.env.REPLY_INBOX_SECRET) } });
+  }
   if (req.query?.view === 'duplicates') {
     const supabase = teamClient();
     if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
@@ -434,7 +458,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const found = await outdatedDemos(supabase, MAX_BATCH);
     // Business names saved more than once, so the owner can review them.
     const repeated = await listDuplicates(supabase);
-    return res.status(200).json({ success: true, data: { outreach: await outreachReady(supabase).catch(() => ({ ready: 0, noEmail: 0 })), duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.leads.length, 0), likelySame: repeated.filter((entry) => entry.hint === 'same').length }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
+    return res.status(200).json({ success: true, data: { replies: await replyNews(supabase).catch(() => ({ fresh: 0, good: 0, newest: '' })), outreach: await outreachReady(supabase).catch(() => ({ ready: 0, noEmail: 0 })), duplicates: { names: repeated.length, example: repeated[0]?.name || '', leads: repeated.reduce((sum, entry) => sum + entry.leads.length, 0), likelySame: repeated.filter((entry) => entry.hint === 'same').length }, count: found.length, names: found.slice(0, 3).map((demo) => demo.name), sections: Array.from(new Set(found.flatMap((demo) => demo.missing))) } });
   }
   if (req.query?.view === 'tracker') {
     const supabase = teamClient();
