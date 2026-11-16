@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
-import { Moon, Sun, Trash2, Shield, LogOut, Monitor, Download } from 'lucide-react';
+import { Moon, Sun, Trash2, Shield, LogOut, Monitor, Download, Bell, BellRing } from 'lucide-react';
+import { disablePush, enablePush, pushState, testPush, type PushState } from '../lib/push';
 import Button from '../components/Button';
 import { useLeads } from '../context/LeadContext';
 import { supabase } from '../lib/supabase';
@@ -10,6 +11,43 @@ const Settings = () => {
   const { theme, toggleTheme } = useTheme();
   const { resetData } = useLeads() as any;
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [push, setPush] = useState<PushState>('off');
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNote, setPushNote] = useState('');
+
+  useEffect(() => { void pushState().then(setPush).catch(() => undefined); }, []);
+
+  const togglePush = async () => {
+    setPushBusy(true);
+    setPushNote('');
+    try {
+      if (push === 'on') {
+        await disablePush();
+        setPush('off');
+        setPushNote('Notifications are off.');
+      } else {
+        await enablePush();
+        setPush('on');
+        setPushNote('Notifications are on. Replies, drafts and demos will reach your lock screen.');
+      }
+    } catch (error) {
+      setPushNote(error instanceof Error ? error.message : 'Could not change notifications.');
+      setPush(await pushState().catch(() => push));
+    }
+    setPushBusy(false);
+  };
+
+  const sendTest = async () => {
+    setPushBusy(true);
+    setPushNote('');
+    try {
+      const sent = await testPush();
+      setPushNote(sent ? 'Test sent. Check your lock screen.' : 'No device received it yet. Make sure notifications are on, then try again.');
+    } catch (error) {
+      setPushNote(error instanceof Error ? error.message : 'Could not send the test.');
+    }
+    setPushBusy(false);
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -110,6 +148,43 @@ const Settings = () => {
                 ? 'Running in standalone mode. Nice!'
                 : 'Android/Chrome: Menu → Install App • iOS Safari: Share → Add to Home Screen'}
             </p>
+          </div>
+        </section>
+
+        {/* Notifications */}
+        <section className="neo-card p-6 md:p-8 space-y-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2.5 neo-in rounded-xl">
+              <Bell size={18} className="text-[var(--accent)]" />
+            </div>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Notifications</h2>
+          </div>
+
+          <div className="neo-in rounded-2xl p-4 space-y-3">
+            <p className="font-medium text-[var(--text-primary)]">
+              {push === 'on' ? 'Lock-screen notifications are on' : 'Lock-screen notifications'}
+            </p>
+            <p className="text-sm text-[var(--text-secondary)]">
+              {push === 'not-installed' && 'ClientRadar must be installed first: Share, then Add to Home Screen, then open it from the icon.'}
+              {push === 'denied' && 'Notifications are blocked in the phone settings. Allow them, then come back here.'}
+              {push === 'not-configured' && 'The server is not set up for notifications yet (VAPID keys missing in Vercel).'}
+              {push === 'unsupported' && 'This browser cannot do push notifications.'}
+              {(push === 'off' || push === 'on') && 'New replies, drafts ready for approval and finished demos reach your lock screen, even when the app is closed.'}
+            </p>
+            {pushNote && <p className="text-sm text-[var(--text-secondary)]" role="status">{pushNote}</p>}
+            <div className="flex flex-wrap gap-2">
+              {(push === 'off' || push === 'denied' || push === 'not-installed') && (
+                <button type="button" onClick={() => void togglePush()} disabled={pushBusy} className="rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }}>
+                  <BellRing size={15} className="inline -mt-0.5 mr-1.5" />Turn on notifications
+                </button>
+              )}
+              {push === 'on' && (
+                <>
+                  <button type="button" onClick={() => void sendTest()} disabled={pushBusy} className="rounded-full px-4 py-2 text-sm font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }}>Send a test</button>
+                  <button type="button" onClick={() => void togglePush()} disabled={pushBusy} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)] disabled:opacity-40">Turn off</button>
+                </>
+              )}
+            </div>
           </div>
         </section>
 
