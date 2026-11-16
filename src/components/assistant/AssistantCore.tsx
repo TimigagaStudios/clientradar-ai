@@ -196,7 +196,28 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   }, []);
 
   const openedText = openedDemos > 0 ? ` ${openedDemos} of your demos ${openedDemos === 1 ? 'has' : 'have'} been opened by a client.` : '';
-  const briefingText = `You have ${metrics.needsOutreach} leads needing first outreach, ${metrics.awaitingReply} awaiting reply, and ${metrics.readyDemos} demos ready to send.${openedText} Pipeline value is $${metrics.revenue.toLocaleString()}. Want the daily brief?`;
+  const fallbackBriefing = `You have ${metrics.needsOutreach} leads needing first outreach, ${metrics.awaitingReply} awaiting reply, and ${metrics.readyDemos} demos ready to send.${openedText} Pipeline value is $${metrics.revenue.toLocaleString()}.`;
+
+  // The Master Agent's opening briefing: important things first, and it remembers what it
+  // already told the owner, so it never repeats itself. The full numbers stay behind a tap.
+  const [briefing, setBriefing] = useState<{ headline: string; brief: string; nextStep: string; signature: string; isNew: boolean } | null>(null);
+  const [briefingFailed, setBriefingFailed] = useState(false);
+  const [showBrief, setShowBrief] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const stored = (() => { try { return localStorage.getItem('cr-briefing-sig') || ''; } catch { return ''; } })();
+    fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'briefing', sig: stored }) })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (cancelled) return;
+        if (!result?.success) { setBriefingFailed(true); return; }
+        setBriefing(result.data);
+        try { localStorage.setItem('cr-briefing-sig', String(result.data.signature || '')); } catch { /* ignore */ }
+      })
+      .catch(() => { if (!cancelled) setBriefingFailed(true); });
+    return () => { cancelled = true; };
+  }, []);
+  const briefingText = briefing?.headline || (briefingFailed ? fallbackBriefing : '');
   const [typed, setTyped] = useState('');
 
   useEffect(() => {
@@ -404,7 +425,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   // Once the voice has been used, prepare the briefing audio quietly after the numbers settle,
   // so the tap answers at once.
   useEffect(() => {
-    if (!voiceUsed || !audioContextClass()) return undefined;
+    if (!voiceUsed || !audioContextClass() || !briefingText) return undefined;
     const timer = window.setTimeout(() => {
       fetchVoice(`Good ${greeting()}, Timothy. ${briefingText}`).catch(() => undefined);
     }, 2500);
@@ -753,6 +774,16 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
               {typed}
               <span className="cr-caret" />
             </p>
+            {briefing && (
+              <div className="mt-2 space-y-2">
+                <p className="text-xs font-bold text-[#FF7A00]">Next: {briefing.nextStep}</p>
+                {!showBrief ? (
+                  <button type="button" onClick={() => setShowBrief(true)} className="neo-button rounded-full px-3.5 py-1.5 text-xs font-bold text-[var(--text-primary)]">Show the full brief</button>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">{briefing.brief}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
