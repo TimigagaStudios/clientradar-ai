@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useLeads } from '../context/LeadContext';
 import { FileText, Plus, Download, Trash2, X } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { supabase } from '../lib/supabase';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 type Invoice = {
   id: string;
@@ -26,6 +27,7 @@ const Invoices = () => {
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const invoicePager = usePagedList(invoices, 'invoices', 10);
 
   // Fetch invoices from Supabase
   const fetchInvoices = async () => {
@@ -172,7 +174,7 @@ const Invoices = () => {
               className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
             >
               <option value="">Select a deal...</option>
-              {dealLeads.map((lead: any) => (
+              {dealLeads.slice(0, 250).map((lead: any) => (
                 <option key={lead.id} value={lead.id}>
                   {lead.businessName} - ${Number(lead.dealValue || 0).toLocaleString()}
                 </option>
@@ -231,36 +233,39 @@ const Invoices = () => {
         ) : invoices.length === 0 ? (
           <div className="text-center py-12 text-[var(--text-secondary)]">No invoices created yet.</div>
         ) : (
-          <div className="space-y-2">
-            {invoices.map((invoice) => (
-              <div
-                key={invoice.id}
-                onClick={() => setSelectedInvoice(invoice)}
-                className="flex items-center justify-between p-4 rounded-2xl neo-in active:bg-black/5 dark:active:bg-white/5 cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-[var(--accent)] font-bold text-sm">
-                    {invoice.business_name.slice(0, 1)}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              {invoicePager.visible.map((invoice) => (
+                <div
+                  key={invoice.id}
+                  onClick={() => setSelectedInvoice(invoice)}
+                  className="flex items-center justify-between p-4 rounded-2xl neo-in active:bg-black/5 dark:active:bg-white/5 cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-[var(--accent)] font-bold text-sm">
+                      {invoice.business_name.slice(0, 1)}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-[var(--text-primary)]">{invoice.business_name}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">
+                        {new Date(invoice.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-[var(--text-primary)]">{invoice.business_name}</p>
-                    <p className="text-xs text-[var(--text-secondary)]">
-                      {new Date(invoice.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
 
-                <div className="text-right">
-                  <p className="font-bold text-[var(--text-primary)]">${invoice.amount.toLocaleString()}</p>
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full",
-                    invoice.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'
-                  )}>
-                    {invoice.status}
-                  </span>
+                  <div className="text-right">
+                    <p className="font-bold text-[var(--text-primary)]">${invoice.amount.toLocaleString()}</p>
+                    <span className={cn(
+                      "text-xs px-2 py-0.5 rounded-full",
+                      invoice.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'
+                    )}>
+                      {invoice.status}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <ListPager pager={invoicePager} noun="invoices" />
           </div>
         )}
       </div>

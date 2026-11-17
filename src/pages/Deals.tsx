@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import { DollarSign, Handshake, TrendingUp, Search, CheckCircle2, XCircle, Clock3, Edit2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 const Deals = () => {
   const { leads, updateLead } = useLeads() as any;
@@ -29,6 +30,8 @@ const Deals = () => {
       return matchesSearch && matchesStage;
     });
   }, [dealLeads, searchTerm, activeStage]);
+
+  const dealPager = usePagedList(filteredDeals, `${searchTerm}|${activeStage}`, 10);
 
   const totalPipelineValue = useMemo(() => {
     return dealLeads
@@ -165,7 +168,7 @@ const Deals = () => {
 
       {/* Deal List with Enhanced Revenue Features (B) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredDeals.map((lead: any) => (
+        {dealPager.visible.map((lead: any) => (
           <Link
             key={lead.id}
             to={`/leads/${lead.id}`}
@@ -241,6 +244,8 @@ const Deals = () => {
           </div>
         )}
       </div>
+
+      <ListPager pager={dealPager} noun="deals" />
     </div>
   );
 };

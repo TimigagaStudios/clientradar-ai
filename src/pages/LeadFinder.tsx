@@ -19,6 +19,7 @@ import { SearchResult } from '../types';
 import { cn } from '../utils/cn';
 import { useToast } from '../components/ui/useToast';
 import FinderMap, { type MapArea } from '../components/FinderMap';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 import {
   type CandidateQualification,
   type CandidateScan,
@@ -251,6 +252,10 @@ const LeadFinder = () => {
     [partitioned.active, partitioned.incomplete, showIncomplete],
   );
 
+  const finderResetKey = `${last?.category || ''}|${last?.city || ''}|${routeFilter}|${hideKnown ? '1' : '0'}`;
+  const activePager = usePagedList(partitioned.active, finderResetKey, 10);
+  const incompletePager = usePagedList(partitioned.incomplete, finderResetKey, 10);
+
   const checkAllOfficialWebsites = async () => {
     if (!pendingToScan.length || bulk) return;
     setBulk({ done: 0, total: pendingToScan.length, mode: 'scan' });
@@ -471,24 +476,37 @@ const LeadFinder = () => {
                       ? 'All qualified leads saved'
                       : 'No qualified leads ready yet'}
               </button>
+
+              {hasMore && last && (
+                <button
+                  type="button"
+                  onClick={() => void runSearch(last, results.length)}
+                  disabled={isSearching || Boolean(bulk)}
+                  data-load-more-top
+                  className="neo-button px-4 py-2 rounded-full text-sm font-semibold text-[var(--accent)] disabled:opacity-50"
+                >
+                  {isSearching ? 'Loading...' : `Load ${howMany} more`}
+                </button>
+              )}
             </div>
           </div>
 
           {partitioned.active.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left border-collapse" data-qualified-table>
-                <thead>
-                  <tr className="bg-black/[0.03] dark:bg-white/[0.02] border-b border-black/8 dark:border-white/8 transition-colors duration-300">
-                    <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Business & Contacts</th>
-                    <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Location</th>
-                    <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Qualification & Official Site</th>
-                    <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Quality</th>
-                    <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">Action</th>
-                  </tr>
-                </thead>
+            <div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left border-collapse" data-qualified-table>
+                  <thead>
+                    <tr className="bg-black/[0.03] dark:bg-white/[0.02] border-b border-black/8 dark:border-white/8 transition-colors duration-300">
+                      <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Business & Contacts</th>
+                      <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Location</th>
+                      <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Qualification & Official Site</th>
+                      <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Quality</th>
+                      <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">Action</th>
+                    </tr>
+                  </thead>
 
-                <tbody className="divide-y divide-black/8 dark:divide-white/8">
-                  {partitioned.active.map(({ item: result, qual }) => {
+                  <tbody className="divide-y divide-black/8 dark:divide-white/8">
+                    {activePager.visible.map(({ item: result, qual }) => {
                     const { score, priority } = calculateScore(result);
                     const state = stateOf(result);
                     const isSaved = state.saved;
@@ -650,8 +668,10 @@ const LeadFinder = () => {
                       </tr>
                     );
                   })}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
+              </div>
+              <ListPager pager={activePager} noun="candidates" className="mx-4 my-3" />
             </div>
           ) : (
             <div className="px-6 py-8 text-center text-sm text-[var(--text-secondary)]">
@@ -682,18 +702,19 @@ const LeadFinder = () => {
               </button>
 
               {showIncomplete && (
-                <div className="overflow-x-auto border-t border-black/8 dark:border-white/8 bg-black/[0.015] dark:bg-white/[0.01]">
-                  <table className="w-full min-w-[860px] text-left border-collapse" data-incomplete-table>
-                    <thead>
-                      <tr className="border-b border-black/8 dark:border-white/8">
-                        <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Business</th>
-                        <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Location</th>
-                        <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Why Incomplete</th>
-                        <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-black/8 dark:divide-white/8">
-                      {partitioned.incomplete.map(({ item: result, qual }) => {
+                <div className="border-t border-black/8 dark:border-white/8 bg-black/[0.015] dark:bg-white/[0.01]">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[860px] text-left border-collapse" data-incomplete-table>
+                      <thead>
+                        <tr className="border-b border-black/8 dark:border-white/8">
+                          <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Business</th>
+                          <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Location</th>
+                          <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em]">Why Incomplete</th>
+                          <th className="p-4 font-semibold text-[var(--text-secondary)] text-xs uppercase tracking-[0.18em] text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-black/8 dark:divide-white/8">
+                        {incompletePager.visible.map(({ item: result, qual }) => {
                         const state = stateOf(result);
                         return (
                           <tr key={foundKey(result)} className="opacity-85">
@@ -749,8 +770,10 @@ const LeadFinder = () => {
                           </tr>
                         );
                       })}
-                    </tbody>
-                  </table>
+                      </tbody>
+                    </table>
+                  </div>
+                  <ListPager pager={incompletePager} noun="incomplete results" className="mx-4 my-3" />
                 </div>
               )}
             </div>

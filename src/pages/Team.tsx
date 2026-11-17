@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, Wrench, XCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // AI Team page: the real team register with real task records and the activity log.
 // Read-only in Phase 1. Agents marked "Planned" do no work yet and are labelled as such.
@@ -85,10 +86,8 @@ const Team = () => {
   const [tasks, setTasks] = useState<TeamTask[]>([]);
   const [activity, setActivity] = useState<TeamActivity[]>([]);
   const [ready, setReady] = useState(true);
-  // Long lists start short; "Show more" opens them.
-  const [allTasks, setAllTasks] = useState(false);
-  const [allActivity, setAllActivity] = useState(false);
-  const SHORT = 5;
+  const taskPager = usePagedList(tasks, 'team-tasks', 10);
+  const activityPager = usePagedList(activity, 'team-activity', 10);
   const [setup, setSetup] = useState('');
   const [detail, setDetail] = useState('');
   const [loading, setLoading] = useState(true);
@@ -214,7 +213,7 @@ const Team = () => {
           <p className="text-sm text-[var(--text-secondary)]">No tasks yet. Ask the Master Agent on the home screen, run a Lead Finder search or generate a demo.</p>
         ) : (
           <ul className="divide-y divide-slate-500/15">
-            {(allTasks ? tasks : tasks.slice(0, SHORT)).map((task) => (
+            {taskPager.visible.map((task) => (
               <li key={task.id} className="py-3 flex items-start gap-3">
                 {task.status === 'failed' ? <XCircle size={18} className="shrink-0 mt-0.5 text-red-400" /> : task.status === 'done' ? <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-green-500" /> : <Clock3 size={18} className="shrink-0 mt-0.5 text-[var(--text-secondary)]" />}
                 <div className="min-w-0 flex-1">
@@ -230,7 +229,7 @@ const Team = () => {
             ))}
           </ul>
         )}
-        {tasks.length > SHORT && <button type="button" data-more-tasks onClick={() => setAllTasks((value) => !value)} className="text-sm font-bold text-[#FF7A00]">{allTasks ? 'Show less' : `Show ${tasks.length - SHORT} more`}</button>}
+        <ListPager pager={taskPager} noun="tasks" compact />
       </section>
 
       <section className="neo-card p-5 sm:p-6 space-y-4">
@@ -239,7 +238,7 @@ const Team = () => {
           <p className="text-sm text-[var(--text-secondary)]">Nothing recorded yet.</p>
         ) : (
           <ul className="space-y-3">
-            {(allActivity ? activity : activity.slice(0, SHORT)).map((row) => (
+            {activityPager.visible.map((row) => (
               <li key={row.id} className="flex items-start gap-3 text-sm">
                 <span className={cn('shrink-0 mt-1.5 w-2 h-2 rounded-full', row.kind === 'task_failed' ? 'bg-red-400' : 'bg-blue-400')} />
                 <span className="min-w-0 flex-1 text-[var(--text-primary)] break-words">
@@ -249,7 +248,7 @@ const Team = () => {
             ))}
           </ul>
         )}
-        {activity.length > SHORT && <button type="button" data-more-activity onClick={() => setAllActivity((value) => !value)} className="text-sm font-bold text-[#FF7A00]">{allActivity ? 'Show less' : `Show ${activity.length - SHORT} more`}</button>}
+        <ListPager pager={activityPager} noun="activity entries" compact />
       </section>
     </div>
   );

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Reply inbox: what businesses answered to outreach emails, sorted so the promising ones come first.
 // The Customer Communication Agent writes a suggested answer for promising replies. Nothing is sent
@@ -65,6 +66,7 @@ export default function Replies() {
   };
 
   const list = (replies || []).filter((reply) => all || reply.status === 'new').sort((first, second) => Number(good(second)) - Number(good(first)) || second.score - first.score);
+  const replyPager = usePagedList(list, all ? 'all' : 'new', 10);
   const waiting = (replies || []).filter((reply) => reply.status === 'new');
   const draftsReady = waiting.filter((reply) => reply.draftState === 'ready').length;
   return (
@@ -83,7 +85,7 @@ export default function Replies() {
       )}
       {replies !== null && setup.ready && setup.secretSet && !(replies || []).length && <p className="neo-card p-5 text-sm text-[var(--text-secondary)]">No reply has come in yet. Replies are collected from your mailbox every few minutes once the mailbox script is running.</p>}
 
-      {list.map((reply) => (
+      {replyPager.visible.map((reply) => (
         <section key={reply.id} className="neo-card p-4 sm:p-5" data-reply data-label={reply.label} style={{ opacity: reply.status === 'handled' ? 0.6 : 1 }}>
           <button type="button" className="w-full text-left" onClick={() => setOpenId(openId === reply.id ? '' : reply.id)} aria-expanded={openId === reply.id}>
             <div className="flex items-start justify-between gap-3">
@@ -122,6 +124,7 @@ export default function Replies() {
           )}
         </section>
       ))}
+      <ListPager pager={replyPager} noun="replies" />
       {(replies || []).some((reply) => reply.status === 'handled') && <button type="button" onClick={() => setAll(!all)} className="text-sm font-bold text-[#FF7A00]" data-show-all>{all ? 'Hide finished replies' : 'Show finished replies too'}</button>}
 
       {confirmId && (

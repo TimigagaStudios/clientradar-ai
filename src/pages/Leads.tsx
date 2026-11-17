@@ -13,6 +13,7 @@ import { cn } from '../utils/cn';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/useToast';
 import EditLeadModal from '../components/EditLeadModal';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // --- AI helpers (same as LeadDetail, no paid LLM) ---
 const computeAiLeadScore = (lead: Lead): number => {
@@ -316,6 +317,8 @@ const Leads = () => {
     });
   }, [leads, searchTerm, activeFilter]);
 
+  const leadPager = usePagedList(filteredLeads, `${searchTerm}|${activeFilter}`, 10);
+
   return (
     <div className="h-full flex flex-col space-y-6">
       <div className="sticky top-0 z-20 bg-[var(--bg)]/90 backdrop-blur-xl pb-4 pt-1 space-y-4">
@@ -351,8 +354,8 @@ const Leads = () => {
         </div>
       </div>
 
-      <div className="masonry-grid flex-1 pb-10">
-        {filteredLeads.map((lead) => (
+      <div className="masonry-grid flex-1 pb-2">
+        {leadPager.visible.map((lead) => (
           <div key={lead.id} className="masonry-item">
             <LeadCard lead={lead} />
           </div>
@@ -363,6 +366,8 @@ const Leads = () => {
           </div>
         )}
       </div>
+
+      <ListPager pager={leadPager} noun="leads" className="mb-10" />
     </div>
   );
 };

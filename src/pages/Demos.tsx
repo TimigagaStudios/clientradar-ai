@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
-import { Globe, ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2, Share2, Mail, MessageCircle } from 'lucide-react';
+import { ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2, Share2, Mail, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
 import { buildDemoShare, deleteLeadDemo, describeDemoViews, demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 const parseDemoResponse = async (response: Response) => {
   const text = await response.text();
@@ -134,6 +135,13 @@ const Demos = () => {
     });
   }, [demoLeads, searchTerm, statusFilter]);
 
+  const queuePager = usePagedList(demoJobs, 'demo-queue', 10);
+  const demoPager = usePagedList(filteredDemos, `${searchTerm}|${statusFilter}`, 10);
+  const leadsWithoutDemo = useMemo(
+    () => leads.filter((lead: any) => !lead.demoLink && lead.demoStatus !== 'In Progress'),
+    [leads],
+  );
+
   const statusStyles: Record<string, string> = {
     'Not Started': 'bg-gray-500/10 text-gray-400 border-gray-400/20',
     'In Progress': 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -172,8 +180,8 @@ const Demos = () => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] gap-3">
           <select value={selectedLeadId} onChange={(event) => handleSelectLead(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
-            <option value="">Choose a lead without a demo</option>
-            {leads.filter((lead: any) => !lead.demoLink && lead.demoStatus !== 'In Progress').map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} - {lead.category || 'Business'}</option>)}
+            <option value="">Choose a lead without a demo{leadsWithoutDemo.length > 250 ? ' (showing top 250)' : ''}</option>
+            {leadsWithoutDemo.slice(0, 250).map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} - {lead.category || 'Business'}</option>)}
           </select>
           <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             {demoTemplates.map((template) => <option key={template.key} value={template.key}>{template.label}</option>)}
@@ -187,7 +195,7 @@ const Demos = () => {
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 
-      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{demoJobs.slice(0, 8).map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : job.learned ? ' - built-in text, AI style' : ' - built-in text') : ''}</p>{job.status === 'ready' && <p className={cn('text-xs font-semibold', job.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>{describeDemoViews(job)}</p>}{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}<button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button></div></div>; })}</div></section>}
+      {demoJobs.length > 0 && <section className="neo-card p-6 space-y-4"><div className="flex items-center gap-2"><Clock3 size={18} className="text-[var(--accent)]" /><h2 className="font-bold text-[var(--text-primary)]">Demo queue</h2></div><div className="space-y-2">{queuePager.visible.map((job: any) => { const lead = leads.find((item: any) => item.id === job.leadId); return <div key={job.id} className="flex items-center justify-between gap-3 neo-in rounded-2xl px-4 py-3"><div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p><p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : job.learned ? ' - built-in text, AI style' : ' - built-in text') : ''}</p>{job.status === 'ready' && <p className={cn('text-xs font-semibold', job.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>{describeDemoViews(job)}</p>}{job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}</div><div className="flex items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>{job.status === 'ready' && job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}{job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}<button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button></div></div>; })}</div><ListPager pager={queuePager} noun="demo jobs" compact /></section>}
 
       {/* Controls */}
       <section className="neo-card p-6 space-y-4">
@@ -223,7 +231,7 @@ const Demos = () => {
 
       {/* Demo Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredDemos.map((lead: any) => {
+        {demoPager.visible.map((lead: any) => {
           const demoStatus = lead.demoStatus || 'Not Started';
           const readyJob = demoJobs.find((job: any) => job.leadId === lead.id && job.status === 'ready');
           const share = lead.demoLink ? buildDemoShare(lead, lead.demoLink) : null;
@@ -354,6 +362,8 @@ const Demos = () => {
           </div>
         )}
       </div>
+
+      <ListPager pager={demoPager} noun="demos" />
     </div>
   );
 };

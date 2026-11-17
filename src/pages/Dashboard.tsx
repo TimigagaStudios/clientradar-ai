@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
 import {
@@ -17,7 +17,7 @@ import {
   Sparkles,
   Clock3,
 } from 'lucide-react';
-import { cn } from '../utils/cn';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 const Dashboard = () => {
   const { leads } = useLeads();
@@ -64,10 +64,11 @@ const Dashboard = () => {
     { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true, filter: 'Closed Deals' },
   ];
 
-  const demoLeads = useMemo(() =>
-    leads.filter((lead: any) => lead.demoLink || lead.demoStatus).slice(0, 4),
-    [leads]
+  const demoLeads = useMemo(
+    () => leads.filter((lead: any) => lead.demoLink || lead.demoStatus),
+    [leads],
   );
+  const recentDemosPager = usePagedList(demoLeads, 'dashboard-demos', 10);
 
   const reminderGroups = [
     {
@@ -283,8 +284,9 @@ const Dashboard = () => {
             No demos created yet.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {demoLeads.map((lead: any) => (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {recentDemosPager.visible.map((lead: any) => (
               <div key={lead.id} className="neo-in p-5 rounded-2xl hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors">
                 <Link to={`/leads/${lead.id}`} className="block">
                   <div className="flex items-start justify-between gap-4 mb-3">
@@ -332,6 +334,8 @@ const Dashboard = () => {
                 )}
               </div>
             ))}
+            </div>
+            <ListPager pager={recentDemosPager} noun="demo assets" />
           </div>
         )}
       </section>

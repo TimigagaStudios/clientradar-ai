@@ -4,6 +4,7 @@ import { useLeads } from '../context/LeadContext';
 import { useToast } from '../components/ui/useToast';
 import { priceStage } from '../lib/demo-factory';
 import { cn } from '../utils/cn';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Business Tracker: every tool, subscription and domain the studio uses, what it costs, when it is due,
 // and how the running costs compare with closed deals. Card numbers are never stored.
@@ -85,6 +86,7 @@ const Tracker = () => {
   const upgradeTotal = freeItems.reduce((sum, item) => sum + (item.upgradePrice || 0), 0);
   const unpriced = freeItems.filter((item) => item.auto && !item.upgradePrice).length;
   const shown = items.filter((item) => filter === 'all' || item.status === filter || item.kind === filter);
+  const trackerPager = usePagedList(shown, filter, 10);
 
   const save = async (item: Item) => {
     setSaving(true);
@@ -196,32 +198,35 @@ const Tracker = () => {
             <p>Nothing here yet. The services ClientRadar runs on are added by the agent automatically; add your own subscriptions and domains with Add item.</p>
           </div>
         ) : (
-          <ul className="mt-3 divide-y divide-slate-500/15" data-tracker-list>
-            {shown.map((item) => (
-              <li key={item.id} className="py-3.5 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-bold text-[var(--text-primary)] break-words">{item.name}</p>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
-                    <span className={cn('px-2 py-0.5 rounded-full font-semibold', STATUS_TONE[item.status])}>{STATUS_LABEL[item.status] || item.status}</span>
-                    <span>{KIND_LABEL[item.kind] || item.kind}</span>
-                    {item.auto && <span className="px-2 py-0.5 rounded-full font-semibold text-blue-400 bg-blue-400/10">Added by the agent</span>}
-                    {item.status !== 'free' && <span>{money(item.amount, item.currency)} {item.cycle === 'one-time' ? 'once' : item.cycle}</span>}
-                    {item.status === 'free' && <span>{money(0, 'USD')} now</span>}
-                    {item.nextDue && <span>{dueText(item.nextDue)}</span>}
-                    {item.paidWith && <span>Paid with {item.paidWith}</span>}
-                  </p>
-                  {(item.upgradePrice || item.upgradeNote) && item.status !== 'paid' && (
-                    <p className="mt-1 text-xs text-[var(--text-primary)] break-words">Paid plan: {item.upgradePrice ? `${money(item.upgradePrice, 'USD')} - ` : ''}{item.upgradeNote}</p>
-                  )}
-                  {item.notes && <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">{item.notes}</p>}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <button type="button" aria-label={`Edit ${item.name}`} onClick={() => setEditing({ ...item })} className="p-2 rounded-xl hover:bg-white/10 text-[var(--text-secondary)]"><Pencil size={16} /></button>
-                  <button type="button" aria-label={`Remove ${item.name}`} onClick={() => void remove(item)} className="p-2 rounded-xl hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-3">
+            <ul className="mt-3 divide-y divide-slate-500/15" data-tracker-list>
+              {trackerPager.visible.map((item) => (
+                <li key={item.id} className="py-3.5 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold text-[var(--text-primary)] break-words">{item.name}</p>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
+                      <span className={cn('px-2 py-0.5 rounded-full font-semibold', STATUS_TONE[item.status])}>{STATUS_LABEL[item.status] || item.status}</span>
+                      <span>{KIND_LABEL[item.kind] || item.kind}</span>
+                      {item.auto && <span className="px-2 py-0.5 rounded-full font-semibold text-blue-400 bg-blue-400/10">Added by the agent</span>}
+                      {item.status !== 'free' && <span>{money(item.amount, item.currency)} {item.cycle === 'one-time' ? 'once' : item.cycle}</span>}
+                      {item.status === 'free' && <span>{money(0, 'USD')} now</span>}
+                      {item.nextDue && <span>{dueText(item.nextDue)}</span>}
+                      {item.paidWith && <span>Paid with {item.paidWith}</span>}
+                    </p>
+                    {(item.upgradePrice || item.upgradeNote) && item.status !== 'paid' && (
+                      <p className="mt-1 text-xs text-[var(--text-primary)] break-words">Paid plan: {item.upgradePrice ? `${money(item.upgradePrice, 'USD')} - ` : ''}{item.upgradeNote}</p>
+                    )}
+                    {item.notes && <p className="mt-1 text-xs text-[var(--text-secondary)] break-words">{item.notes}</p>}
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <button type="button" aria-label={`Edit ${item.name}`} onClick={() => setEditing({ ...item })} className="p-2 rounded-xl hover:bg-white/10 text-[var(--text-secondary)]"><Pencil size={16} /></button>
+                    <button type="button" aria-label={`Remove ${item.name}`} onClick={() => void remove(item)} className="p-2 rounded-xl hover:bg-red-500/10 text-red-400"><Trash2 size={16} /></button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <ListPager pager={trackerPager} noun="items" compact />
+          </div>
         )}
       </section>
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Duplicate review: business names saved more than once, side by side.
 // Nothing is removed until you choose. "Different branches" keeps both and stops asking;
@@ -48,6 +49,7 @@ export default function Duplicates() {
   };
 
   const row = (label: string, value: string) => (value ? <p className="text-xs text-[var(--text-secondary)] break-words"><span className="font-semibold text-[var(--text-primary)]">{label}:</span> {value}</p> : null);
+  const dupPager = usePagedList(groups || [], 'duplicates', 10);
 
   return (
     <div className="space-y-6 pb-24" data-duplicates>
@@ -60,7 +62,7 @@ export default function Duplicates() {
       {done && <p className="neo-card p-4 text-sm text-green-500" role="status">{done}</p>}
       {groups === null && <p className="text-sm text-[var(--text-secondary)]">Checking your leads...</p>}
       {groups !== null && groups.length === 0 && !error && <p className="neo-card p-5 text-sm text-[var(--text-secondary)]">No business name is saved more than once.</p>}
-      {(groups || []).map((group) => (
+      {dupPager.visible.map((group) => (
         <section key={group.key} className="neo-card p-5 sm:p-6 space-y-4" data-dup-group>
           <div>
             <h2 className="text-lg font-black text-[var(--text-primary)] break-words">{group.name} <span className="text-sm font-semibold text-[var(--text-secondary)]">({group.leads.length} records)</span></h2>
@@ -85,6 +87,7 @@ export default function Duplicates() {
           <button type="button" disabled={busy === group.key} onClick={() => void separate(group)} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)] disabled:opacity-50">{busy === group.key ? 'Working...' : 'These are different businesses: keep all'}</button>
         </section>
       ))}
+      <ListPager pager={dupPager} noun="duplicate groups" />
       {confirm && (
         <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }} role="dialog" aria-modal="true" aria-label="Confirm merge">
           <div className="neo-card w-full max-w-md p-5 space-y-3">

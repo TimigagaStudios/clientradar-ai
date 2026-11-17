@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import {
   Send,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useToast } from '../components/ui/useToast';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 const Outreach = () => {
   const { leads, updateLeadStatus, addOutreachLog, updateDemoStatus } = useLeads();
@@ -177,6 +178,8 @@ Timigaga Studios`,
       l.businessName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const outreachPager = usePagedList(filteredLeads, searchTerm, 10);
+
   const preview = getPreview();
 
   return (
@@ -203,7 +206,7 @@ Timigaga Studios`,
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredLeads.map((lead) => (
+          {outreachPager.visible.map((lead) => (
             <button
               key={lead.id}
               onClick={() => setSelectedLeadId(lead.id)}
@@ -245,6 +248,8 @@ Timigaga Studios`,
               No leads available for outreach.
             </div>
           )}
+
+          <ListPager pager={outreachPager} noun="leads" compact className="m-3" />
         </div>
       </div>
 

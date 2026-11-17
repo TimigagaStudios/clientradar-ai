@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Follow-up drafts: a polite second email to businesses written to a few days ago that have not
 // replied. Like first-contact outreach, nothing is sent until "Approve and send" is confirmed.
@@ -88,19 +89,27 @@ export default function FollowUps() {
   };
 
   const toSend = count('pending');
+  const draftPager = usePagedList(drafts, taskId, 10);
   return (
     <div className="space-y-5 pb-28" data-followup-drafts>
-      <header>
-        <Link to="/team" className="text-sm font-bold text-[#FF7A00]">Back to AI Team</Link>
-        <h1 className="mt-2 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Follow-up drafts</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          {!batch ? 'Loading...' : batch.status === 'waiting_approval' ? `${drafts.length} polite second ${drafts.length === 1 ? 'email is' : 'emails are'} written to businesses that have not replied. Nothing has been sent. Tap one to read or change it.` : batch.status === 'cancelled' ? 'You declined this batch. Nothing was sent.' : `${count('sent')} sent${count('failed') ? `, ${count('failed')} not sent` : ''}${count('skipped') ? `, ${count('skipped')} left out` : ''}${toSend ? `, ${toSend} still to send` : ''}.`}
-        </p>
+      <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div>
+          <Link to="/team" className="text-sm font-bold text-[#FF7A00]">Back to AI Team</Link>
+          <h1 className="mt-2 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Follow-up drafts</h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            {!batch ? 'Loading...' : batch.status === 'waiting_approval' ? `${drafts.length} polite second ${drafts.length === 1 ? 'email is' : 'emails are'} written to businesses that have not replied. Nothing has been sent. Tap one to read or change it.` : batch.status === 'cancelled' ? 'You declined this batch. Nothing was sent.' : `${count('sent')} sent${count('failed') ? `, ${count('failed')} not sent` : ''}${count('skipped') ? `, ${count('skipped')} left out` : ''}${toSend ? `, ${toSend} still to send` : ''}.`}
+          </p>
+        </div>
+        {batch?.status === 'waiting_approval' && !sending && drafts.length > 3 && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button type="button" disabled={!toSend || !batch.mailReady} onClick={() => setConfirm(true)} className="rounded-full px-4 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }}>Approve and send {toSend}</button>
+          </div>
+        )}
       </header>
       {error && <p className="neo-card p-4 text-sm text-red-400" role="alert">{error}</p>}
       {batch && !batch.mailReady && batch.status === 'waiting_approval' && <p className="neo-card p-4 text-sm text-[#FF7A00]">Email sending is not set up in Vercel (Brevo settings missing), so these cannot be sent yet.</p>}
 
-      {drafts.map((draft) => (
+      {draftPager.visible.map((draft) => (
         <section key={draft.leadId} className="neo-card p-4 sm:p-5" data-draft data-state={draft.state} style={{ opacity: draft.state === 'skipped' ? 0.55 : 1 }}>
           <button type="button" className="w-full text-left" onClick={() => setOpenId(openId === draft.leadId ? '' : draft.leadId)} aria-expanded={openId === draft.leadId}>
             <div className="flex items-start justify-between gap-3">
@@ -130,6 +139,8 @@ export default function FollowUps() {
           )}
         </section>
       ))}
+
+      <ListPager pager={draftPager} noun="follow-up drafts" />
 
       {batch && (batch.status === 'waiting_approval' || batch.status === 'running' || count('failed') > 0) && (
         <div className="sticky bottom-3 z-10 neo-card p-3 flex flex-wrap items-center gap-2" style={{ backdropFilter: 'blur(14px)' }}>
