@@ -195,6 +195,18 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     };
   }, [leads]);
 
+  const [autoMinor, setAutoMinor] = useState(() => {
+    try { return localStorage.getItem('cr-auto-minor') === 'on'; } catch { return false; }
+  });
+  useEffect(() => {
+    const sync = () => { try { setAutoMinor(localStorage.getItem('cr-auto-minor') === 'on'); } catch { setAutoMinor(false); } };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, []);
+  const toggleAutoMinor = () => {
+    const next = !autoMinor;
+    try { localStorage.setItem('cr-auto-minor', next ? 'on' : 'off'); setAutoMinor(next); } catch { setAutoMinor(false); }
+  };
   const [presenceState, setPresenceState] = useState<OrbState>('boot');
   const [workState, setWorkState] = useState<WorkState>(getWork);
   const [autopilotBusy, setAutopilotBusy] = useState(false);
@@ -256,7 +268,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       const response = await fetch('/api/team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'autopilot', sig: stored }),
+        body: JSON.stringify({ action: 'autopilot', sig: stored, autoMinor: (() => { try { return localStorage.getItem('cr-auto-minor') === 'on'; } catch { return false; } })() }),
       });
       const result = response.ok ? await response.json().catch(() => null) : null;
       if (!result?.success || !result?.data) {
@@ -619,10 +631,10 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     );
 
   // One specialist runs one task in its own server call.
-  const runTask = async (task: ChatTask, approve = false): Promise<ChatTask> => {
+  const runTask = async (task: ChatTask, approve = false, autoMinorRun = false): Promise<ChatTask> => {
     patchTask(task.id, { status: 'running', error: null });
     try {
-      const data = await postTeam({ action: 'run', taskId: task.id, approve });
+      const data = await postTeam({ action: 'run', taskId: task.id, approve, autoMinor: autoMinorRun });
       patchTask(task.id, { status: data.status, summary: data.summary, error: data.error, output: data.output });
       // An approved batch hands its tasks to the work queue, which runs them one by one on any page.
       if (Array.isArray(data.output?.queue) && data.output.queue.length) enqueueWork(data.output.queue);
@@ -770,12 +782,20 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
       return;
     }
 
-    const reply = String(data.reply || '');
     const tasks: ChatTask[] = Array.isArray(data.tasks) ? data.tasks : [];
+    let minorOn = false;
+    try { minorOn = localStorage.getItem('cr-auto-minor') === 'on'; } catch { /* default off */ }
+    const autoTask = minorOn && tasks.length === 1 && (tasks[0] as ChatTask & { minorEligible?: boolean }).minorEligible === true ? tasks[0] : null;
+    const reply = autoTask ? 'Minor-task mode is on. I will run this small research task automatically. Demos and email sending still require your approval.' : String(data.reply || '');
     const note = data.source === 'rules' ? (data.aiError ? `AI not used: ${data.aiError}. Simple mode answered.` : 'Answered from your database; AI was not needed.') : undefined;
     setThinking(false);
     setConversation((current) => [...current, { id: uid(), side: 'ai', html: esc(reply), tasks, note }]);
 
+    if (autoTask) {
+      setPresenceState('delegating');
+      reportResults([await runTask(autoTask, false, true)]);
+      return;
+    }
     // Tasks that need no approval start straight away, one after another.
     const ready = tasks.filter((task) => task.status === 'queued');
     if (ready.length) {
@@ -1060,6 +1080,13 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
             <RefreshCw size={12} className={autopilotBusy ? 'animate-spin' : ''} />
             {autopilotBusy ? 'Scanning...' : 'Run scan now'}
           </button>
+        </div>
+
+        <div className="rounded-xl border border-black/10 dark:border-white/10 p-3" data-minor-mode>
+          <div className="flex items-center justify-between gap-3"><span className="text-sm font-bold">Auto-accept minor tasks: {autoMinor ? 'On' : 'Off'}</span>
+            <button type="button" role="switch" aria-checked={autoMinor} onClick={toggleAutoMinor} className="neo-button rounded-full px-4 py-2 text-xs font-bold">{autoMinor ? 'Turn off' : 'Turn on'}</button>
+          </div>
+          <p className="mt-2 text-xs text-[var(--text-secondary)]">This device only. Allows one ordinary research request for up to 10 results and small records checks that can fill missing lead details. Research can inspect up to 20 candidates and 8 websites. Larger research, demos and all email sending always need approval. Turning off stops new automatic checks; work already started may finish. Existing provider usage limits still apply.</p>
         </div>
 
         {workActive() && (
