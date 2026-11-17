@@ -181,7 +181,7 @@ const runDemoCreation: Runner = async (supabase, task) => {
     };
   }
   const leadId = String(task.input?.leadId || '');
-  const level = normalizeStyleLevel(task.input?.level);
+  const level = normalizeStyleLevel(task.input?.level || 'ultra');
   if (!leadId) throw new Error('The task has no lead');
   const { data: lead, error: leadError } = await supabase.from('leads').select('*').eq('id', leadId).single();
   if (leadError || !lead) throw new Error('Lead not found');

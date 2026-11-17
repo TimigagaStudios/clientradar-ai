@@ -30,10 +30,16 @@ export interface MasterContext {
 const MAX_TASKS = 3;
 const clean = (value: unknown, max: number) => String(value ?? '').replace(/[<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
+const LEVEL_LABELS: Record<'mid' | 'hybrid' | 'ultra', string> = {
+  mid: 'Mid-Level',
+  hybrid: 'Hybrid',
+  ultra: 'Ultra Premium',
+};
+
 function levelFrom(text: string): 'mid' | 'hybrid' | 'ultra' {
-  if (/ultra|premium/i.test(text)) return 'ultra';
-  if (/hybrid/i.test(text)) return 'hybrid';
-  return 'mid';
+  if (/\bmid(?:[\s-]?level)?\b/i.test(text)) return 'mid';
+  if (/\bhybrid\b/i.test(text)) return 'hybrid';
+  return 'ultra';
 }
 
 export function statusLine(context: MasterContext) {
@@ -46,7 +52,7 @@ export function statusLine(context: MasterContext) {
   return `You have ${t.leads || 0} leads: ${t.new || 0} new, ${t.pendingReply || 0} awaiting reply, ${t.warm || 0} warm and ${t.closed || 0} closed. ${t.demosReady || 0} demos are ready.${emailLine}`;
 }
 
-export const INTRO_PROMO_REPLY = 'For our current introductory phase, present Ultra Premium as an introductory promotion to every business prospect, regardless of category, so they see our strongest offer first. Keep it framed simply as an introductory Ultra Premium offer with no discount figures or countdown terms attached. Later we will match Mid-Level, Hybrid or Ultra Premium to each business based on its value and fit, and demo builds still default to Mid-Level unless you ask for Hybrid or Ultra.';
+export const INTRO_PROMO_REPLY = 'For our current introductory phase, present Ultra Premium as an introductory promotion to every business prospect, regardless of category, and build Ultra Premium demo websites by default for all businesses right now unless you ask for Mid-Level or Hybrid. Keep it framed simply as an introductory Ultra Premium offer with no discount figures or countdown terms attached. Later we will match Mid-Level, Hybrid or Ultra Premium to each business based on its value and fit.';
 
 export function isPromoOfferQuestion(message: string): boolean {
   const text = clean(message, 400);
@@ -110,16 +116,18 @@ export function planByRules(message: string, context: MasterContext): Omit<Maste
   }
   const demo = text.match(/\bdemo\b.*?\bfor\s+(.+?)[.?!]*$/i);
   if (demo) {
-    return { reply: `I will ask the Demo Creation Agent to prepare a demo for ${clean(demo[1], 80)}.`, tasks: [{ agent: 'demo-creation', leadName: clean(demo[1], 80), level: levelFrom(text) }] };
+    const chosenLevel = levelFrom(text);
+    const target = clean(demo[1], 80);
+    return { reply: `I prepared an ${LEVEL_LABELS[chosenLevel] === 'Ultra Premium' ? 'Ultra Premium' : LEVEL_LABELS[chosenLevel]} demo request for ${target} and staged it for your approval below.`, tasks: [{ agent: 'demo-creation', leadName: target, level: chosenLevel }] };
   }
   const find = text.match(/\b(?:find|search for|search|look for|get me|scan for)\s+(?:me\s+)?(?:some\s+|new\s+)?(.+?)\s+(?:in|around|near)\s+(.+?)[.?!]*$/i);
   if (find) {
     const category = tidyCategory(find[1]);
     const city = tidyCity(find[2]);
-    if (category && city) return { reply: `I will ask the Lead Research Agent to look for ${category} in ${city} and check contact qualification.`, tasks: [{ agent: 'lead-research', category, city }] };
+    if (category && city) return { reply: `I staged a Lead Research task for ${category} in ${city} with two-route contact qualification; tap Approve below to run it.`, tasks: [{ agent: 'lead-research', category, city }] };
   }
   const recent = context.recentActivity.length ? ` Latest team activity: ${context.recentActivity.slice(0, 3).join(' ')}` : '';
-  return { reply: `${statusLine(context)}${recent} You can ask me to find contact-qualified businesses in a city, build a demo for a lead, or discuss our introductory Ultra Premium offer.`, tasks: [] };
+  return { reply: `${statusLine(context)}${recent} You can ask me to find contact-qualified businesses in a city, build an Ultra Premium demo for a lead, or discuss our introductory Ultra Premium offer.`, tasks: [] };
 }
 
 function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
@@ -130,7 +138,7 @@ function validate(parsed: any): Omit<MasterPlan, 'source' | 'aiError'> | null {
     if (raw?.agent === 'lead-research' && tidyCategory(String(raw.category || '')) && tidyCity(String(raw.city || ''))) {
       tasks.push({ agent: 'lead-research', category: tidyCategory(String(raw.category)), city: tidyCity(String(raw.city)) });
     } else if (raw?.agent === 'demo-creation' && clean(raw.leadName, 80)) {
-      tasks.push({ agent: 'demo-creation', leadName: clean(raw.leadName, 80), level: ['mid', 'hybrid', 'ultra'].includes(raw.level) ? raw.level : 'mid' });
+      tasks.push({ agent: 'demo-creation', leadName: clean(raw.leadName, 80), level: ['mid', 'hybrid', 'ultra'].includes(raw.level) ? raw.level : 'ultra' });
     } else if (raw?.agent === 'outreach') {
       tasks.push({ agent: 'outreach', kind: raw?.kind === 'followup' ? 'followup' : 'first', count: Math.max(1, Math.min(25, Number(raw.count) || 25)) });
     }
@@ -152,18 +160,18 @@ export async function planRequest(message: string, history: string[], context: M
     'You are the Master Agent of ClientRadar AI, chief of staff to Timothy, owner of Timigaga Studios (a web design studio).',
     'Talk like a sharp, warm chief of staff texting the owner: plain words, 1 to 4 short sentences, no markdown, no lists, no robot talk. You may discuss ideas, answer questions and think things through with him, not only hand out tasks. Understand what he means in whatever words he uses; never make him repeat himself in exact phrases.',
     'You coordinate specialist agents and never do their work yourself. You never invent results, numbers, leads, prices or promises. Answer questions about the business only from the records given below; if the records do not contain the answer, say you do not have it.',
-    'Current sales offer policy (introductory phase): Whenever advising on or presenting website tiers/offers for prospects, recommend and present Ultra Premium as an introductory promotion/offer to every business right now, regardless of category, so prospects are attracted by our strongest package first. Note when relevant that in a later phase ClientRadar will match Mid-Level, Hybrid or Ultra Premium to each business based on its individual value and needs.',
-    'Strict promotion honesty: Do NOT invent discount percentages, exact promotional prices, expiry dates, limited-spots scarcity or guaranteed outcomes; the owner has not supplied those terms. Phrase it strictly as an introductory Ultra Premium offer/promotion, and keep this temporary sales offer distinct from demo-generation build levels and price-stage tables.',
-    'Specialists you may hand tasks to right now:',
+    'Current introductory high-premium policy: Right now we give every business prospect an Ultra Premium ("ultra") demo website by default and present Ultra Premium as our introductory promotion across all categories, so prospects experience our highest-tier package first. Note when relevant that in a later phase ClientRadar will match Mid-Level, Hybrid or Ultra Premium to each business based on its individual value and needs.',
+    'Strict promotion honesty: Do NOT invent discount percentages, exact promotional prices, expiry dates, limited-spots scarcity or guaranteed outcomes; the owner has not supplied those terms. Phrase it strictly as an introductory Ultra Premium offer/promotion, and leave internal price-stage valuation tables untouched.',
+    'Specialists you may hand tasks to right now (every task is staged for Timothy\'s approval before running):',
     '- "lead-research": searches public business listings in ANY country and checks the two qualification routes: Route 1 (map listing already provides both email and phone) and Route 2 (official business website checked and provides missing contact details so both email and phone are confirmed). Needs "category" (only the type of business, no numbers) and "city" (only the place, any city in the world). How many and "without a website" are read from the owner message automatically.',
-    '- "demo-creation": builds a demo website for ONE existing lead. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (keep "mid" as the default build level unless the owner explicitly asks for "hybrid" or "ultra", even though our sales offer presents Ultra Premium as the introductory promotion).',
+    '- "demo-creation": builds a demo website for ONE existing lead after Timothy approves. Needs "leadName" copied exactly from the lead list, and "level": "mid", "hybrid" or "ultra" (always use "ultra" as the default build level for every business right now unless the owner explicitly asks for "mid" or "hybrid").',
     '- "outreach" with "kind": "first": the Outreach Agent writes first-contact emails for many leads at once. Use it whenever the owner wants leads emailed, in whatever words he says it. "count" is how many (default 25). Nothing is sent without his approval.',
     '- "outreach" with "kind": "followup": the Outreach Agent writes polite follow-up emails to leads written to at least 3 days ago that have not replied. Use it whenever he wants non-repliers chased, in whatever words he says it. A lead is never followed up twice.',
     'Client replies to outreach emails are collected and sorted on the Replies page by the Customer Communication Agent, and a suggested answer is written for promising replies. The owner reads it there and only his approval sends it. You cannot answer clients.',
     'Quality checks, reports, scheduling and social posts are planned agents that are NOT active yet. If asked for those, say so plainly and create no task.',
     'You cannot send messages, save leads, delete anything or spend money. The owner saves qualified businesses himself with the Save buttons under the results.',
     `Create at most ${MAX_TASKS} tasks. Create none when the request is only a question or an idea. If a needed detail is missing (for example the city), ask for it and create no task.`,
-    'When you create tasks, say which agent you are asking and for what; do not claim the work is already done.',
+    'When you create tasks, say clearly which agent you are asking and tell Timothy it is staged for his approval below; never claim the work has already run.',
     'Return only JSON: {"reply": string, "tasks": [{"agent": string, "category"?: string, "city"?: string, "leadName"?: string, "level"?: string, "kind"?: string, "count"?: number}]}',
   ].join('\n');
   const records = [
@@ -282,11 +290,11 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
     : promising.length
       ? `read the ${plural(promising.length, 'reply', 'replies')} waiting on the Replies page`
       : approvals.length
-        ? `review the waiting drafts (${clean(approvals[0].title, 80)})`
+        ? `review and approve ${clean(approvals[0].title, 80)}`
         : failed.length
           ? `retry ${clean(failed[0].title, 80)}`
           : totals.fresh
-            ? 'draft outreach emails for the new leads'
+            ? 'approve Ultra Premium demos and outreach drafts for your leads'
             : totals.demosReady
               ? 'send the ready demos to their businesses'
               : 'find more leads to grow the pipeline';
@@ -296,17 +304,17 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
   const builtInHeadline = () => {
     const parts: string[] = [];
     if (promising.length) parts.push(`${plural(promising.length, 'promising reply is', 'promising replies are')} waiting${draftsReady.length ? ` with suggested ${draftsReady.length === 1 ? 'answer' : 'answers'} ready` : ''} (${promising.slice(0, 3).map(nameOfReply).join(', ')})`);
-    if (approvals.length) parts.push(`${plural(approvals.length, 'prepared batch is', 'prepared batches are')} ready for your one-tap approval`);
-    if (running.length) parts.push(`I am actively running ${plural(running.length, 'queued task', 'queued tasks')} in the background`);
+    if (approvals.length) parts.push(`${plural(approvals.length, 'staged task or batch is', 'staged tasks or batches are')} ready for your one-tap approval`);
+    if (running.length) parts.push(`I am running ${plural(running.length, 'approved task', 'approved tasks')} in the background`);
     if (failed.length) parts.push(`${plural(failed.length, 'task needs', 'tasks need')} a retry (${clean(failed[0].title, 60)})`);
     if (parts.length) {
       return `I am on duty running Timigaga Studios: ${parts.join('; ')}. Next move: ${nextStep}.`;
     }
     if (totals.total === 0) {
-      return 'I just audited Timigaga Studios and your pipeline is clean and ready for fresh prospects. Both strict qualification routes (map contacts and official website scans) and our introductory Ultra Premium offer are active - pick a business category and city below to start building leads.';
+      return 'I just audited Timigaga Studios and your pipeline is clean and ready for fresh prospects. Both strict qualification routes (map contacts and official website scans) and default Ultra Premium demo sites are armed - pick a business category and city below to start building leads.';
     }
     const recap = recent.length ? ` Latest completed action: ${recent[0]}.` : '';
-    return `I have audited your ${plural(totals.total, 'saved lead', 'saved leads')}, checked demo readiness, outreach drafts, and 3-day follow-up windows.${recap} Next move: ${nextStep}.`;
+    return `I audited your ${plural(totals.total, 'saved lead', 'saved leads')}, checked Ultra Premium demo readiness, outreach drafts, and 3-day follow-up windows.${recap} Next move: ${nextStep}.`;
   };
 
   if (!isNew) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
@@ -317,9 +325,9 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const facts = [
     promising.length ? `${plural(promising.length, 'promising reply is', 'promising replies are')} waiting (${promising.slice(0, 3).map(nameOfReply).join(', ')}), suggested answers ready for ${draftsReady.length}` : 'no replies waiting right now',
-    approvals.length ? `${plural(approvals.length, 'prepared batch is', 'prepared batches are')} waiting for owner approval before sending` : 'no prepared email batches waiting right now',
+    approvals.length ? `${plural(approvals.length, 'staged task or batch is', 'staged tasks or batches are')} waiting for owner approval before running or sending (${approvals.slice(0, 3).map((row: any) => clean(row.title, 70)).join('; ')})` : 'no staged tasks waiting for approval right now',
     failed.length ? `${plural(failed.length, 'thing failed', 'things failed')}: ${clean(failed[0].title, 80)}` : 'nothing failed',
-    running.length ? `${plural(running.length, 'task is', 'tasks are')} actively running in the background now` : 'background queue clear and ready',
+    running.length ? `${plural(running.length, 'approved task is', 'approved tasks are')} actively running in the background now` : 'background queue clear and ready',
     `pipeline: ${totals.total} leads, ${totals.newToday} added today, ${totals.warm} warm, ${totals.closed} closed, ${totals.demosReady} demos ready, value $${totals.pipeline.toLocaleString()}`,
     recent.length ? `recently completed by team: ${recent.join(' | ')}` : 'fresh workspace ready for new prospect search',
     `recommended immediate action: ${nextStep}`,
@@ -330,7 +338,7 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: 'You are the proactive Master Agent running operations for Timothy, owner of Timigaga Studios. Write his opening briefing in 2 to 4 short plain sentences, warm, energetic, and executive-ready, no markdown, no bullet lists. Never say everything is quiet or nothing new; report what you just checked or started from the facts, highlight anything ready for his approval, and end with the concrete next move. Use only the facts given; never invent numbers or results.' }] },
+        systemInstruction: { parts: [{ text: 'You are the proactive Master Agent running operations for Timothy, owner of Timigaga Studios. Write his opening briefing in 2 to 3 short plain sentences, warm, energetic, and executive-ready, no markdown, no bullet lists. Report what you just audited in the pipeline, highlight any staged tasks or Ultra Premium demo/outreach batches waiting for his approval (never claim unapproved tasks have already started), and end with the concrete next move. Use only the facts given; never invent numbers or results.' }] },
         contents: [{ role: 'user', parts: [{ text: `FACTS\n${facts}` }] }],
         generationConfig: { temperature: 0.5 },
       }),
