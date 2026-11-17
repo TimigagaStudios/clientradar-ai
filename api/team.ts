@@ -119,12 +119,12 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
       : await handleBatchOutreach(supabase, req, res, message, mailTask.count || 25);
   }
 
-  // Turn the plan into task rows. Demo tasks must point at exactly one saved lead.
+  // Turn the plan into task rows. Every Master-handed task waits for owner approval before running.
   const rows: any[] = [];
   const problems: string[] = [];
   for (const task of plan.tasks) {
     if (task.agent === 'lead-research') {
-      rows.push({ agent_key: 'lead-research', title: `Find ${task.category} in ${task.city}`, status: 'queued', input: { category: task.category, city: task.city, ...searchWishes(message) } });
+      rows.push({ agent_key: 'lead-research', title: `Find ${task.category} in ${task.city}`, status: 'waiting_approval', input: { category: task.category, city: task.city, ...searchWishes(message) } });
       continue;
     }
     const wanted = String(task.leadName || '').replace(/[%_,()]/g, ' ').trim();
@@ -135,7 +135,7 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
       problems.push(found.length ? `I found ${found.length} leads matching "${wanted}" (${found.map((row: any) => row.business_name).join(', ')}). Tell me which one and I will ask for the demo.` : `I could not find a saved lead called "${wanted}", so no demo task was created.`);
       continue;
     }
-    const level = task.level || 'mid';
+    const level = task.level || 'ultra';
     rows.push({ agent_key: 'demo-creation', title: `Build ${LEVEL_NAMES[level]} demo for ${found[0].business_name}`, status: 'waiting_approval', lead_id: found[0].id, input: { leadId: found[0].id, level } });
   }
 
@@ -359,7 +359,7 @@ async function startBatch(supabase: any, task: any, res: VercelResponse) {
   if (!claimed?.length) return res.status(409).json({ success: false, error: 'This batch was already started' });
   const ids: string[] = Array.isArray(task.input?.leadIds) ? task.input.leadIds.slice(0, MAX_BATCH) : [];
   const names: string[] = Array.isArray(task.input?.leadNames) ? task.input.leadNames : [];
-  const level = task.input?.level || 'mid';
+  const level = task.input?.level || 'ultra';
   const { data: created, error } = await supabase.from('agent_tasks').insert(ids.map((leadId, index) => ({
     agent_key: 'demo-creation', title: `Build ${LEVEL_NAMES[level]} demo for ${names[index] || 'lead'}`, status: 'queued', lead_id: leadId,
     parent_task_id: task.parent_task_id, requested_by: 'master', input: { leadId, level, batchTaskId: task.id },
@@ -368,7 +368,7 @@ async function startBatch(supabase: any, task: any, res: VercelResponse) {
     await supabase.from('agent_tasks').update({ status: 'failed', error: String(error?.message || 'Could not queue the demos').slice(0, 300), completed_at: new Date().toISOString() }).eq('id', task.id);
     return res.status(500).json({ success: false, error: error?.message || 'Could not queue the demos' });
   }
-  const summary = `Approved. ${created.length} ${created.length === 1 ? 'demo is' : 'demos are'} queued and will build one after another. Keep ClientRadar open; you can use other pages meanwhile.`;
+  const summary = `Approved. ${created.length} ${LEVEL_NAMES[level]} ${created.length === 1 ? 'demo is' : 'demos are'} queued and will build one after another. Keep ClientRadar open; you can use other pages meanwhile.`;
   const output = { batch: true, total: created.length, queue: created.map((row: any) => ({ id: row.id, title: row.title })), summary };
   await supabase.from('agent_tasks').update({ status: 'done', output, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', task.id);
   await note(supabase, 'master', 'approved', `You approved: ${task.title}`, task.id);
@@ -436,8 +436,17 @@ async function handleMailbox(req: VercelRequest, res: VercelResponse) {
   }
 }
 
-const AUTO_DEMO_CAP = 3;
+const AUTO_DEMO_CAP = 5;
 const AUTO_DRAFT_CAP = 10;
+
+type AutopilotApprovalItem = {
+  id: string;
+  title: string;
+  agentKey: string;
+  agentName: string;
+  link?: string;
+  kind: 'demos' | 'lead-research' | 'outreach' | 'followup';
+};
 
 async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelResponse) {
   const started: string[] = [];
@@ -448,23 +457,61 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
     supabase.from('leads').select('id', { count: 'exact', head: true }),
     supabase.from('leads').select('id, business_name, lead_score, demo_status, website, email, status, notes').order('lead_score', { ascending: false }).limit(400),
     supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']),
-    supabase.from('agent_tasks').select('id, agent_key, title, status, lead_id, input, created_at').in('status', ['queued', 'running', 'waiting_approval']).order('created_at', { ascending: false }).limit(60),
+    supabase.from('agent_tasks').select('id, agent_key, title, status, lead_id, input, requested_by, parent_task_id, created_at').in('status', ['queued', 'running', 'waiting_approval']).order('created_at', { ascending: false }).limit(60),
   ]);
 
   const totalLeads = Number(totalLeadsRaw || (candidateLeads || []).length || 0);
-  const tasksList: any[] = openTasks || [];
+  let tasksList: any[] = openTasks || [];
 
-  // Existing queued demo tasks should be resumed in the browser work queue automatically.
-  const existingQueuedDemos = tasksList.filter((task) => task.agent_key === 'demo-creation' && task.status === 'queued');
+  // Retire any unapproved queued demo tasks left over from an earlier autopilot version so nothing runs without owner approval
+  // and no lead gets a Mid-Level demo instead of Ultra Premium.
+  const unapprovedAutoDemos = tasksList.filter(
+    (task) => task.agent_key === 'demo-creation' && task.status === 'queued' && task.requested_by === 'master-autopilot',
+  );
+  if (unapprovedAutoDemos.length > 0) {
+    const retiredIds = unapprovedAutoDemos.map((task) => String(task.id));
+    try {
+      await supabase
+        .from('agent_tasks')
+        .update({ status: 'cancelled', completed_at: now, updated_at: now })
+        .in('id', retiredIds)
+        .eq('status', 'queued');
+      const parentIds = Array.from(new Set(unapprovedAutoDemos.map((task) => task.parent_task_id).filter(Boolean)));
+      for (const pid of parentIds) {
+        await closeParent(supabase, String(pid));
+      }
+    } catch {
+      /* best-effort cleanup */
+    }
+    const retiredSet = new Set(retiredIds);
+    tasksList = tasksList.filter((task) => !retiredSet.has(String(task.id)));
+  }
+
+  // Only demo tasks ALREADY approved by the owner (requested_by !== 'master-autopilot') resume in the browser work queue.
+  const existingApprovedQueuedDemos = tasksList.filter(
+    (task) => task.agent_key === 'demo-creation' && task.status === 'queued' && task.requested_by !== 'master-autopilot',
+  );
   const runningDemos = tasksList.filter((task) => task.agent_key === 'demo-creation' && task.status === 'running');
-  const queue: { id: string; title: string }[] = existingQueuedDemos.map((task) => ({ id: String(task.id), title: String(task.title) }));
+  const queue: { id: string; title: string }[] = existingApprovedQueuedDemos.map((task) => ({
+    id: String(task.id),
+    title: String(task.title),
+  }));
+  if (existingApprovedQueuedDemos.length > 0) {
+    started.push(`Resumed ${existingApprovedQueuedDemos.length} approved website ${plural(existingApprovedQueuedDemos.length, 'demo', 'demos')} in background`);
+  }
 
-  // 2. Proactively queue a small batch of missing Mid-Level demos for newly saved leads without demos.
-  const slotsLeft = Math.max(0, AUTO_DEMO_CAP - existingQueuedDemos.length - runningDemos.length);
-  if (slotsLeft > 0 && Array.isArray(candidateLeads) && candidateLeads.length > 0) {
+  // 2. Proactively stage a batch of Ultra Premium demos into waiting_approval (NEVER queued without owner approval).
+  const openDemoApproval = tasksList.find((task) => task.agent_key === 'demo-creation' && task.status === 'waiting_approval');
+  let freshDemoApproval: AutopilotApprovalItem | null = null;
+  if (!openDemoApproval && existingApprovedQueuedDemos.length === 0 && runningDemos.length === 0 && Array.isArray(candidateLeads) && candidateLeads.length > 0) {
     const busyLeadIds = new Set<string>([
       ...(activeDemoJobs || []).map((row: any) => String(row.lead_id || '')),
-      ...tasksList.filter((task) => task.agent_key === 'demo-creation' && task.lead_id).map((task) => String(task.lead_id)),
+      ...tasksList
+        .filter((task) => task.agent_key === 'demo-creation')
+        .flatMap((task) => [
+          ...(task.lead_id ? [String(task.lead_id)] : []),
+          ...(Array.isArray(task.input?.leadIds) ? task.input.leadIds.map((id: any) => String(id)) : []),
+        ]),
     ]);
     const keyOf = (lead: any) => (keptApart(lead) ? `${nameKey(lead.business_name)}:${lead.id}` : nameKey(lead.business_name));
     const takenNames = new Set(
@@ -474,7 +521,7 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
     );
     const pickedDemos: any[] = [];
     for (const lead of candidateLeads) {
-      if (pickedDemos.length >= slotsLeft) break;
+      if (pickedDemos.length >= AUTO_DEMO_CAP) break;
       if (busyLeadIds.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')) continue;
       const key = keyOf(lead);
       if (key && takenNames.has(key)) continue;
@@ -484,52 +531,64 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
 
     if (pickedDemos.length > 0) {
       const names = pickedDemos.map((lead) => String(lead.business_name || 'Lead'));
-      const parentTitle = `Autopilot: build ${pickedDemos.length} ${pickedDemos.length === 1 ? 'demo' : 'demos'} for saved leads`;
+      const batchTitle = `Build ${pickedDemos.length} Ultra Premium ${plural(pickedDemos.length, 'demo', 'demos')} (one approval for all)`;
       const { data: parent } = await supabase
         .from('agent_tasks')
         .insert({
           agent_key: 'master',
-          title: parentTitle,
+          title: `Autopilot: stage ${pickedDemos.length} Ultra Premium ${plural(pickedDemos.length, 'demo', 'demos')} for approval`,
           status: 'running',
           requested_by: 'master-autopilot',
-          input: { autopilot: true, leadIds: pickedDemos.map((lead) => lead.id) },
+          input: { autopilot: true, level: 'ultra', leadIds: pickedDemos.map((lead) => lead.id) },
           attempts: 1,
           started_at: now,
         })
         .select('id')
         .single();
 
-      const { data: createdDemos } = await supabase
+      const { data: createdDemoBatch } = await supabase
         .from('agent_tasks')
-        .insert(
-          pickedDemos.map((lead) => ({
-            agent_key: 'demo-creation',
-            title: `Build Mid-Level demo for ${lead.business_name}`,
-            status: 'queued',
-            lead_id: lead.id,
-            parent_task_id: parent?.id || null,
-            requested_by: 'master-autopilot',
-            input: { leadId: lead.id, level: 'mid', autopilot: true },
-          })),
-        )
-        .select('id, title');
+        .insert({
+          agent_key: 'demo-creation',
+          title: batchTitle,
+          status: 'waiting_approval',
+          parent_task_id: parent?.id || null,
+          requested_by: 'master-autopilot',
+          input: {
+            batch: true,
+            autopilot: true,
+            level: 'ultra',
+            leadIds: pickedDemos.map((lead) => lead.id),
+            leadNames: names,
+          },
+        })
+        .select('id, title')
+        .single();
 
-      if (Array.isArray(createdDemos) && createdDemos.length > 0) {
-        for (const row of createdDemos) {
-          queue.push({ id: String(row.id), title: String(row.title) });
-        }
-        const previewNames = names.slice(0, 3).join(', ');
-        started.push(`Queued ${createdDemos.length} website ${plural(createdDemos.length, 'demo', 'demos')} to build now (${previewNames})`);
-        await note(supabase, 'master', 'handoff', `Autopilot queued ${createdDemos.length} Mid-Level ${plural(createdDemos.length, 'demo', 'demos')}: ${previewNames}`, parent?.id || null);
+      if (createdDemoBatch) {
+        const previewNames = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
+        freshDemoApproval = {
+          id: String(createdDemoBatch.id),
+          title: String(createdDemoBatch.title),
+          agentKey: 'demo-creation',
+          agentName: nameOf('demo-creation'),
+          kind: 'demos',
+        };
+        started.push(`Staged ${pickedDemos.length} Ultra Premium website ${plural(pickedDemos.length, 'demo', 'demos')} (${previewNames}) - waiting for your approval`);
+        await note(
+          supabase,
+          'master',
+          'handoff',
+          `Autopilot staged ${pickedDemos.length} Ultra Premium ${plural(pickedDemos.length, 'demo', 'demos')} for approval: ${previewNames}`,
+          createdDemoBatch.id,
+        );
       }
     }
-  } else if (existingQueuedDemos.length > 0) {
-    started.push(`Resumed ${existingQueuedDemos.length} queued website ${plural(existingQueuedDemos.length, 'demo', 'demos')} in background`);
   }
 
   // 3. Proactively prepare first-contact outreach drafts into waiting_approval (NEVER sends without owner approval).
   const openFirstOutreach = tasksList.find((task) => task.agent_key === 'outreach' && !task.input?.followUp && ['waiting_approval', 'running'].includes(task.status));
-  let freshOutreachApproval: { id: string; title: string; link: string; kind: 'outreach' | 'followup' } | null = null;
+  let freshOutreachApproval: AutopilotApprovalItem | null = null;
   if (!openFirstOutreach && totalLeads > 0) {
     try {
       const pick = await pickForOutreach(supabase, AUTO_DRAFT_CAP);
@@ -571,7 +630,14 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
             .single();
 
           if (created) {
-            freshOutreachApproval = { id: String(created.id), title: String(created.title), link: `/outreach/drafts/${created.id}`, kind: 'outreach' };
+            freshOutreachApproval = {
+              id: String(created.id),
+              title: String(created.title),
+              agentKey: 'outreach',
+              agentName: nameOf('outreach'),
+              link: `/outreach/drafts/${created.id}`,
+              kind: 'outreach',
+            };
             started.push(`Prepared ${total} outreach email ${plural(total, 'draft', 'drafts')} linked to ready demos (waiting for your approval - nothing sent)`);
             await note(supabase, 'outreach', 'task_done', `Autopilot prepared ${total} outreach ${plural(total, 'draft', 'drafts')}. Waiting for owner approval.`, created.id);
           }
@@ -584,7 +650,7 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
 
   // 4. Proactively prepare 3-day follow-up drafts into waiting_approval (NEVER sends without owner approval).
   const openFollowUp = tasksList.find((task) => task.agent_key === 'outreach' && Boolean(task.input?.followUp) && ['waiting_approval', 'running'].includes(task.status));
-  let freshFollowUpApproval: { id: string; title: string; link: string; kind: 'outreach' | 'followup' } | null = null;
+  let freshFollowUpApproval: AutopilotApprovalItem | null = null;
   if (!openFollowUp && totalLeads > 0) {
     try {
       const pick = await pickForFollowUp(supabase, AUTO_DRAFT_CAP);
@@ -626,7 +692,14 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
             .single();
 
           if (created) {
-            freshFollowUpApproval = { id: String(created.id), title: String(created.title), link: `/outreach/follow-ups/${created.id}`, kind: 'followup' };
+            freshFollowUpApproval = {
+              id: String(created.id),
+              title: String(created.title),
+              agentKey: 'outreach',
+              agentName: nameOf('outreach'),
+              link: `/outreach/follow-ups/${created.id}`,
+              kind: 'followup',
+            };
             started.push(`Prepared ${total} polite 3-day follow-up ${plural(total, 'draft', 'drafts')} (waiting for your approval - nothing sent)`);
             await note(supabase, 'outreach', 'task_done', `Autopilot prepared ${total} follow-up ${plural(total, 'draft', 'drafts')}. Waiting for owner approval.`, created.id);
           }
@@ -657,35 +730,48 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
     }
   }
 
-  // 6. Collect all waiting approvals for immediate 1-tap review in the Master Agent pulse card.
-  const approvals: { id: string; title: string; link: string; kind: 'outreach' | 'followup' }[] = [];
+  // 6. Collect all waiting approvals (demos, lead research, outreach, follow-ups) for 1-tap review in Master Autopilot.
+  const approvals: AutopilotApprovalItem[] = [];
+  if (freshDemoApproval) approvals.push(freshDemoApproval);
   if (freshOutreachApproval) approvals.push(freshOutreachApproval);
   if (freshFollowUpApproval) approvals.push(freshFollowUpApproval);
   for (const task of tasksList) {
-    if (task.status !== 'waiting_approval' || task.agent_key !== 'outreach') continue;
+    if (task.status !== 'waiting_approval') continue;
     if (approvals.some((item) => item.id === String(task.id))) continue;
-    const isFollowUp = Boolean(task.input?.followUp);
-    approvals.push({
-      id: String(task.id),
-      title: String(task.title),
-      link: isFollowUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`,
-      kind: isFollowUp ? 'followup' : 'outreach',
-    });
+    if (task.agent_key === 'outreach') {
+      const isFollowUp = Boolean(task.input?.followUp);
+      approvals.push({
+        id: String(task.id),
+        title: String(task.title),
+        agentKey: 'outreach',
+        agentName: nameOf('outreach'),
+        link: isFollowUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`,
+        kind: isFollowUp ? 'followup' : 'outreach',
+      });
+    } else if (task.agent_key === 'demo-creation' || task.agent_key === 'lead-research') {
+      approvals.push({
+        id: String(task.id),
+        title: String(task.title),
+        agentKey: String(task.agent_key),
+        agentName: nameOf(String(task.agent_key)),
+        kind: task.agent_key === 'demo-creation' ? 'demos' : 'lead-research',
+      });
+    }
   }
 
   if (!started.length) {
     if (totalLeads === 0) {
-      started.push('Pipeline audit complete: 0 saved leads - strict 2-route Lead Qualification & introductory Ultra Premium offer armed.');
+      started.push('Pipeline audit complete: 0 saved leads - strict 2-route Lead Qualification & default Ultra Premium demos armed.');
     } else if (approvals.length > 0) {
-      started.push(`Pipeline audit complete: ${approvals.length} prepared ${plural(approvals.length, 'batch is', 'batches are')} staged and waiting for your approval.`);
+      started.push(`Pipeline audit complete: ${approvals.length} staged ${plural(approvals.length, 'task or batch is', 'tasks or batches are')} waiting for your approval.`);
     } else {
-      started.push(`Pipeline audit complete across ${totalLeads.toLocaleString()} ${plural(totalLeads, 'lead', 'leads')}: demos, outreach eligibility, and 3-day follow-up windows verified.`);
+      started.push(`Pipeline audit complete across ${totalLeads.toLocaleString()} ${plural(totalLeads, 'lead', 'leads')}: Ultra Premium demos, outreach eligibility, and 3-day follow-up windows verified.`);
     }
   }
 
   // 7. Build context-aware 1-tap growth moves so the Master Agent always drives the next step.
   const suggestions: { label: string; prompt?: string; route?: string }[] = [];
-  if (approvals.length > 0) {
+  if (approvals.length > 0 && approvals[0].link) {
     suggestions.push({ label: approvals[0].kind === 'followup' ? 'Review follow-up drafts' : 'Review outreach drafts', route: approvals[0].link });
   }
   if (totalLeads === 0) {

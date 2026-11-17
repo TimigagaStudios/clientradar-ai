@@ -137,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       const { leadId, jobId, action } = req.body || {};
       const templateKey = TEMPLATE_KEYS.includes(req.body?.templateKey) ? req.body.templateKey : 'auto';
-      const styleLevel = normalizeStyleLevel(req.body?.styleLevel);
+      const styleLevel = normalizeStyleLevel(req.body?.styleLevel || 'ultra');
       if (action === 'process' && jobId) {
         const data = await processDemoJob(supabase, jobId);
         return res.status(200).json({ success: true, data });
