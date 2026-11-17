@@ -140,9 +140,18 @@ const greeting = () => {
 const AUTOPILOT_COOLDOWN_MS = 180000;
 const AUTOPILOT_TS_KEY = 'cr-autopilot-last-ts';
 
+interface AutopilotApproval {
+  id: string;
+  title: string;
+  agentKey?: string;
+  agentName?: string;
+  link?: string;
+  kind: 'demos' | 'lead-research' | 'outreach' | 'followup';
+}
+
 interface AutopilotState {
   started: string[];
-  approvals: { id: string; title: string; link: string; kind: 'outreach' | 'followup' }[];
+  approvals: AutopilotApproval[];
   suggestions: { label: string; prompt?: string; route?: string }[];
   checkedAt: string;
 }
@@ -293,26 +302,55 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [runAutopilotScan]);
   const briefingText = briefing?.headline || (briefingFailed ? fallbackBriefing : '');
+  const fullBriefDisplay = showBrief && briefing?.brief ? `${briefingText} ${briefing.brief}`.trim() : briefingText;
   const [typed, setTyped] = useState('');
+  const [briefExpanded, setBriefExpanded] = useState(false);
+  const [briefScrolled, setBriefScrolled] = useState(false);
+  const briefScrollRef = useRef<HTMLDivElement>(null);
+  const briefUserScrolledRef = useRef(false);
 
   useEffect(() => {
     let index = 0;
+    briefUserScrolledRef.current = false;
+    setBriefScrolled(false);
     setTyped('');
 
     const interval = window.setInterval(() => {
-      if (index >= briefingText.length) {
+      if (index >= fullBriefDisplay.length) {
         window.clearInterval(interval);
         return;
       }
 
       index += 1;
-      setTyped(briefingText.slice(0, index));
-    }, 26);
+      setTyped(fullBriefDisplay.slice(0, index));
+    }, 24);
 
     return () => window.clearInterval(interval);
-  }, [briefingText]);
+  }, [fullBriefDisplay]);
+
+  // Smoothly glides the opening briefing upward inside its bordered window while writing,
+  // unless the owner scrolled upward manually or expanded the window.
+  useEffect(() => {
+    const box = briefScrollRef.current;
+    if (!box || briefExpanded || briefUserScrolledRef.current) return;
+    box.scrollTop = box.scrollHeight;
+    setBriefScrolled(box.scrollTop > 4);
+  }, [typed, briefExpanded]);
+
+  const handleBriefScroll = () => {
+    const box = briefScrollRef.current;
+    if (!box) return;
+    setBriefScrolled(box.scrollTop > 4);
+    const distanceFromBottom = box.scrollHeight - box.scrollTop - box.clientHeight;
+    briefUserScrolledRef.current = distanceFromBottom > 14;
+  };
+
+  const isTypingBrief = Boolean(fullBriefDisplay) && typed.length < fullBriefDisplay.length;
 
   const [conversation, setConversation] = useState<Msg[]>([]);
+  const [expandedMsgIds, setExpandedMsgIds] = useState<Record<string, boolean>>({});
+  const [busyApprovalId, setBusyApprovalId] = useState<string | null>(null);
+  const [approvalError, setApprovalError] = useState<string>('');
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const [listening, setListening] = useState(false);
@@ -624,6 +662,76 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     }
   };
 
+  const approveAutopilotItem = async (item: AutopilotApproval) => {
+    if (item.link) {
+      navigate(item.link);
+      return;
+    }
+    if (busyApprovalId) return;
+    setBusyApprovalId(item.id);
+    setApprovalError('');
+    if (voiceOn) unlockAudio();
+    stopSpeaking();
+    setPresenceState('delegating');
+    try {
+      const data = await postTeam({ action: 'run', taskId: item.id, approve: true });
+      if (Array.isArray(data?.output?.queue) && data.output.queue.length > 0) {
+        enqueueWork(data.output.queue);
+      }
+      setAutopilot((current) =>
+        current
+          ? {
+              ...current,
+              approvals: current.approvals.filter((entry) => entry.id !== item.id),
+              started: [
+                String(data?.summary || `Approved: ${item.title}`),
+                ...current.started.filter((line) => !line.startsWith('Staged ')),
+              ],
+            }
+          : current,
+      );
+      if (data?.summary) {
+        reportResults([
+          {
+            id: item.id,
+            agentKey: item.agentKey || 'demo-creation',
+            agentName: item.agentName || 'Demo Creation Agent',
+            title: item.title,
+            status: String(data.status || 'done'),
+            summary: String(data.summary),
+            output: data.output,
+          },
+        ]);
+      }
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : 'Could not approve task');
+      setPresenceState('idle');
+    } finally {
+      setBusyApprovalId(null);
+    }
+  };
+
+  const declineAutopilotItem = async (item: AutopilotApproval) => {
+    if (busyApprovalId) return;
+    setBusyApprovalId(item.id);
+    setApprovalError('');
+    try {
+      await postTeam({ action: 'cancel', taskId: item.id });
+      setAutopilot((current) =>
+        current
+          ? {
+              ...current,
+              approvals: current.approvals.filter((entry) => entry.id !== item.id),
+            }
+          : current,
+      );
+    } catch (error) {
+      setApprovalError(error instanceof Error ? error.message : 'Could not decline task');
+    } finally {
+      setBusyApprovalId(null);
+    }
+  };
+
   const runAgent = async (text: string) => {
     if (speakTimerRef.current !== null) {
       window.clearTimeout(speakTimerRef.current);
@@ -873,20 +981,54 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
             <h1>
               Good {greeting()}, <b>Timothy</b>.
             </h1>
-            <p className="cr-brief">
-              {typed}
-              <span className="cr-caret" />
-            </p>
-            {briefing && (
-              <div className="mt-2 space-y-2">
-                <p className="text-xs font-bold text-[#FF7A00]">Next: {briefing.nextStep}</p>
-                {!showBrief ? (
-                  <button type="button" onClick={() => setShowBrief(true)} className="neo-button rounded-full px-3.5 py-1.5 text-xs font-bold text-[var(--text-primary)]">Show the full brief</button>
-                ) : (
-                  <p className="text-sm text-[var(--text-secondary)]">{briefing.brief}</p>
-                )}
+            <div className="cr-brief-window" data-brief-window>
+              <div className="cr-brief-bar">
+                <span className="cr-brief-tag">
+                  <span className={`cr-brief-dot ${isTypingBrief ? 'typing' : ''}`} aria-hidden="true" />
+                  {isTypingBrief ? 'Master writing...' : 'Executive brief'}
+                </span>
+                <div className="cr-brief-controls">
+                  {briefing?.brief && (
+                    <button
+                      type="button"
+                      onClick={() => setShowBrief((current) => !current)}
+                      className="cr-brief-btn"
+                    >
+                      {showBrief ? 'Headline only' : 'Full brief'}
+                    </button>
+                  )}
+                  {fullBriefDisplay.length > 110 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBriefExpanded((current) => {
+                          const next = !current;
+                          if (!next) briefUserScrolledRef.current = false;
+                          return next;
+                        });
+                      }}
+                      className="cr-brief-btn"
+                    >
+                      {briefExpanded ? 'Compact' : 'Expand'}
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+              <div
+                ref={briefScrollRef}
+                onScroll={handleBriefScroll}
+                className={`cr-brief-scroll ${briefScrolled ? 'cr-brief-scroll--scrolled' : ''} ${briefExpanded ? 'cr-brief-scroll--expanded' : ''}`}
+                data-brief-scroll
+              >
+                <p className="cr-brief">
+                  {typed}
+                  <span className="cr-caret" />
+                </p>
+              </div>
+              {briefing?.nextStep && (
+                <p className="cr-brief-next">Next: {briefing.nextStep}</p>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -965,19 +1107,56 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
         )}
 
         {autopilot && autopilot.approvals.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 pt-0.5" data-autopilot-approvals>
-            {autopilot.approvals.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => navigate(item.link)}
-                className="rounded-full px-3.5 py-1.5 text-xs font-bold text-white"
-                style={{ background: '#FF7A00' }}
-              >
-                Review & approve: {item.title}
-              </button>
-            ))}
+          <div className="space-y-2 pt-0.5" data-autopilot-approvals>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#FF7A00]">
+              Waiting for your approval ({autopilot.approvals.length})
+            </p>
+            {autopilot.approvals.map((item) => {
+              const isBusy = busyApprovalId === item.id;
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 flex flex-wrap items-center justify-between gap-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    {item.agentName && (
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                        {item.agentName}
+                      </span>
+                    )}
+                    <span className="block text-xs font-semibold text-[var(--text-primary)] break-words">
+                      {item.title}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void approveAutopilotItem(item)}
+                      className="rounded-full px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                      style={{ background: '#FF7A00' }}
+                    >
+                      {isBusy ? 'Starting...' : item.link ? 'Review & approve' : 'Approve'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => void declineAutopilotItem(item)}
+                      className="neo-button rounded-full px-2.5 py-1.5 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        )}
+
+        {approvalError && (
+          <p className="text-xs text-red-400 break-words" role="alert">
+            {approvalError}
+          </p>
         )}
 
         {autopilot && autopilot.suggestions.length > 0 && (
@@ -1043,16 +1222,28 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
           overflowX: 'hidden',
         }}
       >
-        {conversation.map((message) => (
+        {conversation.map((message) => {
+          const isLongAi = message.side === 'ai' && message.html.length > 260;
+          const isExpanded = Boolean(expandedMsgIds[message.id]);
+          return (
           <div key={message.id} className={`cr-msg ${message.side}`}>
             <div className={`cr-av ${message.side}`}>
               {message.side === 'ai' ? <span className="mini-orb" aria-hidden="true" /> : 'T'}
             </div>
             <div className="cr-msg-body">
               <div
-                className="cr-bubble"
+                className={`cr-bubble ${message.side === 'ai' ? (isExpanded ? 'cr-bubble--expanded' : 'cr-bubble--clamped') : ''}`}
                 dangerouslySetInnerHTML={{ __html: message.html }}
               />
+              {isLongAi && (
+                <button
+                  type="button"
+                  onClick={() => setExpandedMsgIds((current) => ({ ...current, [message.id]: !current[message.id] }))}
+                  className="mt-1 text-[11px] font-semibold text-[#FF7A00] hover:underline"
+                >
+                  {isExpanded ? 'Compact reply' : 'Expand reply'}
+                </button>
+              )}
               {message.note && <p className="mt-1 text-[11px] text-[var(--text-secondary)]">{message.note}</p>}
               {message.tasks?.map((task) => (
                 <div key={task.id} className="mt-2 neo-in rounded-2xl p-3 text-sm" data-task-status={task.status}>
@@ -1087,7 +1278,8 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
               ))}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {thinking && (
           <div className="cr-msg ai">
