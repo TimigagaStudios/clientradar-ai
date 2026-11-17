@@ -436,6 +436,285 @@ async function handleMailbox(req: VercelRequest, res: VercelResponse) {
   }
 }
 
+const AUTO_DEMO_CAP = 3;
+const AUTO_DRAFT_CAP = 10;
+
+async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelResponse) {
+  const started: string[] = [];
+  const now = new Date().toISOString();
+
+  // 1. Inspect saved leads (bounded first 400 highest-scored for demo picking + total count) and open tasks.
+  const [{ count: totalLeadsRaw }, { data: candidateLeads }, { data: activeDemoJobs }, { data: openTasks }] = await Promise.all([
+    supabase.from('leads').select('id', { count: 'exact', head: true }),
+    supabase.from('leads').select('id, business_name, lead_score, demo_status, website, email, status, notes').order('lead_score', { ascending: false }).limit(400),
+    supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']),
+    supabase.from('agent_tasks').select('id, agent_key, title, status, lead_id, input, created_at').in('status', ['queued', 'running', 'waiting_approval']).order('created_at', { ascending: false }).limit(60),
+  ]);
+
+  const totalLeads = Number(totalLeadsRaw || (candidateLeads || []).length || 0);
+  const tasksList: any[] = openTasks || [];
+
+  // Existing queued demo tasks should be resumed in the browser work queue automatically.
+  const existingQueuedDemos = tasksList.filter((task) => task.agent_key === 'demo-creation' && task.status === 'queued');
+  const runningDemos = tasksList.filter((task) => task.agent_key === 'demo-creation' && task.status === 'running');
+  const queue: { id: string; title: string }[] = existingQueuedDemos.map((task) => ({ id: String(task.id), title: String(task.title) }));
+
+  // 2. Proactively queue a small batch of missing Mid-Level demos for newly saved leads without demos.
+  const slotsLeft = Math.max(0, AUTO_DEMO_CAP - existingQueuedDemos.length - runningDemos.length);
+  if (slotsLeft > 0 && Array.isArray(candidateLeads) && candidateLeads.length > 0) {
+    const busyLeadIds = new Set<string>([
+      ...(activeDemoJobs || []).map((row: any) => String(row.lead_id || '')),
+      ...tasksList.filter((task) => task.agent_key === 'demo-creation' && task.lead_id).map((task) => String(task.lead_id)),
+    ]);
+    const keyOf = (lead: any) => (keptApart(lead) ? `${nameKey(lead.business_name)}:${lead.id}` : nameKey(lead.business_name));
+    const takenNames = new Set(
+      candidateLeads
+        .filter((lead: any) => busyLeadIds.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started'))
+        .map(keyOf),
+    );
+    const pickedDemos: any[] = [];
+    for (const lead of candidateLeads) {
+      if (pickedDemos.length >= slotsLeft) break;
+      if (busyLeadIds.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')) continue;
+      const key = keyOf(lead);
+      if (key && takenNames.has(key)) continue;
+      if (key) takenNames.add(key);
+      pickedDemos.push(lead);
+    }
+
+    if (pickedDemos.length > 0) {
+      const names = pickedDemos.map((lead) => String(lead.business_name || 'Lead'));
+      const parentTitle = `Autopilot: build ${pickedDemos.length} ${pickedDemos.length === 1 ? 'demo' : 'demos'} for saved leads`;
+      const { data: parent } = await supabase
+        .from('agent_tasks')
+        .insert({
+          agent_key: 'master',
+          title: parentTitle,
+          status: 'running',
+          requested_by: 'master-autopilot',
+          input: { autopilot: true, leadIds: pickedDemos.map((lead) => lead.id) },
+          attempts: 1,
+          started_at: now,
+        })
+        .select('id')
+        .single();
+
+      const { data: createdDemos } = await supabase
+        .from('agent_tasks')
+        .insert(
+          pickedDemos.map((lead) => ({
+            agent_key: 'demo-creation',
+            title: `Build Mid-Level demo for ${lead.business_name}`,
+            status: 'queued',
+            lead_id: lead.id,
+            parent_task_id: parent?.id || null,
+            requested_by: 'master-autopilot',
+            input: { leadId: lead.id, level: 'mid', autopilot: true },
+          })),
+        )
+        .select('id, title');
+
+      if (Array.isArray(createdDemos) && createdDemos.length > 0) {
+        for (const row of createdDemos) {
+          queue.push({ id: String(row.id), title: String(row.title) });
+        }
+        const previewNames = names.slice(0, 3).join(', ');
+        started.push(`Queued ${createdDemos.length} website ${plural(createdDemos.length, 'demo', 'demos')} to build now (${previewNames})`);
+        await note(supabase, 'master', 'handoff', `Autopilot queued ${createdDemos.length} Mid-Level ${plural(createdDemos.length, 'demo', 'demos')}: ${previewNames}`, parent?.id || null);
+      }
+    }
+  } else if (existingQueuedDemos.length > 0) {
+    started.push(`Resumed ${existingQueuedDemos.length} queued website ${plural(existingQueuedDemos.length, 'demo', 'demos')} in background`);
+  }
+
+  // 3. Proactively prepare first-contact outreach drafts into waiting_approval (NEVER sends without owner approval).
+  const openFirstOutreach = tasksList.find((task) => task.agent_key === 'outreach' && !task.input?.followUp && ['waiting_approval', 'running'].includes(task.status));
+  let freshOutreachApproval: { id: string; title: string; link: string; kind: 'outreach' | 'followup' } | null = null;
+  if (!openFirstOutreach && totalLeads > 0) {
+    try {
+      const pick = await pickForOutreach(supabase, AUTO_DRAFT_CAP);
+      if (pick.leads.length > 0) {
+        const written = await writeDrafts(pick.leads, originOf(req));
+        const total = written.drafts.length;
+        if (total > 0) {
+          const title = `Send ${total} outreach ${plural(total, 'email', 'emails')} (one approval for all)`;
+          const { data: parent } = await supabase
+            .from('agent_tasks')
+            .insert({
+              agent_key: 'master',
+              title: `Autopilot: prepare ${total} outreach ${plural(total, 'draft', 'drafts')}`,
+              status: 'running',
+              requested_by: 'master-autopilot',
+              input: { autopilot: true, count: total },
+              attempts: 1,
+              started_at: now,
+            })
+            .select('id')
+            .single();
+
+          const { data: created } = await supabase
+            .from('agent_tasks')
+            .insert({
+              agent_key: 'outreach',
+              title,
+              status: 'waiting_approval',
+              parent_task_id: parent?.id || null,
+              requested_by: 'master-autopilot',
+              input: { outreach: true, autopilot: true, leadIds: pick.leads.map((lead: any) => lead.id) },
+              output: {
+                drafts: written.drafts,
+                aiError: written.aiError,
+                summary: `${total} outreach ${plural(total, 'draft', 'drafts')} prepared by Autopilot; waiting for your approval.`,
+              },
+            })
+            .select('id, title')
+            .single();
+
+          if (created) {
+            freshOutreachApproval = { id: String(created.id), title: String(created.title), link: `/outreach/drafts/${created.id}`, kind: 'outreach' };
+            started.push(`Prepared ${total} outreach email ${plural(total, 'draft', 'drafts')} linked to ready demos (waiting for your approval - nothing sent)`);
+            await note(supabase, 'outreach', 'task_done', `Autopilot prepared ${total} outreach ${plural(total, 'draft', 'drafts')}. Waiting for owner approval.`, created.id);
+          }
+        }
+      }
+    } catch {
+      /* outreach prep is best-effort during arrival scan */
+    }
+  }
+
+  // 4. Proactively prepare 3-day follow-up drafts into waiting_approval (NEVER sends without owner approval).
+  const openFollowUp = tasksList.find((task) => task.agent_key === 'outreach' && Boolean(task.input?.followUp) && ['waiting_approval', 'running'].includes(task.status));
+  let freshFollowUpApproval: { id: string; title: string; link: string; kind: 'outreach' | 'followup' } | null = null;
+  if (!openFollowUp && totalLeads > 0) {
+    try {
+      const pick = await pickForFollowUp(supabase, AUTO_DRAFT_CAP);
+      if (pick.leads.length > 0) {
+        const written = await writeFollowUps(pick.leads, originOf(req));
+        const total = written.drafts.length;
+        if (total > 0) {
+          const title = `Send ${total} follow-up ${plural(total, 'email', 'emails')} (one approval for all)`;
+          const { data: parent } = await supabase
+            .from('agent_tasks')
+            .insert({
+              agent_key: 'master',
+              title: `Autopilot: prepare ${total} follow-up ${plural(total, 'draft', 'drafts')}`,
+              status: 'running',
+              requested_by: 'master-autopilot',
+              input: { autopilot: true, followUp: true, count: total },
+              attempts: 1,
+              started_at: now,
+            })
+            .select('id')
+            .single();
+
+          const { data: created } = await supabase
+            .from('agent_tasks')
+            .insert({
+              agent_key: 'outreach',
+              title,
+              status: 'waiting_approval',
+              parent_task_id: parent?.id || null,
+              requested_by: 'master-autopilot',
+              input: { outreach: true, followUp: true, autopilot: true, leadIds: pick.leads.map((lead: any) => lead.id) },
+              output: {
+                drafts: written.drafts,
+                aiError: written.aiError,
+                summary: `${total} follow-up ${plural(total, 'draft', 'drafts')} prepared by Autopilot; waiting for your approval.`,
+              },
+            })
+            .select('id, title')
+            .single();
+
+          if (created) {
+            freshFollowUpApproval = { id: String(created.id), title: String(created.title), link: `/outreach/follow-ups/${created.id}`, kind: 'followup' };
+            started.push(`Prepared ${total} polite 3-day follow-up ${plural(total, 'draft', 'drafts')} (waiting for your approval - nothing sent)`);
+            await note(supabase, 'outreach', 'task_done', `Autopilot prepared ${total} follow-up ${plural(total, 'draft', 'drafts')}. Waiting for owner approval.`, created.id);
+          }
+        }
+      }
+    } catch {
+      /* follow-up prep is best-effort during arrival scan */
+    }
+  }
+
+  // 5. Run one fast bounded Records Upkeep check when leads exist.
+  if (totalLeads > 0) {
+    try {
+      const upkeep = await runUpkeep(supabase);
+      const summary = upkeepSummary({
+        placed: Number(upkeep?.placed || 0),
+        approximate: Number(upkeep?.approximate || 0),
+        notFound: Number(upkeep?.notFound || 0),
+        scanned: Number(upkeep?.scanned || 0),
+        emails: Number(upkeep?.emails || 0),
+        services: Number(upkeep?.services || 0),
+      });
+      if (summary) {
+        started.push(`Records Upkeep: ${summary}`);
+      }
+    } catch {
+      /* upkeep stays non-blocking */
+    }
+  }
+
+  // 6. Collect all waiting approvals for immediate 1-tap review in the Master Agent pulse card.
+  const approvals: { id: string; title: string; link: string; kind: 'outreach' | 'followup' }[] = [];
+  if (freshOutreachApproval) approvals.push(freshOutreachApproval);
+  if (freshFollowUpApproval) approvals.push(freshFollowUpApproval);
+  for (const task of tasksList) {
+    if (task.status !== 'waiting_approval' || task.agent_key !== 'outreach') continue;
+    if (approvals.some((item) => item.id === String(task.id))) continue;
+    const isFollowUp = Boolean(task.input?.followUp);
+    approvals.push({
+      id: String(task.id),
+      title: String(task.title),
+      link: isFollowUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`,
+      kind: isFollowUp ? 'followup' : 'outreach',
+    });
+  }
+
+  if (!started.length) {
+    if (totalLeads === 0) {
+      started.push('Pipeline audit complete: 0 saved leads - strict 2-route Lead Qualification & introductory Ultra Premium offer armed.');
+    } else if (approvals.length > 0) {
+      started.push(`Pipeline audit complete: ${approvals.length} prepared ${plural(approvals.length, 'batch is', 'batches are')} staged and waiting for your approval.`);
+    } else {
+      started.push(`Pipeline audit complete across ${totalLeads.toLocaleString()} ${plural(totalLeads, 'lead', 'leads')}: demos, outreach eligibility, and 3-day follow-up windows verified.`);
+    }
+  }
+
+  // 7. Build context-aware 1-tap growth moves so the Master Agent always drives the next step.
+  const suggestions: { label: string; prompt?: string; route?: string }[] = [];
+  if (approvals.length > 0) {
+    suggestions.push({ label: approvals[0].kind === 'followup' ? 'Review follow-up drafts' : 'Review outreach drafts', route: approvals[0].link });
+  }
+  if (totalLeads === 0) {
+    suggestions.push(
+      { label: 'Find Dentists in London', prompt: 'Find 20 dentists in London with email and phone' },
+      { label: 'Find Real Estate in Miami', prompt: 'Find 20 real estate agencies in Miami with email and phone' },
+      { label: 'Open Lead Finder', route: '/finder' },
+    );
+  } else {
+    suggestions.push(
+      { label: 'Find 20 Med Spas in New York', prompt: 'Find 20 med spas in New York with email and phone' },
+      { label: 'Pipeline & revenue report', prompt: 'Give me a sharp executive summary of my pipeline and what we should close next.' },
+    );
+  }
+
+  const briefing = await briefingFor(supabase, String(req.body?.sig || ''));
+  return res.status(200).json({
+    success: true,
+    data: {
+      briefing,
+      started,
+      queue,
+      approvals,
+      suggestions,
+      checkedAt: now,
+    },
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST' && (req.body?.action === 'reply-in' || req.body?.action === 'reply-senders')) return await handleMailbox(req, res);
   if (!(await requireUser(req, res))) return;
@@ -444,6 +723,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const supabase = teamClient();
       if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
       const action = req.body?.action;
+      if (action === 'autopilot') return await handleAutopilot(supabase, req, res);
       if (action === 'briefing') {
         // The opening briefing: important things first, memory of what was already said.
         return res.status(200).json({ success: true, data: await briefingFor(supabase, String(req.body?.sig || '')) });

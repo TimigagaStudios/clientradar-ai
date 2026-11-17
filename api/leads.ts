@@ -71,21 +71,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     if (req.method === 'GET') {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const pageSize = 1000;
+      const maxRows = 5000;
+      const rows: any[] = [];
 
-      if (error) {
-        return res.status(500).json({
-          success: false,
-          error: error.message,
-        });
+      for (let start = 0; start < maxRows; start += pageSize) {
+        const { data: page, error } = await supabase
+          .from('leads')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(start, start + pageSize - 1);
+
+        if (error) {
+          return res.status(500).json({
+            success: false,
+            error: error.message,
+          });
+        }
+
+        const chunk = Array.isArray(page) ? page : [];
+        rows.push(...chunk);
+        if (chunk.length < pageSize) break;
       }
 
       return res.status(200).json({
         success: true,
-        data,
+        data: rows,
       });
     }
 
