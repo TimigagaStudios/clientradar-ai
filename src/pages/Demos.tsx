@@ -17,7 +17,7 @@ const Demos = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [templateKey, setTemplateKey] = useState('auto');
-  const [styleLevel, setStyleLevel] = useState('mid');
+  const [styleLevel, setStyleLevel] = useState('ultra');
   const [suggestedLevel, setSuggestedLevel] = useState('');
 
   const handleSelectLead = (leadId: string) => {
@@ -25,7 +25,8 @@ const Demos = () => {
     const lead = leads.find((item: any) => item.id === leadId);
     const suggestion = lead ? suggestStyleLevel(lead, leads.filter((item: any) => item.status === 'Deal Closed').length) : '';
     setSuggestedLevel(suggestion);
-    if (suggestion) setStyleLevel(suggestion);
+    // Introductory high-premium phase: default every business to Ultra Premium unless manually changed in the dropdown.
+    setStyleLevel('ultra');
   };
   const [demoJobs, setDemoJobs] = useState<any[]>([]);
   const [creating, setCreating] = useState(false);
@@ -191,7 +192,7 @@ const Demos = () => {
           </select>
           <button type="button" onClick={() => void handleCreateDemo()} disabled={creating || !selectedLeadId} className="btn-neumorph-primary px-5 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-50"><Plus size={16} />{creating ? 'Queueing...' : 'Generate Demo'}</button>
         </div>
-        {suggestedLevel && <p className="text-xs text-[var(--text-secondary)]">Suggested level for this lead: <span className="font-bold text-[var(--text-primary)]">{styleLevelLabel(suggestedLevel)}</span> (from its priority and deal value). You can change it.</p>}
+        {suggestedLevel && <p className="text-xs text-[var(--text-secondary)]">Introductory high-premium default: <span className="font-bold text-[var(--text-primary)]">Ultra Premium</span> selected for all businesses right now (standard priority/value fit: <span className="font-semibold text-[var(--text-primary)]">{styleLevelLabel(suggestedLevel)}</span>). You can switch levels anytime.</p>}
         {jobError && <p className="text-sm text-red-500">{jobError}</p>}
       </section>
 

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, Wrench, XCircle } from 'lucide-react';
 import { cn } from '../utils/cn';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { enqueueWork } from '../lib/workQueue';
 
 // AI Team page: the real team register with real task records and the activity log.
 // Read-only in Phase 1. Agents marked "Planned" do no work yet and are labelled as such.
@@ -93,6 +94,7 @@ const Team = () => {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState('');
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const [actingTaskId, setActingTaskId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,6 +120,34 @@ const Team = () => {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  const actOnTask = async (taskId: string, decision: 'approve' | 'cancel') => {
+    if (actingTaskId) return;
+    setActingTaskId(taskId);
+    setFailed('');
+    try {
+      const body = decision === 'approve'
+        ? { action: 'run', taskId, approve: true }
+        : { action: 'cancel', taskId };
+      const response = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result: any = await response.json().catch(() => null);
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || `Could not ${decision} task`);
+      }
+      if (Array.isArray(result?.data?.output?.queue) && result.data.output.queue.length > 0) {
+        enqueueWork(result.data.output.queue);
+      }
+      await load();
+    } catch (error) {
+      setFailed(error instanceof Error ? error.message : 'Could not update task');
+    } finally {
+      setActingTaskId(null);
+    }
+  };
 
   const nameOf = (key: string) => agents.find((agent) => agent.key === key)?.name || key;
   const master = agents.find((agent) => agent.key === 'master');
@@ -223,6 +253,27 @@ const Team = () => {
                     {task.leadId && <> - <Link to={`/leads/${task.leadId}`} className="underline">{task.leadName || 'Open lead'}</Link></>}
                     {task.agentKey === 'outreach' && <> - <Link to={task.followUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`} className="underline" data-drafts-link>Open drafts</Link></>}
                   </p>
+                  {task.status === 'waiting_approval' && task.agentKey !== 'outreach' && (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={actingTaskId === task.id}
+                        onClick={() => void actOnTask(task.id, 'approve')}
+                        className="rounded-full px-3 py-1 text-xs font-bold text-white disabled:opacity-50"
+                        style={{ background: '#FF7A00' }}
+                      >
+                        {actingTaskId === task.id ? 'Starting...' : 'Approve'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actingTaskId === task.id}
+                        onClick={() => void actOnTask(task.id, 'cancel')}
+                        className="neo-button rounded-full px-3 py-1 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-50"
+                      >
+                        Not now
+                      </button>
+                    </div>
+                  )}
                   {task.error && <p className="text-xs text-red-400 mt-1 break-words">{task.error}</p>}
                 </div>
               </li>
