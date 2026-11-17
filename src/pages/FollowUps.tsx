@@ -1,5 +1,6 @@
+import BackLink from '../components/ui/BackLink';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Follow-up drafts: a polite second email to businesses written to a few days ago that have not
@@ -94,7 +95,7 @@ export default function FollowUps() {
     <div className="space-y-5 pb-28" data-followup-drafts>
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <Link to="/team" className="text-sm font-bold text-[#FF7A00]">Back to AI Team</Link>
+          <BackLink fallback="/team" className="text-sm font-bold text-[#FF7A00]">Back</BackLink>
           <h1 className="mt-2 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Follow-up drafts</h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             {!batch ? 'Loading...' : batch.status === 'waiting_approval' ? `${drafts.length} polite second ${drafts.length === 1 ? 'email is' : 'emails are'} written to businesses that have not replied. Nothing has been sent. Tap one to read or change it.` : batch.status === 'cancelled' ? 'You declined this batch. Nothing was sent.' : `${count('sent')} sent${count('failed') ? `, ${count('failed')} not sent` : ''}${count('skipped') ? `, ${count('skipped')} left out` : ''}${toSend ? `, ${toSend} still to send` : ''}.`}

@@ -1,3 +1,4 @@
+import BackLink from '../components/ui/BackLink';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
@@ -54,7 +55,7 @@ export default function Duplicates() {
   return (
     <div className="space-y-6 pb-24" data-duplicates>
       <header>
-        <Link to="/leads" className="text-sm font-bold text-[#FF7A00]">Back to leads</Link>
+        <BackLink fallback="/leads" className="text-sm font-bold text-[#FF7A00]">Back</BackLink>
         <h1 className="mt-2 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Duplicate review</h1>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">Business names saved more than once. Nothing is removed until you choose.</p>
       </header>

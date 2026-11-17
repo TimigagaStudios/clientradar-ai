@@ -1,3 +1,4 @@
+import BackLink from '../components/ui/BackLink';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
@@ -26,7 +27,7 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { LeadStatus, LeadPriority } from '../types';
+import { LeadStatus } from '../types';
 import { cn } from '../utils/cn';
 import { deleteLeadDemo, estimateLeadValue } from '../lib/demo-factory';
 
@@ -372,9 +373,7 @@ const LeadDetail = () => {
       <div className="flex flex-col items-center justify-center h-[60vh] text-[var(--text-secondary)]">
         <p className="text-lg">Lead not found</p>
         <p className="text-sm mt-1 opacity-70">ID: {id}</p>
-        <button onClick={() => navigate('/leads')} className="mt-4 text-[var(--accent)] hover:underline">
-          Back to Leads
-        </button>
+        <BackLink fallback="/leads" className="mt-4 text-[var(--accent)] hover:underline">Back</BackLink>
       </div>
     );
   }
@@ -400,12 +399,9 @@ const LeadDetail = () => {
     <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <button
-          onClick={() => navigate('/leads')}
-          className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          <ArrowLeft size={20} /> Back to Leads
-        </button>
+        <BackLink fallback="/leads" className="flex items-center gap-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+          <ArrowLeft size={20} /> Back
+        </BackLink>
 
         <div className="flex items-center gap-3 relative">
           {/* 3-dot menu */}

@@ -1,3 +1,5 @@
+import OutreachHistory from '../components/OutreachHistory';
+import Replies from './Replies';
 import { useEffect, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import {
@@ -16,6 +18,10 @@ const Outreach = () => {
   const { leads, updateLeadStatus, addOutreachLog, updateDemoStatus } = useLeads();
   const { showToast } = useToast();
 
+  const [view, setView] = useState<'compose' | 'sent' | 'replies'>(() => {
+    try { const saved = sessionStorage.getItem('cr-outreach-view'); return saved === 'sent' || saved === 'replies' ? saved : 'compose'; } catch { return 'compose'; }
+  });
+  useEffect(() => { try { sessionStorage.setItem('cr-outreach-view', view); } catch { /* optional */ } }, [view]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [template, setTemplate] = useState('intro');
   const [isSending, setIsSending] = useState(false);
@@ -183,7 +189,15 @@ Timigaga Studios`,
   const preview = getPreview();
 
   return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col xl:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="space-y-4 pb-24">
+      <nav className="flex flex-wrap gap-2" aria-label="Outreach sections">
+        {(['compose', 'sent', 'replies'] as const).map((item) => <button type="button" key={item} onClick={() => setView(item)} aria-pressed={view === item} className={cn('rounded-full px-4 py-2 text-sm font-bold', view === item ? 'btn-neumorph-primary' : 'neo-button')}>
+          {item === 'compose' ? 'Compose' : item === 'sent' ? 'Sent history' : 'Replies'}
+        </button>)}
+      </nav>
+      {view === 'sent' && <OutreachHistory />}
+      {view === 'replies' && <Replies />}
+      {view === 'compose' && <div className="h-[calc(100vh-8rem)] flex flex-col xl:flex-row gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="w-full xl:w-[360px] shrink-0 neo-card overflow-hidden flex flex-col">
         <div className="p-5 border-b border-black/8 dark:border-white/8 transition-colors duration-300">
           <h2 className="font-bold text-[var(--text-primary)] mb-4 text-lg">
@@ -346,6 +360,7 @@ Timigaga Studios`,
           </div>
         )}
       </div>
+      </div>}
     </div>
   );
 };

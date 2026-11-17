@@ -1,6 +1,7 @@
+import BackLink from '../components/ui/BackLink';
 import { useEffect, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import DemoSiteView from '../components/DemoSiteView';
@@ -79,7 +80,7 @@ export default function DemoPreview() {
     }).catch(() => undefined);
   }, [id, job]);
 
-  if (error) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] p-6 text-[var(--text-primary)]"><div className="neo-card p-8 text-center"><p className="text-red-500">{error}</p><Link to="/demos" className="btn-neumorph mt-5 inline-flex">Back to demos</Link></div></div>;
+  if (error) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] p-6 text-[var(--text-primary)]"><div className="neo-card p-8 text-center"><p className="text-red-500">{error}</p><BackLink fallback="/demos" className="btn-neumorph mt-5 inline-flex">Back</BackLink></div></div>;
   if (!job) return <div className="min-h-screen grid place-items-center bg-[var(--bg)] text-[var(--text-secondary)]">Loading demo...</div>;
 
   const content = job.content || {};
@@ -161,7 +162,7 @@ export default function DemoPreview() {
   return (
     <main className="min-h-screen" style={{ backgroundColor: theme.background, color: theme.text }}>
       <div className="px-5 py-2 text-center text-[11px] font-bold uppercase tracking-[0.18em] sm:px-8" style={{ backgroundColor: theme.surface, color: theme.muted, borderBottom: border }}>
-        <Link to="/demos" className="mr-3 inline-flex items-center gap-1 align-middle" style={muted}><ArrowLeft size={12} /> Demo Factory</Link>
+        <BackLink fallback="/demos" className="mr-3 inline-flex items-center gap-1 align-middle"><ArrowLeft size={12} /> Back</BackLink>
         <span className="inline-flex items-center gap-1 align-middle" style={accentText}><Sparkles size={12} /> Demo concept</span>
       </div>
 
