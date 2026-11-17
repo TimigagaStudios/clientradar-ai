@@ -166,7 +166,7 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
   }
   return res.status(200).json({
     success: true,
-    data: { reply, source: plan.source, aiError: plan.aiError, tasks: tasks.map((task) => ({ id: task.id, agentKey: task.agent_key, agentName: nameOf(task.agent_key), title: task.title, status: task.status })) },
+    data: { reply, source: plan.source, aiError: plan.aiError, tasks: tasks.map((task) => ({ id: task.id, agentKey: task.agent_key, agentName: nameOf(task.agent_key), title: task.title, status: task.status, minorEligible: rows.length === 1 && rows[0].agent_key === 'lead-research' && !rows[0].input?.noWebsite && Number(rows[0].input?.count || 8) <= 10 })) },
   });
 }
 
@@ -382,7 +382,12 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
   if (task.agent_key === 'outreach') return res.status(400).json({ success: false, error: 'Open the drafts to review and send them' });
   if (!canRun(task.agent_key)) return res.status(400).json({ success: false, error: 'This agent is not active yet' });
-  if (task.status === 'waiting_approval' && req.body?.approve !== true) return res.status(403).json({ success: false, error: 'This task needs your approval first' });
+  // Auto-accept is deliberately narrow: only a single small ordinary research task.
+  // The authenticated owner opts in on this request; all other task types fail closed.
+  const autoMinor = req.body?.autoMinor === true && task.agent_key === 'lead-research'
+    && task.requested_by === 'master' && !task.input?.batch && !task.input?.noWebsite
+    && Number(task.input?.count || 8) >= 1 && Number(task.input?.count || 8) <= 10;
+  if (task.status === 'waiting_approval' && req.body?.approve !== true && !autoMinor) return res.status(403).json({ success: false, error: 'This task needs your approval first' });
   if (task.input?.batch && task.status === 'waiting_approval') return await startBatch(supabase, task, res);
   // A task stuck on "running" for over two minutes was interrupted and may be tried again.
   const stuck = task.status === 'running' && Date.now() - new Date(task.started_at || task.created_at).getTime() > 120000;
@@ -392,7 +397,7 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   // Claim the task; if another call claimed it first, stop.
   const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: new Date().toISOString(), updated_at: new Date().toISOString(), error: null }).eq('id', taskId).eq('status', task.status).select('id');
   if (!claimed?.length) return res.status(409).json({ success: false, error: 'This task is already running' });
-  if (task.status === 'waiting_approval') await note(supabase, 'master', 'approved', `You approved: ${task.title}`, taskId, task.lead_id);
+  if (task.status === 'waiting_approval') await note(supabase, 'master', 'approved', `${autoMinor && req.body?.approve !== true ? 'Auto-approved minor research' : 'You approved'}: ${task.title}`, taskId, task.lead_id);
 
   let result: { status: string; summary: string; output: any; error: string | null };
   try {
@@ -711,7 +716,7 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
   }
 
   // 5. Run one fast bounded Records Upkeep check when leads exist.
-  if (totalLeads > 0) {
+  if (totalLeads > 0 && req.body?.autoMinor === true) {
     try {
       const upkeep = await runUpkeep(supabase);
       const summary = upkeepSummary({

@@ -20,6 +20,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const { leadId } = req.query;
 
+      if (req.query.all === '1') {
+        const rawPage = Number(req.query.page || 0);
+        if (!Number.isInteger(rawPage) || rawPage < 0 || rawPage > 10000) {
+          return res.status(400).json({ success: false, error: 'Invalid page' });
+        }
+        const size = 10;
+        const { data, error } = await supabase.from('outreach_logs')
+          .select('id, lead_id, type, subject, body, channel, sent_at')
+          .eq('channel', 'email').order('sent_at', { ascending: false })
+          .order('id', { ascending: false }).range(rawPage * size, rawPage * size + size);
+        if (error) return res.status(500).json({ success: false, error: error.message });
+        return res.status(200).json({ success: true, data: (data || []).slice(0, size), hasMore: (data || []).length > size });
+      }
+
       if (!leadId || typeof leadId !== 'string') {
         return res.status(400).json({
           success: false,
