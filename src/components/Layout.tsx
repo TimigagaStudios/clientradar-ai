@@ -1,3 +1,4 @@
+import BackLink from './ui/BackLink';
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -80,9 +81,9 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const avatarUrl = '/avatar-founder.jpg';
 
   const menuItems = [
-    { icon: Sparkles, label: 'Assistant', path: '/' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ NEW ÃÂ¢Ã¢ÂÂ¬Ã¢ÂÂ Executive Agent home
+    { icon: Sparkles, label: 'Assistant', path: '/' },
     { icon: Bot, label: 'AI Team', path: '/team' },
-    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ relocated
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: Search, label: 'Lead Finder', path: '/finder' },
     { icon: Globe, label: 'Lead Globe', path: '/globe' },
     { icon: Users, label: 'Leads', path: '/leads' },
@@ -93,7 +94,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     { icon: CheckSquare, label: 'Deals', path: '/deals' },
     { icon: BarChart3, label: 'Analytics', path: '/analytics' },
     { icon: Wallet, label: 'Tracker', path: '/tracker' },
-    { icon: FileText, label: 'Invoices', path: '/invoices' }, // ÃÂ¢ÃÂÃ¢ÂÂ¦ Invoices
+    { icon: FileText, label: 'Invoices', path: '/invoices' },
     { icon: SettingsIcon, label: 'Settings', path: '/settings' },
   ];
 
@@ -332,7 +333,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
       <main className="lg:ml-72 min-h-screen pt-32">
         <div className="p-4 sm:p-6 lg:p-8 xl:p-10">
-          <div className="max-w-[1600px] mx-auto">{children}</div>
+          <div className="max-w-[1600px] mx-auto">
+            {!['/', '/assistant', '/globe'].includes(location.pathname) && !/^\/(leads\/|globe\/city\/|outreach\/(drafts|follow-ups)\/)/.test(location.pathname) && (
+              <BackLink fallback="/" className="mb-4 inline-flex min-h-11 items-center text-sm font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)]">Back</BackLink>
+            )}
+            {children}
+          </div>
           <MasterFloat />
         </div>
       </main>
