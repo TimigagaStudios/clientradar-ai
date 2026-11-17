@@ -294,33 +294,35 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
   const brief = `The full picture: ${plural(totals.total, 'lead', 'leads')} in the pipeline, ${totals.newToday} added today, ${totals.fresh} still new, ${totals.pendingReply} awaiting reply, ${totals.warm} warm and ${totals.closed} closed. ${plural(totals.demosReady, 'demo is', 'demos are')} ready to send. Pipeline value $${totals.pipeline.toLocaleString()}.`;
 
   const builtInHeadline = () => {
-    if (!isNew) {
-      const recap = recent.length ? ` Last thing done: ${recent[0]}` : '';
-      return `Nothing new since we last spoke.${recap} Next: ${nextStep}.`;
-    }
     const parts: string[] = [];
-    if (promising.length) parts.push(`${plural(promising.length, 'reply is', 'replies are')} waiting${draftsReady.length ? ` and suggested ${draftsReady.length === 1 ? 'answer is' : 'answers are'} ready` : ''} - ${promising.slice(0, 3).map(nameOfReply).join(', ')}`);
-    if (approvals.length) parts.push(`${plural(approvals.length, 'batch is', 'batches are')} waiting for your approval`);
-    if (failed.length) parts.push(`${plural(failed.length, 'thing failed', 'things failed')} - ${clean(failed[0].title, 60)}`);
-    if (running.length) parts.push(`${plural(running.length, 'task is', 'tasks are')} running`);
-    if (!parts.length) return `Everything is quiet. ${brief} Next: ${nextStep}.`;
-    return `${parts.join('. ')}. Next: ${nextStep}.`;
+    if (promising.length) parts.push(`${plural(promising.length, 'promising reply is', 'promising replies are')} waiting${draftsReady.length ? ` with suggested ${draftsReady.length === 1 ? 'answer' : 'answers'} ready` : ''} (${promising.slice(0, 3).map(nameOfReply).join(', ')})`);
+    if (approvals.length) parts.push(`${plural(approvals.length, 'prepared batch is', 'prepared batches are')} ready for your one-tap approval`);
+    if (running.length) parts.push(`I am actively running ${plural(running.length, 'queued task', 'queued tasks')} in the background`);
+    if (failed.length) parts.push(`${plural(failed.length, 'task needs', 'tasks need')} a retry (${clean(failed[0].title, 60)})`);
+    if (parts.length) {
+      return `I am on duty running Timigaga Studios: ${parts.join('; ')}. Next move: ${nextStep}.`;
+    }
+    if (totals.total === 0) {
+      return 'I just audited Timigaga Studios and your pipeline is clean and ready for fresh prospects. Both strict qualification routes (map contacts and official website scans) and our introductory Ultra Premium offer are active - pick a business category and city below to start building leads.';
+    }
+    const recap = recent.length ? ` Latest completed action: ${recent[0]}.` : '';
+    return `I have audited your ${plural(totals.total, 'saved lead', 'saved leads')}, checked demo readiness, outreach drafts, and 3-day follow-up windows.${recap} Next move: ${nextStep}.`;
   };
 
   if (!isNew) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
 
-  // The AI writes the headline from the facts, so it sounds like a person, not a template.
+  // The AI writes the headline from the facts, so it sounds like a proactive executive partner, not a passive status box.
   const { provider, apiKey } = aiConfig();
   if (aiUnavailableReason(provider, apiKey)) return { headline: builtInHeadline(), brief, nextStep, signature, isNew, source: 'rules' };
   const model = process.env.MASTER_AI_MODEL || process.env.DEMO_AI_MODEL || 'gemini-3.5-flash-lite';
   const facts = [
-    promising.length ? `${plural(promising.length, 'promising reply is', 'promising replies are')} waiting (${promising.slice(0, 3).map(nameOfReply).join(', ')}), suggested answers ready for ${draftsReady.length}` : 'no replies waiting',
-    approvals.length ? `${plural(approvals.length, 'batch is', 'batches are')} waiting for approval` : 'no drafts waiting for approval',
+    promising.length ? `${plural(promising.length, 'promising reply is', 'promising replies are')} waiting (${promising.slice(0, 3).map(nameOfReply).join(', ')}), suggested answers ready for ${draftsReady.length}` : 'no replies waiting right now',
+    approvals.length ? `${plural(approvals.length, 'prepared batch is', 'prepared batches are')} waiting for owner approval before sending` : 'no prepared email batches waiting right now',
     failed.length ? `${plural(failed.length, 'thing failed', 'things failed')}: ${clean(failed[0].title, 80)}` : 'nothing failed',
-    running.length ? `${plural(running.length, 'task is', 'tasks are')} running now` : 'no work running',
+    running.length ? `${plural(running.length, 'task is', 'tasks are')} actively running in the background now` : 'background queue clear and ready',
     `pipeline: ${totals.total} leads, ${totals.newToday} added today, ${totals.warm} warm, ${totals.closed} closed, ${totals.demosReady} demos ready, value $${totals.pipeline.toLocaleString()}`,
-    recent.length ? `recently done: ${recent.join(' | ')}` : 'nothing done recently',
-    `next thing to do: ${nextStep}`,
+    recent.length ? `recently completed by team: ${recent.join(' | ')}` : 'fresh workspace ready for new prospect search',
+    `recommended immediate action: ${nextStep}`,
   ].join('\n');
   try {
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
@@ -328,7 +330,7 @@ export async function briefingFor(supabase: any, storedSig: string): Promise<Bri
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       signal: AbortSignal.timeout(20000),
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: 'You are the Master Agent briefing Timothy, owner of Timigaga Studios. Write his opening briefing in 2 to 4 short plain sentences, warm and direct, no markdown, no lists. Lead with the most important thing. Use only the facts given; never invent numbers or results. End by mentioning the next thing to do.' }] },
+        systemInstruction: { parts: [{ text: 'You are the proactive Master Agent running operations for Timothy, owner of Timigaga Studios. Write his opening briefing in 2 to 4 short plain sentences, warm, energetic, and executive-ready, no markdown, no bullet lists. Never say everything is quiet or nothing new; report what you just checked or started from the facts, highlight anything ready for his approval, and end with the concrete next move. Use only the facts given; never invent numbers or results.' }] },
         contents: [{ role: 'user', parts: [{ text: `FACTS\n${facts}` }] }],
         generationConfig: { temperature: 0.5 },
       }),
