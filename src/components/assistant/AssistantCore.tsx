@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -7,17 +8,20 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
+  CheckCircle2,
+  Clock3,
   FileText,
   Mail,
   Mic,
   Radar,
+  RefreshCw,
   Send,
   Zap,
 } from 'lucide-react';
 import FluidOrb, { type OrbState } from './FluidOrb';
 import { useLeads } from '../../context/LeadContext';
 import FoundBusinesses from './FoundBusinesses';
-import { enqueueWork, pauseWork, resumeWork, workActive, getWork } from '../../lib/workQueue';
+import { enqueueWork, pauseWork, resumeWork, subscribeWork, workActive, workSummary, getWork, type WorkState } from '../../lib/workQueue';
 import './assistant.css';
 
 type Mode = 'full' | 'compact';
@@ -123,7 +127,7 @@ const greeting = () => {
 };
 
 /**
- * AssistantCore — reusable Executive Agent experience.
+ * AssistantCore - reusable Executive Agent experience.
  *
  * Placements:
  *   (A) post-login home hero
@@ -133,9 +137,19 @@ const greeting = () => {
  * Chat is real: the Master Agent (POST /api/team) answers and hands tasks to specialists.
  * Briefing and metrics already use live LeadContext data.
  */
+const AUTOPILOT_COOLDOWN_MS = 180000;
+const AUTOPILOT_TS_KEY = 'cr-autopilot-last-ts';
+
+interface AutopilotState {
+  started: string[];
+  approvals: { id: string; title: string; link: string; kind: 'outreach' | 'followup' }[];
+  suggestions: { label: string; prompt?: string; route?: string }[];
+  checkedAt: string;
+}
+
 const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   const navigate = useNavigate();
-  const { leads } = useLeads();
+  const { leads, refreshLeads } = useLeads();
 
   const metrics = useMemo(() => {
     const needsOutreach = leads.filter(
@@ -173,11 +187,21 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   }, [leads]);
 
   const [presenceState, setPresenceState] = useState<OrbState>('boot');
+  const [workState, setWorkState] = useState<WorkState>(getWork);
+  const [autopilotBusy, setAutopilotBusy] = useState(false);
+  const [autopilot, setAutopilot] = useState<AutopilotState | null>(null);
+  const prevDoneRef = useRef(0);
 
-  useEffect(() => {
-    const timeout = window.setTimeout(() => setPresenceState('idle'), 2200);
-    return () => window.clearTimeout(timeout);
-  }, []);
+  useEffect(() => subscribeWork((next) => {
+    setWorkState(next);
+    const doneNow = next.items.filter((item) => item.status === 'done').length;
+    if (doneNow > prevDoneRef.current) {
+      prevDoneRef.current = doneNow;
+      void refreshLeads();
+    } else if (next.items.length === 0) {
+      prevDoneRef.current = 0;
+    }
+  }), [refreshLeads]);
 
   // Real number from the Demo Factory: how many demos clients have opened.
   const [openedDemos, setOpenedDemos] = useState(0);
@@ -196,27 +220,78 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
   }, []);
 
   const openedText = openedDemos > 0 ? ` ${openedDemos} of your demos ${openedDemos === 1 ? 'has' : 'have'} been opened by a client.` : '';
-  const fallbackBriefing = `You have ${metrics.needsOutreach} leads needing first outreach, ${metrics.awaitingReply} awaiting reply, and ${metrics.readyDemos} demos ready to send.${openedText} Pipeline value is $${metrics.revenue.toLocaleString()}.`;
+  const fallbackBriefing = `I audited your pipeline: ${metrics.needsOutreach} leads need first outreach, ${metrics.awaitingReply} are awaiting reply, and ${metrics.readyDemos} demos are ready to send.${openedText} Pipeline value is $${metrics.revenue.toLocaleString()}.`;
 
-  // The Master Agent's opening briefing: important things first, and it remembers what it
-  // already told the owner, so it never repeats itself. The full numbers stay behind a tap.
+  // Proactive arrival autopilot: scans the pipeline on arrival and whenever the owner comes back active,
+  // auto-queues small-batch missing demos, stages outreach/follow-up drafts into waiting_approval (never sending without approval),
+  // runs bounded upkeep, and refreshes the executive briefing.
   const [briefing, setBriefing] = useState<{ headline: string; brief: string; nextStep: string; signature: string; isNew: boolean } | null>(null);
   const [briefingFailed, setBriefingFailed] = useState(false);
   const [showBrief, setShowBrief] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
+  const autopilotLockRef = useRef(false);
+
+  const runAutopilotScan = useCallback(async (force = false) => {
+    if (autopilotLockRef.current) return;
+    if (!force) {
+      try {
+        const lastRun = Number(sessionStorage.getItem(AUTOPILOT_TS_KEY) || 0);
+        if (lastRun && Date.now() - lastRun < AUTOPILOT_COOLDOWN_MS && briefing) return;
+      } catch { /* sessionStorage unavailable */ }
+    }
+    autopilotLockRef.current = true;
+    setAutopilotBusy(true);
+    setPresenceState((current) => (current === 'speaking' || current === 'listening' ? current : 'thinking'));
     const stored = (() => { try { return localStorage.getItem('cr-briefing-sig') || ''; } catch { return ''; } })();
-    fetch('/api/team', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'briefing', sig: stored }) })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((result) => {
-        if (cancelled) return;
-        if (!result?.success) { setBriefingFailed(true); return; }
-        setBriefing(result.data);
-        try { localStorage.setItem('cr-briefing-sig', String(result.data.signature || '')); } catch { /* ignore */ }
-      })
-      .catch(() => { if (!cancelled) setBriefingFailed(true); });
-    return () => { cancelled = true; };
-  }, []);
+
+    try {
+      const response = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'autopilot', sig: stored }),
+      });
+      const result = response.ok ? await response.json().catch(() => null) : null;
+      if (!result?.success || !result?.data) {
+        setBriefingFailed(true);
+        setPresenceState((current) => (current === 'thinking' || current === 'boot' ? 'idle' : current));
+        return;
+      }
+      const data = result.data;
+      if (data.briefing) {
+        setBriefing(data.briefing);
+        setBriefingFailed(false);
+        try { localStorage.setItem('cr-briefing-sig', String(data.briefing.signature || '')); } catch { /* ignore */ }
+      }
+      setAutopilot({
+        started: Array.isArray(data.started) ? data.started : [],
+        approvals: Array.isArray(data.approvals) ? data.approvals : [],
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        checkedAt: String(data.checkedAt || new Date().toISOString()),
+      });
+      try { sessionStorage.setItem(AUTOPILOT_TS_KEY, String(Date.now())); } catch { /* ignore */ }
+
+      if (Array.isArray(data.queue) && data.queue.length > 0) {
+        enqueueWork(data.queue);
+        setPresenceState((current) => (current === 'speaking' ? current : 'delegating'));
+      } else {
+        setPresenceState((current) => (current === 'thinking' || current === 'boot' ? 'idle' : current));
+      }
+    } catch {
+      setBriefingFailed(true);
+      setPresenceState((current) => (current === 'thinking' || current === 'boot' ? 'idle' : current));
+    } finally {
+      autopilotLockRef.current = false;
+      setAutopilotBusy(false);
+    }
+  }, [briefing]);
+
+  useEffect(() => {
+    void runAutopilotScan(false);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void runAutopilotScan(false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [runAutopilotScan]);
   const briefingText = briefing?.headline || (briefingFailed ? fallbackBriefing : '');
   const [typed, setTyped] = useState('');
 
@@ -732,9 +807,20 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
     }
   };
 
-  // While the owner is typing to the assistant, the orb pays attention.
+  const queueSummary = workSummary(workState);
+  const queueRunning = workActive() && !workState.paused;
+
+  // While background work runs, Autopilot scans, or the owner types, the orb stays visibly alive.
   const orbState: OrbState =
-    presenceState === 'idle' && input.trim() ? 'listening' : presenceState;
+    presenceState === 'speaking' || presenceState === 'listening' || presenceState === 'error'
+      ? presenceState
+      : autopilotBusy || thinking
+        ? 'thinking'
+        : queueRunning
+          ? 'delegating'
+          : presenceState === 'idle' && input.trim()
+            ? 'listening'
+            : presenceState;
 
   const quickActions = [
     {
@@ -804,6 +890,111 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
           </div>
         </div>
       )}
+
+      <section className="neo-in rounded-2xl p-3.5 sm:p-4 space-y-3 text-left" data-master-autopilot>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${autopilotBusy || queueRunning ? 'bg-[#FF7A00] animate-pulse' : 'bg-emerald-500'}`}
+              aria-hidden="true"
+            />
+            <span className="text-xs font-black uppercase tracking-wider text-[var(--text-primary)]">
+              {autopilotBusy
+                ? 'Master Autopilot - scanning pipeline...'
+                : queueRunning
+                  ? `Master Autopilot - building (${queueSummary.done}/${queueSummary.total} done)`
+                  : workState.paused && workActive()
+                    ? 'Master Autopilot - queue paused'
+                    : 'Master Autopilot - active & monitoring'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void runAutopilotScan(true)}
+            disabled={autopilotBusy}
+            data-autopilot-refresh
+            className="neo-button rounded-full px-3 py-1 text-[11px] font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={autopilotBusy ? 'animate-spin' : ''} />
+            {autopilotBusy ? 'Scanning...' : 'Run scan now'}
+          </button>
+        </div>
+
+        {workActive() && (
+          <div className="rounded-xl border border-black/10 dark:border-white/10 px-3 py-2.5 space-y-1.5" data-autopilot-queue>
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 min-w-0 truncate">
+                <Clock3 size={13} className="text-[#FF7A00] shrink-0" />
+                <span className="truncate">
+                  {workState.paused
+                    ? `Paused (${queueSummary.left} left)`
+                    : queueSummary.running
+                      ? queueSummary.running.title
+                      : `${queueSummary.left} queued`}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => (workState.paused ? resumeWork() : pauseWork())}
+                className="neo-button rounded-full px-2.5 py-1 text-[11px] font-bold text-[var(--text-primary)] shrink-0"
+              >
+                {workState.paused ? 'Resume' : 'Pause'}
+              </button>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${queueSummary.total ? Math.round(((queueSummary.done + queueSummary.failed) / queueSummary.total) * 100) : 0}%`,
+                  background: '#FF7A00',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {autopilot && autopilot.started.length > 0 && (
+          <ul className="space-y-1.5 text-xs text-[var(--text-secondary)]">
+            {autopilot.started.map((line) => (
+              <li key={line} className="flex items-start gap-2">
+                <CheckCircle2 size={13} className="mt-0.5 shrink-0 text-emerald-500" />
+                <span className="break-words">{line}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {autopilot && autopilot.approvals.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-0.5" data-autopilot-approvals>
+            {autopilot.approvals.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => navigate(item.link)}
+                className="rounded-full px-3.5 py-1.5 text-xs font-bold text-white"
+                style={{ background: '#FF7A00' }}
+              >
+                Review & approve: {item.title}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {autopilot && autopilot.suggestions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-0.5" data-autopilot-suggestions>
+            {autopilot.suggestions.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => (item.route ? navigate(item.route) : item.prompt ? send(item.prompt) : undefined)}
+                className="neo-button rounded-full px-3 py-1.5 text-xs font-bold text-[var(--text-primary)] hover:text-[#FF7A00]"
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-3 gap-3">
         {[
@@ -928,7 +1119,7 @@ const AssistantCore: React.FC<{ mode?: Mode }> = ({ mode = 'full' }) => {
           onKeyDown={(event) => {
             if (event.key === 'Enter') send();
           }}
-          placeholder="Ask your assistant…"
+          placeholder="Ask your assistant..."
         />
 
         <button
