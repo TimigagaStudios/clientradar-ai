@@ -14,6 +14,7 @@ async function post(body: unknown) {
 
 export async function runUpkeep(options: { force?: boolean; maxRounds?: number } = {}): Promise<UpkeepTotals | null> {
   if (running) return null;
+  try { if (localStorage.getItem('cr-auto-minor') !== 'on') return null; } catch { return null; }
   try {
     const last = Number(localStorage.getItem(STAMP) || 0);
     if (!options.force && Date.now() - last < 6 * 60 * 60 * 1000) return null;
@@ -21,7 +22,8 @@ export async function runUpkeep(options: { force?: boolean; maxRounds?: number }
   running = true;
   const total: UpkeepTotals = { placed: 0, approximate: 0, notFound: 0, scanned: 0, emails: 0, remaining: 0, skipped: null, services: 0 };
   try {
-    for (let round = 0; round < (options.maxRounds ?? 10); round += 1) {
+    for (let round = 0; round < Math.min(options.maxRounds ?? 1, 1); round += 1) {
+      try { if (localStorage.getItem('cr-auto-minor') !== 'on') break; } catch { break; }
       const answer = await post({ action: 'upkeep' });
       const data = answer?.data;
       if (!answer?.success || !data) break;
