@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireOwner } from '../lib/auth.js';
 import { generateDemoContent } from '../lib/demo-ai.js';
-import { screenDemo } from '../lib/_demo-qa.js';
+import { checkDemoWithSources, recordDemoCheck } from '../lib/_qa-demo-agent.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -65,9 +65,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const content = (await generateDemoContent(job.leads, job.template_key, job.prompt)) || makeContent(job.leads, job.template_key);
       const demoUrl = `/demos/preview/${id}`;
-      const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content: screenDemo(content, { fixWhitespace: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' }), demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).eq('status', 'generating').eq('started_at', started).select().maybeSingle();
+      const checkedContent = await checkDemoWithSources(content, job.leads, { fixWhitespace: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' });
+      const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content: checkedContent, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).eq('status', 'generating').eq('started_at', started).select().maybeSingle();
       if (error) throw error;
       if (!data) throw new Error('A newer demo build replaced this attempt.');
+      await recordDemoCheck(id, job.lead_id || null, checkedContent);
       await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
       return res.status(200).json({ success: true, data });
     } catch (error) {
