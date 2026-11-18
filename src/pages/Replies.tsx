@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { useQaReview } from '../components/QaReviewDialog';
 
 // Reply inbox: what businesses answered to outreach emails, sorted so the promising ones come first.
 // The Customer Communication Agent writes a suggested answer for promising replies. Nothing is sent
@@ -25,6 +26,7 @@ const LABEL: Record<string, { text: string; color: string }> = {
 const good = (reply: Reply) => reply.label === 'interested' || reply.label === 'question';
 
 export default function Replies() {
+  const { postWithQaReview, qaReviewDialog } = useQaReview();
   const [replies, setReplies] = useState<Reply[] | null>(null);
   const [setup, setSetup] = useState({ ready: true, secretSet: true });
   const [error, setError] = useState('');
@@ -53,11 +55,18 @@ export default function Replies() {
     setSending(true);
     setError('');
     try {
-      await call('/api/team', { action: 'reply-send', id: reply.id, text: edits[reply.id] ?? reply.suggestedReply, confirm: true });
+      await postWithQaReview('/api/team', { action: 'reply-send', id: reply.id, text: edits[reply.id] ?? reply.suggestedReply, confirm: true });
       setReplies((current) => (current || []).map((item) => (item.id === reply.id ? { ...item, draftState: 'sent', status: 'handled', suggestedReply: edits[reply.id] ?? reply.suggestedReply } : item)));
       window.dispatchEvent(new CustomEvent('cr-notice', { detail: { text: `Your answer to ${reply.leadName} was sent.`, to: '/leads', yes: 'Open leads' } }));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send'); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not send'); await load(); }
     setSending(false);
+  };
+
+  const resolveSend = async (reply: Reply, resolution: 'accepted' | 'not_sent') => {
+    const description = resolution === 'accepted' ? 'accepted' : 'did not accept';
+    if (!window.confirm(`Have you checked Brevo and confirmed it ${description} this email? This records your decision and sends nothing.`)) return;
+    try { await call('/api/team', { action: 'reply-resolve', id: reply.id, resolution, confirm: true }); await load(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not record the result'); }
   };
 
   const skipDraft = async (reply: Reply) => {
@@ -71,6 +80,7 @@ export default function Replies() {
   const draftsReady = waiting.filter((reply) => reply.draftState === 'ready').length;
   return (
     <div className="space-y-5 pb-24" data-replies>
+      {qaReviewDialog}
       <header>
         <h1 className="text-2xl sm:text-3xl font-black text-[var(--text-primary)]">Replies</h1>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">{replies === null ? 'Loading...' : `${waiting.length} to look at${waiting.filter(good).length ? `, ${waiting.filter(good).length} promising` : ''}${draftsReady ? `, ${draftsReady} suggested ${draftsReady === 1 ? 'answer' : 'answers'} ready` : ''}. Promising ones come first.`}</p>
@@ -112,7 +122,8 @@ export default function Replies() {
                   </div>
                 </div>
               )}
-              {reply.draftState === 'sent' && <p className="text-xs font-bold text-green-500" data-answered>Answered - your answer was sent.</p>}
+              {(reply.draftState.startsWith('sending:') || reply.draftState.startsWith('unknown:')) && <div className="text-xs text-[var(--text-primary)]"><p>Send status is uncertain. Check Brevo before trying again; acceptance does not prove delivery. An active send may require a short wait.</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => void resolveSend(reply, 'accepted')} className="neo-button rounded-full px-3 py-2">Provider accepted it</button><button type="button" onClick={() => void resolveSend(reply, 'not_sent')} className="neo-button rounded-full px-3 py-2">Provider did not accept it</button></div></div>}
+              {reply.draftState === 'sent' && <p className="text-xs font-bold text-green-500" data-answered>Answered - sent or marked accepted after provider review; delivery is not confirmed.</p>}
               {reply.draftState === 'skipped' && <p className="text-xs text-[var(--text-secondary)]">You chose to answer this one yourself.</p>}
 
               <div className="flex flex-wrap gap-2">

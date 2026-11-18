@@ -1,4 +1,5 @@
 import BackLink from '../components/ui/BackLink';
+import { useQaReview } from '../components/QaReviewDialog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
@@ -6,8 +7,8 @@ import ListPager, { usePagedList } from '../components/ui/ListPager';
 // Batch outreach: every draft the Outreach Agent wrote, for ONE approval.
 // Nothing is sent until "Approve and send" is confirmed. Drafts can be changed or left out first.
 
-type Draft = { leadId: string; name: string; email: string; subject: string; body: string; demoUrl: string; writtenBy: 'ai' | 'built-in'; state: 'pending' | 'skipped' | 'sent' | 'failed'; error?: string };
-type Batch = { id: string; title: string; status: string; mailReady: boolean; drafts: Draft[] };
+type Draft = { leadId: string; name: string; email: string; subject: string; body: string; demoUrl: string; writtenBy: 'ai' | 'built-in'; state: 'pending' | 'sending' | 'unknown' | 'skipped' | 'sent' | 'failed'; error?: string };
+type Batch = { id: string; title: string; status: string; mailReady: boolean; approvalValid: boolean; drafts: Draft[] };
 
 const call = async (url: string, body?: Record<string, unknown>) => {
   const response = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
@@ -17,10 +18,11 @@ const call = async (url: string, body?: Record<string, unknown>) => {
   return result.data;
 };
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
-const STATE: Record<string, string> = { pending: 'Ready to send', skipped: 'Left out', sent: 'Sent', failed: 'Not sent' };
+const STATE: Record<string, string> = { pending: 'Ready to send', sending: 'In progress or uncertain', unknown: 'Check Brevo', skipped: 'Left out', sent: 'Sent', failed: 'Not sent' };
 
 export default function OutreachDrafts() {
   const { taskId = '' } = useParams();
+  const { postWithQaReview, qaReviewDialog } = useQaReview();
   const [batch, setBatch] = useState<Batch | null>(null);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState('');
@@ -47,14 +49,15 @@ export default function OutreachDrafts() {
     for (const draft of list.filter((item) => item.state === 'pending')) {
       if (stop.current) break;
       try {
-        const out = await call('/api/team', { action: 'outreach-send', taskId, leadId: draft.leadId });
+        const out = await postWithQaReview('/api/team', { action: 'outreach-send', taskId, leadId: draft.leadId });
         change(draft.leadId, { state: out.draft.state, error: out.draft.error });
         if (out.draft.state === 'sent') sent += 1;
         if (out.draft.state === 'failed') failed += 1;
+        if (out.draft.state === 'unknown' || out.draft.state === 'sending') { setError('Send status is uncertain. Check Brevo before continuing; nothing else was attempted.'); break; }
         // The key itself was refused: every other email would fail the same way, so stop here.
         if (out.draft.state === 'failed' && /did not accept the API key/i.test(String(out.draft.error || ''))) { setError('Brevo did not accept the API key, so I stopped. Nothing else was tried. Replace the key, then tap "Try again".'); break; }
       } catch (reason) {
-        setError(`Stopped at ${draft.name}: ${reason instanceof Error ? reason.message : 'no connection'}. The rest were not sent; tap "Send the rest" to carry on.`);
+        setError(`Stopped at ${draft.name}: ${reason instanceof Error ? reason.message : 'no connection'}. No later email was attempted. If a request reached Brevo, check its status before continuing.`);
         break;
       }
       await wait(700);
@@ -76,6 +79,18 @@ export default function OutreachDrafts() {
       await sendAll(approved.drafts);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not approve'); }
   };
+  const resolveUncertain = async (draft: Draft, resolution: 'accepted' | 'not_sent') => {
+    const wording = resolution === 'accepted' ? 'Brevo accepted this email' : 'Brevo did not accept this email';
+    if (!window.confirm(`Have you checked Brevo and confirmed that ${wording}? This records your decision and does not send an email.`)) return;
+    try { setBatch(await call('/api/team', { action: 'outreach-resolve', taskId, leadId: draft.leadId, resolution, confirm: true })); setError(''); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not record the result'); }
+  };
+  const reapprove = async () => {
+    if (!window.confirm('Review the recipients and messages in this batch. Approve the remaining unsent emails? This does not send them.')) return;
+    setError('');
+    try { setBatch(await call('/api/team', { action: 'outreach-reapprove', taskId, confirm: true })); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not reapprove'); }
+  };
   const retry = async () => {
     setError('');
     try {
@@ -92,6 +107,7 @@ export default function OutreachDrafts() {
   const draftPager = usePagedList(drafts, taskId, 10);
   return (
     <div className="space-y-5 pb-28" data-outreach-drafts>
+      {qaReviewDialog}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
           <BackLink fallback="/team" className="text-sm font-bold text-[#FF7A00]">Back</BackLink>
@@ -107,6 +123,7 @@ export default function OutreachDrafts() {
         )}
       </header>
       {error && <p className="neo-card p-4 text-sm text-red-400" role="alert">{error}</p>}
+      {batch && batch.status !== 'waiting_approval' && !batch.approvalValid && (count('pending') > 0 || count('failed') > 0) && <div className="neo-card p-4 text-sm text-[var(--text-primary)]"><p>Review the unsent recipients and messages below. This older or changed batch needs fresh approval before sending.</p><button type="button" onClick={() => void reapprove()} className="neo-button mt-2 rounded-full px-4 py-2 font-bold">Approve reviewed batch</button></div>}
       {batch && !batch.mailReady && batch.status === 'waiting_approval' && <p className="neo-card p-4 text-sm text-[#FF7A00]">Email sending is not set up in Vercel (Brevo settings missing), so these cannot be sent yet.</p>}
 
       {draftPager.visible.map((draft) => (
@@ -123,6 +140,8 @@ export default function OutreachDrafts() {
             <p className="mt-0.5 text-[11px] text-[var(--text-secondary)]">{draft.writtenBy === 'ai' ? 'Opening written by the AI' : 'Built-in wording'}{openId === draft.leadId ? '' : ' - tap to read'}</p>
           </button>
           {draft.error && <p className="mt-2 text-xs text-red-400 break-words">{draft.error}</p>}
+          {(draft.state === 'sending' || draft.state === 'unknown') && <div className="mt-2 text-xs text-[var(--text-primary)]"><p>Check Brevo before continuing. Acceptance is not proof of delivery. An in-progress send may require a short wait.</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => void resolveUncertain(draft, 'accepted')} className="neo-button px-3 py-2 rounded-full">Provider accepted it</button><button type="button" onClick={() => void resolveUncertain(draft, 'not_sent')} className="neo-button px-3 py-2 rounded-full">Provider did not accept it</button></div></div>}
+
           {openId === draft.leadId && (
             <div className="mt-3 space-y-2">
               {editable ? (
@@ -152,8 +171,8 @@ export default function OutreachDrafts() {
             <p className="text-sm font-semibold text-[var(--text-primary)]" role="status">Sending... {count('sent')} sent, {toSend} to go. Keep this page open.</p>
             <button type="button" onClick={() => { stop.current = true; }} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)]">Hold on</button>
           </>}
-          {!sending && batch.status !== 'waiting_approval' && count('failed') > 0 && <button type="button" onClick={() => void retry()} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }} data-retry>Try again ({count('failed')} not sent)</button>}
-          {batch.status === 'running' && !sending && toSend > 0 && <button type="button" onClick={() => void sendAll(drafts)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }}>Send the rest ({toSend})</button>}
+          {!sending && batch.approvalValid && batch.status !== 'waiting_approval' && count('sending') === 0 && count('unknown') === 0 && count('failed') > 0 && <button type="button" onClick={() => void retry()} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }} data-retry>Try again ({count('failed')} not sent)</button>}
+          {batch.status === 'running' && batch.approvalValid && !sending && count('sending') === 0 && count('unknown') === 0 && toSend > 0 && <button type="button" onClick={() => void sendAll(drafts)} className="rounded-full px-4 py-2.5 text-sm font-bold text-white" style={{ background: '#FF7A00' }}>Send the rest ({toSend})</button>}
         </div>
       )}
 
