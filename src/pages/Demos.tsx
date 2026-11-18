@@ -242,10 +242,11 @@ const Demos = () => {
               <p className="mt-2 text-[var(--text-secondary)]">Last loaded result. Recheck after changes on another device. These limited checks do not verify facts, visuals, links, security or legal compliance.</p>
               {job.qaStatus === 'checked' && <>
                 <p className="mt-2">{job.qa?.issues?.length || 0} possible issue(s).</p>
+                <p className="mt-1 text-[var(--text-secondary)]">Website contact check: {job.qa?.agent?.websiteStatus === 'available' ? 'home page read' : job.qa?.agent?.websiteStatus === 'not_provided' ? 'no website supplied' : 'unavailable'}. This does not verify all business facts.</p>
                 {Array.isArray(job.qa?.issues) && job.qa.issues.length > 0 && <ul className="mt-2 list-disc pl-5">{job.qa.issues.map((issue: any, index: number) => <QaCorrection key={`${issue.code}-${issue.path}-${index}`} jobId={job.id} fingerprint={job.qa.fingerprint || ''} issue={issue} content={job.qaContent} onSaved={refreshJobs} />)}</ul>}
                 {Array.isArray(job.qa?.fixes) && job.qa.fixes.length > 0 && <ul className="mt-2 list-disc pl-5 text-[var(--text-secondary)]">{job.qa.fixes.map((fix: any, index: number) => <li key={`${fix.path}-${index}`}>{fix.description} ({fix.path})</li>)}</ul>}
               </>}
-              {job.qaStatus === 'stale' && <p className="mt-2 text-yellow-500">The content changed since the check. Recheck before relying on it.</p>}
+              {job.qaStatus === 'stale' && <p className="mt-2 text-yellow-500">The content, saved lead or review age may have changed, or this is an older check. Recheck before relying on it.</p>}
               {job.qaStatus === 'error' && <p className="mt-2 text-red-500">The check failed. Recheck this demo.</p>}
               {job.qaStatus === 'unchecked' && <p className="mt-2">This demo has not been checked.</p>}
             </details>}
@@ -360,11 +361,12 @@ const Demos = () => {
                       <button type="button" onClick={() => void recheckQa(readyJob.id)} disabled={Boolean(checkingJobId)} className="btn-neumorph px-3 py-2 text-xs disabled:opacity-50">{checkingJobId === readyJob.id ? 'Checking...' : 'Recheck'}</button>
                     </div>
                     <p className="mt-2 text-xs text-[var(--text-secondary)]">Status is from the last loaded data; recheck after changes on another device. Limited content screening only: it does not verify facts, visual layout, links, security or legal compliance.</p>
-                    {readyJob.qaStatus === 'stale' && <p className="mt-2 text-xs text-yellow-500">Content changed since this review. Recheck before relying on it.</p>}
+                    {readyJob.qaStatus === 'stale' && <p className="mt-2 text-xs text-yellow-500">The content, saved lead or review age may have changed, or this is an older check. Recheck before relying on it.</p>}
                     {readyJob.qaStatus === 'error' && <p className="mt-2 text-xs text-red-500">The check failed. Recheck this demo.</p>}
                     {readyJob.qaStatus === 'unchecked' && <p className="mt-2 text-xs text-[var(--text-secondary)]">This demo has not been checked.</p>}
                     {readyJob.qaStatus === 'checked' && <>
                       <p className="mt-2 text-xs text-[var(--text-secondary)]">{Array.isArray(readyJob.qa?.issues) ? `${readyJob.qa.issues.length} possible issue(s) found.` : 'Review unavailable.'}</p>
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">Website contact check: {readyJob.qa?.agent?.websiteStatus === 'available' ? 'home page read' : readyJob.qa?.agent?.websiteStatus === 'not_provided' ? 'no website supplied' : 'unavailable'}. This does not verify all business facts.</p>
                       {Array.isArray(readyJob.qa?.issues) && readyJob.qa.issues.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-[var(--text-primary)]">{readyJob.qa.issues.map((issue: any, index: number) => <QaCorrection key={`${issue.code}-${issue.path}-${index}`} jobId={readyJob.id} fingerprint={readyJob.qa.fingerprint || ''} issue={issue} content={readyJob.qaContent} onSaved={refreshJobs} />)}</ul>}
                       {Array.isArray(readyJob.qa?.fixes) && readyJob.qa.fixes.length > 0 && <ul className="mt-2 list-disc pl-5 text-xs text-[var(--text-secondary)]">{readyJob.qa.fixes.map((fix: any, index: number) => <li key={`${fix.path}-${index}`}>{fix.description} ({fix.path})</li>)}</ul>}
                     </>}

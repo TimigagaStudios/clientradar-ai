@@ -3,6 +3,7 @@ import { useLeads } from '../context/LeadContext';
 import { Sparkles, Wand2, Mail, MessageSquare, RefreshCw } from 'lucide-react';
 import { useToast } from '../components/ui/useToast';
 import { useNavigate } from 'react-router-dom';
+import DraftQa from '../components/DraftQa';
 
 type Channel = 'Auto' | 'Email' | 'SMS' | 'WhatsApp' | 'Instagram';
 type OutreachType = 'Intro Email' | 'Follow-up Email' | 'Short DM' | 'AI Follow-up';
@@ -391,8 +392,8 @@ ${ctaTxt}
                     availableChannels.SMS && 'SMS',
                     availableChannels.WhatsApp && 'WhatsApp',
                     availableChannels.Instagram && 'Instagram'
-                  ].filter(Boolean).join(' • ') || 'No contact info - add phone/email in Lead Detail'}
-                  {channel === 'Auto' && ` – using ${effectiveChannel}`}
+                  ].filter(Boolean).join(' / ') || 'No contact info - add phone/email in Lead Detail'}
+                  {channel === 'Auto' && ` - using ${effectiveChannel}`}
                 </p>
               )}
             </div>
@@ -462,7 +463,7 @@ ${ctaTxt}
             </div>
             <div className="text-right min-w-[110px]">
               {isRegenerating ? (
-                <span className="text-xs text-[var(--accent)] font-bold animate-pulse">Updating…</span>
+                <span className="text-xs text-[var(--accent)] font-bold animate-pulse">Updating...</span>
               ) : lastGenAt ? (
                 <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wider">Updated just now</span>
               ) : null}
@@ -518,6 +519,8 @@ ${ctaTxt}
                 </div>
               </div>
 
+              <DraftQa subject={isEmailChannel ? generated.subject : 'Message'} body={generated.body} external />
+
               {isEmailChannel && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between gap-4">
@@ -534,6 +537,7 @@ ${ctaTxt}
                   <div className="neo-in rounded-2xl p-4 text-[var(--text-secondary)] text-sm leading-7">
                     {generated.short || '-'}
                   </div>
+                  <DraftQa subject="Short message" body={generated.short} external />
                 </div>
               )}
 
@@ -555,7 +559,7 @@ ${ctaTxt}
                 </button>
               </div>
               <p className="text-[11px] text-[var(--text-secondary)] opacity-80">
-                Rule-based v2.2 – auto-regenerates on change, channel-aware. Selections saved locally. V3 will use LLM + memory.
+                Rule-based v2.2 - auto-regenerates on change, channel-aware. Selections saved locally. V3 will use LLM + memory.
               </p>
             </>
           )}
