@@ -1,5 +1,6 @@
 import BackLink from '../components/ui/BackLink';
 import { useQaReview } from '../components/QaReviewDialog';
+import DraftQa from '../components/DraftQa';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
@@ -151,6 +152,7 @@ export default function FollowUps() {
                   <textarea value={draft.body} onChange={(event) => change(draft.leadId, { body: event.target.value })} aria-label="Email text" rows={12} className="w-full rounded-xl neo-in px-3 py-2 text-sm leading-6 text-[var(--text-primary)] outline-none" />
                 </>
               ) : <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--text-secondary)]">{draft.body}</p>}
+              <DraftQa subject={draft.subject} body={draft.body} />
               <div className="flex flex-wrap gap-2">
                 <a href={draft.demoUrl} target="_blank" rel="noreferrer" className="neo-button rounded-full px-3.5 py-2 text-xs font-bold text-[var(--text-primary)]">Open the demo</a>
                 {editable && <button type="button" onClick={() => change(draft.leadId, { state: draft.state === 'skipped' ? 'pending' : 'skipped' })} className="neo-button rounded-full px-3.5 py-2 text-xs font-bold text-[var(--text-primary)]" data-skip>{draft.state === 'skipped' ? 'Include again' : 'Leave this one out'}</button>}

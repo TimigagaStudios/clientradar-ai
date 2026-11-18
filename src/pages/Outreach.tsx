@@ -14,6 +14,7 @@ import { cn } from '../utils/cn';
 import { useToast } from '../components/ui/useToast';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
 import { QaRequestError, useQaReview } from '../components/QaReviewDialog';
+import DraftQa from '../components/DraftQa';
 
 const Outreach = () => {
   const { leads, refreshLeads } = useLeads();
@@ -331,6 +332,7 @@ Timigaga Studios`,
                   className="flex-1 w-full neo-in rounded-2xl p-5 text-[var(--text-primary)] text-sm whitespace-pre-wrap leading-7 font-mono outline-none resize-none"
                 />
               </div>
+              <DraftQa subject={preview.subject} body={preview.body} />
             </div>
 
             <div className="p-5 border-t border-black/8 dark:border-white/8 transition-colors duration-300 flex flex-col sm:flex-row justify-between gap-4 sm:items-center bg-black/[0.02] dark:bg-white/[0.02]">

@@ -6,6 +6,7 @@ const modules = {
   '_team.js': 'export async function recordTask() {}',
   '_design.js': "export const describeDesign=()=>''; export const loadEarlierDesigns=async()=>[]; export const pickDesignDna=()=>({version:1})",
   '_website.js': 'export async function scanWebsite(){return null}',
+  '_qa-website.js': "export async function readQaWebsite(){return {status:'not_provided',checkedAt:new Date().toISOString(),host:null,emails:[],phones:[]}}", 
   '_photos.js': 'export async function demoPhotos(){return []}; export function photosPossible(){return false}',
   '_patterns.js': 'export async function learnedParts(){return null}',
   '_push.js': 'export async function sendPush(){}',

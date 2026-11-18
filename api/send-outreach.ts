@@ -54,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!BREVO_API_KEY || !BREVO_SENDER_NAME || !BREVO_SENDER_EMAIL) return res.status(500).json({ success: false, error: 'Missing Brevo environment variables' });
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
     const origin = host ? `${/^(localhost|127\.)/.test(host) ? 'http' : 'https'}://${host}` : '';
-    const review = await reviewOutreachDemos(db, subject, body, origin);
+    const review = await reviewOutreachDemos(db, subject, body, origin, { leadId, recipient: toEmail.trim().toLowerCase(), kind: mailKind });
     if (review.required && (req.body?.qaOverride !== true || req.body?.qaToken !== review.token)) return res.status(409).json(qaReviewResponse(review));
     await ensureMailRecoveryReady(db);
     const key = createHash('sha256').update(JSON.stringify({ leadId: leadId.toLowerCase(), toEmail: toEmail.trim().toLowerCase(), subject, body, mailKind })).digest('hex');

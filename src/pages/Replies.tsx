@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
 import { useQaReview } from '../components/QaReviewDialog';
+import DraftQa from '../components/DraftQa';
 
 // Reply inbox: what businesses answered to outreach emails, sorted so the promising ones come first.
 // The Customer Communication Agent writes a suggested answer for promising replies. Nothing is sent
@@ -116,6 +117,7 @@ export default function Replies() {
                 <div className="rounded-xl border border-[#FF7A00]/40 p-3 space-y-2" data-draft-box>
                   <p className="text-xs font-bold text-[var(--text-primary)]">Suggested answer {reply.draftBy === 'ai' ? '(written by the AI)' : '(built-in wording)'} - change it if you like. Nothing is sent until you approve.</p>
                   <textarea value={edits[reply.id] ?? reply.suggestedReply} onChange={(event) => setEdits((current) => ({ ...current, [reply.id]: event.target.value }))} aria-label="Suggested answer" rows={8} className="w-full rounded-xl neo-in px-3 py-2 text-sm leading-6 text-[var(--text-primary)] outline-none" />
+                  <DraftQa subject={/^re:/i.test(reply.subject) ? reply.subject : `Re: ${reply.subject || 'your email'}`} body={(edits[reply.id] ?? reply.suggestedReply).replace(/\s+/g, ' ').trim().slice(0, 4000)} />
                   <div className="flex flex-wrap gap-2">
                     <button type="button" disabled={sending || !(edits[reply.id] ?? reply.suggestedReply).trim()} onClick={() => setConfirmId(reply.id)} className="rounded-full px-3.5 py-2 text-xs font-bold text-white disabled:opacity-40" style={{ background: '#FF7A00' }} data-send-answer>Approve and send</button>
                     <button type="button" onClick={() => void skipDraft(reply)} className="neo-button rounded-full px-3.5 py-2 text-xs font-bold text-[var(--text-primary)]" data-skip-draft>I will answer myself</button>
