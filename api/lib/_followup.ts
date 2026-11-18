@@ -1,6 +1,6 @@
 import { nameKey } from './_duplicates.js';
 import { aiConfig, aiUnavailableReason } from './_ai-config.js';
-import { applyEdits, mailReady, retryFailed, sendEmail, type OutreachDraft } from './_outreach.js';
+import { applyEdits, mailReady, retryFailed, sendEmail, recordAcceptedBatchSend, type OutreachDraft } from './_outreach.js';
 
 // Follow-up Agent (part of Outreach): a polite second email to leads that were written to a few
 // days ago and have not replied. Like first-contact outreach, drafts are written in one batch and
@@ -49,7 +49,7 @@ export async function pickForFollowUp(supabase: any, count: number): Promise<Fol
     const intro = list.find((log) => log.type === 'intro');
     if (!intro) return false;
     if (new Date(intro.sent_at).getTime() > cutoff) return false;
-    if (list.some((log) => log.type === 'follow_up')) return false;
+    if (list.some((log) => log.type === 'follow_up' || log.type === 'followup')) return false;
     const keys = [String(lead.email).trim().toLowerCase(), `name:${nameKey(lead.business_name)}`];
     if (keys.some((key) => seen.has(key))) return false;
     keys.forEach((key) => seen.add(key));
@@ -135,23 +135,22 @@ export async function writeFollowUps(leads: any[], origin: string): Promise<{ dr
 
 // Sends ONE approved follow-up and records it. A lead already followed up is never written to again.
 export async function sendOneFollowUp(supabase: any, task: any, leadId: string): Promise<{ draft: OutreachDraft; left: number; sent: number; failed: number; finished: boolean }> {
+  const expectedOutput = JSON.stringify(task.output);
   const drafts: OutreachDraft[] = Array.isArray(task.output?.drafts) ? task.output.drafts : [];
   const index = drafts.findIndex((draft) => draft.leadId === leadId);
   if (index < 0) throw new Error('This lead is not in the approved batch');
   let draft = drafts[index];
-  if (draft.state === 'pending') {
-    const { data: logs } = await supabase.from('outreach_logs').select('id').eq('lead_id', leadId).eq('type', 'follow_up').limit(1);
-    if (logs?.length) draft = { ...draft, state: 'skipped', error: 'Already followed up since this draft was written' };
+  if (draft.state === 'sending') {
+    const { data: logs, error: logError } = await supabase.from('outreach_logs').select('id').eq('lead_id', leadId).in('type', ['follow_up', 'followup']).limit(1);
+    if (logError) throw new Error('Could not check follow-up history. No email was sent.');
+    if (logs?.length) return await recordAcceptedBatchSend(supabase, task, leadId, 'skipped');
     else {
       try {
         await sendEmail(draft);
-        const now = new Date().toISOString();
-        draft = { ...draft, state: 'sent', sentAt: now, error: undefined };
-        await supabase.from('outreach_logs').insert([{ lead_id: leadId, type: 'follow_up', subject: draft.subject, body: draft.body, channel: 'email' }]);
-        await supabase.from('leads').update({ updated_at: now }).eq('id', leadId);
       } catch (error) {
-        draft = { ...draft, state: 'failed', error: clean(error instanceof Error ? error.message : 'Sending failed', 200) };
+        draft = { ...draft, state: 'unknown', error: `Send status uncertain. Check Brevo before retrying. ${clean(error instanceof Error ? error.message : 'Send failed', 120)}` };
       }
+      if (draft.state === 'sending') return await recordAcceptedBatchSend(supabase, task, leadId);
     }
     drafts[index] = draft;
   }
@@ -159,10 +158,12 @@ export async function sendOneFollowUp(supabase: any, task: any, leadId: string):
   const left = count('pending');
   const sent = count('sent');
   const failed = count('failed');
-  const finished = left === 0;
-  const summary = finished ? `Sent ${sent} of ${sent + failed} approved follow-up ${sent + failed === 1 ? 'email' : 'emails'}${failed ? `; ${failed} could not be sent` : ''}${count('skipped') ? `; ${count('skipped')} left out` : ''}.` : `Sending: ${sent} sent, ${left} to go.`;
+  const uncertain = count('unknown') + count('sending');
+  const finished = left === 0 && uncertain === 0;
+  const summary = uncertain ? `${uncertain} send result(s) need provider verification.` : finished ? `Sent ${sent} of ${sent + failed} approved follow-up ${sent + failed === 1 ? 'email' : 'emails'}${failed ? `; ${failed} could not be sent` : ''}${count('skipped') ? `; ${count('skipped')} left out` : ''}.` : `Sending: ${sent} sent, ${left} to go.`;
   const now = new Date().toISOString();
-  await supabase.from('agent_tasks').update({ output: { ...task.output, drafts, summary }, ...(finished ? { status: sent || !failed ? 'done' : 'failed', error: sent || !failed ? null : 'No email could be sent', completed_at: now } : {}), updated_at: now }).eq('id', task.id);
+  const { data: saved, error: saveError } = await supabase.from('agent_tasks').update({ output: { ...task.output, drafts, summary }, ...(finished ? { status: sent || !failed ? 'done' : 'failed', error: sent || !failed ? null : 'No email could be sent', completed_at: now } : {}), updated_at: now }).eq('id', task.id).eq('status', 'running').eq('output', expectedOutput).select('id');
+  if (saveError || !saved?.length) throw new Error('Send result could not be recorded. Verify the email in Brevo before retrying.');
   return { draft, left, sent, failed, finished };
 }
 

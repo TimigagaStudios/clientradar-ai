@@ -21,6 +21,9 @@ export type DemoJob = {
   completedAt: string | null;
   views: number;
   lastViewedAt: string | null;
+  qaStatus: 'checked' | 'unchecked' | 'stale' | 'error';
+  qa: { fingerprint?: string; checkedAt?: string; issues?: { code: string; path: string; message: string }[]; fixes?: { path: string; description: string }[] } | null;
+  qaContent: Record<string, unknown> | null;
 };
 
 export const demoTemplates = [
@@ -157,5 +160,8 @@ export function mapDemoJob(row: any): DemoJob {
     completedAt: row.completed_at || null,
     views: Number(row.content?.stats?.views) || 0,
     lastViewedAt: typeof row.content?.stats?.lastViewedAt === 'string' ? row.content.stats.lastViewedAt : null,
+    qaStatus: ['checked', 'unchecked', 'stale', 'error'].includes(row.qaStatus) ? row.qaStatus : 'unchecked',
+    qa: row.content?.qa && typeof row.content.qa === 'object' ? row.content.qa : null,
+    qaContent: row.content && typeof row.content === 'object' ? row.content : null,
   };
 }

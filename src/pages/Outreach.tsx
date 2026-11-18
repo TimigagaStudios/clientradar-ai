@@ -13,10 +13,12 @@ import {
 import { cn } from '../utils/cn';
 import { useToast } from '../components/ui/useToast';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { QaRequestError, useQaReview } from '../components/QaReviewDialog';
 
 const Outreach = () => {
-  const { leads, updateLeadStatus, addOutreachLog, updateDemoStatus } = useLeads();
+  const { leads, refreshLeads } = useLeads();
   const { showToast } = useToast();
+  const { postWithQaReview, qaReviewDialog } = useQaReview();
 
   const [view, setView] = useState<'compose' | 'sent' | 'replies'>(() => {
     try { const saved = sessionStorage.getItem('cr-outreach-view'); return saved === 'sent' || saved === 'replies' ? saved : 'compose'; } catch { return 'compose'; }
@@ -28,6 +30,7 @@ const Outreach = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customSubject, setCustomSubject] = useState('');
   const [customBody, setCustomBody] = useState('');
+  const [uncertain, setUncertain] = useState<{ fingerprint: string; state: string; recipient?: string; subject?: string } | null>(null);
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
@@ -36,10 +39,9 @@ const Outreach = () => {
       subject: "Question about {business_name}'s website",
       body: `Hi,
 
-I was looking for {business_name} online and noticed your website could use some updates to help attract more customers.
+I'm Timothy from Timigaga Studios. I would be happy to discuss a website for {business_name}.
 
-I've created a quick demo of what a modern site for your business could look like:
-{demo_link}
+{demo_note}
 
 Let me know if you'd like to discuss.
 
@@ -48,12 +50,11 @@ Timigaga Studios`,
     },
     followup: {
       subject: "Re: Question about {business_name}'s website",
-      body: `Hi again,
+      body: `Hi,
 
-Just following up on my previous message. Did you get a chance to check the demo concept for {business_name}?
+I'm Timothy from Timigaga Studios. I would be happy to discuss a website for {business_name}.
 
-Here is the link again:
-{demo_link}
+{demo_note}
 
 Let me know what you think.
 
@@ -89,12 +90,19 @@ Timigaga Studios`,
     if (!selectedLead) return { subject: '', body: '' };
 
     const t = templates[template as keyof typeof templates];
-    const demoLink = selectedLead.demoLink || '(No demo link yet)';
+    let demoUrl = '';
+    try {
+      if (selectedLead.demoLink) {
+        const parsed = new URL(selectedLead.demoLink, window.location.origin);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') demoUrl = parsed.href;
+      }
+    } catch { /* An invalid link is not placed into an email. */ }
+    const demoNote = demoUrl ? `Here is a sample website concept for ${selectedLead.businessName}:\n${demoUrl}\nIt is only a sample and can be changed.` : 'Please let me know if you would like to talk about your website needs.';
 
     const defaultSubject = t.subject.replace(/{business_name}/g, selectedLead.businessName);
     const defaultBody = t.body
       .replace(/{business_name}/g, selectedLead.businessName)
-      .replace(/{demo_link}/g, demoLink);
+      .replace(/{demo_note}/g, demoNote);
 
     return {
       subject: customSubject || defaultSubject,
@@ -114,50 +122,29 @@ Timigaga Studios`,
       return;
     }
 
+    if (!window.confirm(`Send this email to ${selectedLead.email} now?`)) return;
     setIsSending(true);
 
     try {
       const preview = getPreview();
 
-      const response = await fetch('/api/send-outreach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          toEmail: selectedLead.email,
-          toName: selectedLead.businessName,
-          subject: preview.subject,
-          body: preview.body,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result?.error || 'Failed to send outreach email');
-      }
-
-      await addOutreachLog(selectedLeadId, {
-        type: template as 'intro' | 'followup',
+      await postWithQaReview('/api/send-outreach', {
+        leadId: selectedLeadId,
+        mailKind: template,
+        toEmail: selectedLead.email,
+        toName: selectedLead.businessName,
         subject: preview.subject,
         body: preview.body,
-        sentAt: new Date().toISOString(),
-        channel: 'email',
+        confirm: true,
       });
 
-      await updateLeadStatus(selectedLeadId, 'Email Sent');
-
-      if (
-        selectedLead.demoLink ||
-        selectedLead.demoStatus === 'Ready' ||
-        selectedLead.status === 'Demo Created'
-      ) {
-        await updateDemoStatus(selectedLeadId, 'Sent');
-      }
+      await refreshLeads();
+      setUncertain(null);
 
       showToast({
         type: 'success',
-        title: 'Outreach sent',
-        message: `Email successfully sent to ${selectedLead.businessName}.`,
+        title: 'Email accepted',
+        message: `Brevo accepted the email to ${selectedLead.businessName}; delivery is not confirmed.`,
       });
 
       setSelectedLeadId(null);
@@ -165,14 +152,28 @@ Timigaga Studios`,
       setCustomBody('');
     } catch (error) {
       console.error(error);
+      if (error instanceof QaRequestError && error.code === 'DIRECT_SEND_NEEDS_REVIEW' && typeof error.review?.fingerprint === 'string') setUncertain(error.review);
       showToast({
         type: 'error',
-        title: 'Send failed',
-        message: error instanceof Error ? error.message : 'Failed to send outreach email.',
+        title: 'Review send status',
+        message: `${error instanceof Error ? error.message : 'Could not confirm the result.'} If the request reached Brevo, check there before trying again.`,
       });
     } finally {
       setIsSending(false);
     }
+  };
+
+  const resolveDirect = async (resolution: 'accepted' | 'not_sent') => {
+    if (!uncertain || uncertain.state === 'sent') return;
+    const detail = resolution === 'accepted' ? 'Brevo accepted this exact email' : 'Brevo did not accept this exact email';
+    if (!window.confirm(`Have you checked Brevo and confirmed that ${detail}? This records your decision and does not send an email.`)) return;
+    try {
+      const response = await fetch('/api/send-outreach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'resolve', fingerprint: uncertain.fingerprint, resolution, confirm: true }) });
+      const result = await response.json();
+      if (!response.ok || !result?.success) throw new Error(result?.error || 'Could not record the provider result.');
+      setUncertain(null); await refreshLeads();
+      showToast({ type: 'success', title: 'Provider result recorded', message: resolution === 'accepted' ? 'Accepted is not proof of delivery. No new email was sent.' : 'No email was sent by this action. Review and approve again if you want to retry.' });
+    } catch (error) { showToast({ type: 'error', title: 'Could not record result', message: error instanceof Error ? error.message : 'Check Brevo and try again.' }); }
   };
 
   const filteredLeads = leads.filter(
@@ -190,6 +191,12 @@ Timigaga Studios`,
 
   return (
     <div className="space-y-4 pb-24">
+      {qaReviewDialog}
+      {uncertain && <div className="neo-card p-4 text-sm text-[var(--text-primary)]" role="alert">
+        <p>{uncertain.state === 'sent' ? 'This exact email is already recorded as accepted. It was not sent again.' : 'This send is in progress or uncertain. Check Brevo before continuing. An in-progress request can require a short wait.'}</p>
+        {(uncertain.recipient || uncertain.subject) && <p className="mt-1 break-words">{uncertain.recipient || ''} {uncertain.subject ? `- ${uncertain.subject}` : ''}</p>}
+        {uncertain.state !== 'sent' && <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => void resolveDirect('accepted')} className="neo-button rounded-full px-3 py-2">Provider accepted it</button><button type="button" onClick={() => void resolveDirect('not_sent')} className="neo-button rounded-full px-3 py-2">Provider did not accept it</button></div>}
+      </div>}
       <nav className="flex flex-wrap gap-2" aria-label="Outreach sections">
         {(['compose', 'sent', 'replies'] as const).map((item) => <button type="button" key={item} onClick={() => setView(item)} aria-pressed={view === item} className={cn('rounded-full px-4 py-2 text-sm font-bold', view === item ? 'btn-neumorph-primary' : 'neo-button')}>
           {item === 'compose' ? 'Compose' : item === 'sent' ? 'Sent history' : 'Replies'}

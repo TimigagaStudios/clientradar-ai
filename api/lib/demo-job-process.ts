@@ -5,6 +5,7 @@ import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js'
 import { scanWebsite } from './_website.js';
 import { demoPhotos, photosPossible } from './_photos.js';
 import { learnedParts } from './_patterns.js';
+import { screenDemo } from './_demo-qa.js';
 
 // How many photographs each level shows: opening and about; Ultra also has one per showcase card.
 const PHOTO_COUNT: Record<string, number> = { mid: 2, hybrid: 2, ultra: 8 };
@@ -168,7 +169,7 @@ export async function outdatedDemos(supabase: any, limit = 25): Promise<{ id: st
 }
 
 // Adds ONLY the missing sections to a finished demo. Its design, existing words and link stay exactly as they are.
-export async function refreshDemoSections(supabase: any, id: string) {
+export async function refreshDemoSections(supabase: any, id: string, options: { qaMinor?: boolean } = {}) {
   const { data: job, error } = await supabase.from('demo_jobs').select('*, leads(*)').eq('id', id).single();
   if (error || !job) throw new Error('Demo not found');
   const missing = missingSections(job.content, job.template_key);
@@ -205,14 +206,16 @@ export async function refreshDemoSections(supabase: any, id: string) {
   }
   const by = !texts.length ? 'none' : ai === texts.length ? 'ai' : 'fallback';
   content.sectionsAdded = { at: new Date().toISOString(), sections: added, generatedBy: by };
-  const { error: saveError } = await supabase.from('demo_jobs').update({ content }).eq('id', id);
+  // Never overwrite a review, view update, or edit made during the refresh.
+  const { data: saved, error: saveError } = await supabase.from('demo_jobs').update({ content: screenDemo(content, { fixWhitespace: options.qaMinor === true }) }).eq('id', id).eq('status', 'ready').eq('content', JSON.stringify(job.content)).select('id');
   if (saveError) throw new Error(saveError.message);
+  if (!saved?.length) throw new Error('Demo changed during refresh. Please retry.');
   const own = (content.photos || []).filter((photo: any) => photo.kind === 'own').length;
   return { name, added, generatedBy: by, photos: added.includes('photos') ? { own, sample: content.photos.length - own } : null };
 }
 
 // options.record = false when an agent task already tracks this build (avoids a double record).
-export async function processDemoJob(supabase: any, id: string, options: { record?: boolean } = {}) {
+export async function processDemoJob(supabase: any, id: string, options: { record?: boolean; qaMinor?: boolean } = {}) {
   const record = options.record !== false;
   const { data: job, error: jobError } = await supabase.from('demo_jobs').select('*, leads(*)').eq('id', id).single();
   if (jobError || !job) throw new Error('Demo job not found');
@@ -220,7 +223,15 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
   const startedAt = new Date();
   const businessName = job.leads?.business_name || 'a lead';
   const levelName = LEVEL_NAMES[splitTemplateKey(job.template_key).level] || 'demo';
-  await supabase.from('demo_jobs').update({ status: 'generating', attempts: (job.attempts || 0) + 1, started_at: new Date().toISOString() }).eq('id', id);
+  const stuck = job.status === 'generating' && Number.isFinite(Date.parse(job.started_at || '')) && startedAt.getTime() - Date.parse(job.started_at) > 120000;
+  if (!['queued', 'failed'].includes(job.status) && !stuck) throw new Error('Demo is already generating or cannot be started.');
+  const started = startedAt.toISOString();
+  let claim = supabase.from('demo_jobs').update({ status: 'generating', attempts: (job.attempts || 0) + 1, started_at: started }).eq('id', id).eq('status', job.status);
+  claim = job.attempts == null ? claim.is('attempts', null) : claim.eq('attempts', job.attempts);
+  if (stuck) claim = claim.eq('started_at', job.started_at);
+  const { data: claimed, error: claimError } = await claim.select('id');
+  if (claimError) throw new Error(claimError.message);
+  if (!claimed?.length) throw new Error('Demo is already generating or changed. Please retry.');
   try {
     const lead = job.leads || {};
     const { template, level } = splitTemplateKey(job.template_key);
@@ -270,8 +281,9 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
     const photos = await demoPhotos({ ownImages: scan?.images, businessName: content.businessName, category: content.category, seed: id, count: PHOTO_COUNT[level] || 2 });
     Object.assign(content, { photos, photosChecked: new Date().toISOString() });
     const demoUrl = `/demos/preview/${id}`;
-    const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).select().single();
+    const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content: screenDemo(content, { fixWhitespace: options.qaMinor === true }), demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).eq('status', 'generating').eq('started_at', started).select().maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error('A newer demo build replaced this attempt.');
     await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
     // Lock-screen notification when the demo is ready (never breaks the build).
     try { const { sendPush } = await import('./_push.js'); await sendPush(supabase, { title: 'ClientRadar', body: `Demo ready for ${businessName}. Tap to preview.`, url: '/demos', tag: 'demo' }); } catch { /* notifications are optional */ }
@@ -298,7 +310,7 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       error: message,
       startedAt,
     });
-    await supabase.from('demo_jobs').update({ status: 'failed', error: message }).eq('id', id);
+    await supabase.from('demo_jobs').update({ status: 'failed', error: message }).eq('id', id).eq('status', 'generating').eq('started_at', started);
     throw new Error(message);
   }
 }
