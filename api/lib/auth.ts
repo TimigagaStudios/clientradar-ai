@@ -8,6 +8,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/+$/, '');
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const verifiedUsers = new WeakMap<object, { email: string; confirmed: boolean }>();
 
 function deny(res: VercelResponse, status: number, error: string) {
   res.status(status).json({ success: false, error });
@@ -39,5 +40,18 @@ export async function requireUser(req: VercelRequest, res: VercelResponse): Prom
 
   const allowed = (process.env.API_ALLOWED_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
   if (allowed.length && !allowed.includes(String(user.email || '').toLowerCase())) return deny(res, 403, 'This account is not allowed to use this workspace.');
+  verifiedUsers.set(req, { email: String(user.email || '').trim().toLowerCase(), confirmed: Boolean(user.email_confirmed_at) });
+  return true;
+}
+
+// Sensitive owner approvals fail closed unless a verified owner allowlist is
+// configured. The earlier authentication is reused within the same request.
+export async function requireOwner(req: VercelRequest, res: VercelResponse): Promise<boolean> {
+  if (process.env.API_AUTH_DISABLED === 'true') return deny(res, 403, 'Owner approval is unavailable while authentication is disabled.');
+  const allowed = (process.env.API_ALLOWED_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean);
+  if (allowed.length !== 1) return deny(res, 503, 'Owner approval is not configured. Set API_ALLOWED_EMAILS to exactly one verified owner account.');
+  if (!verifiedUsers.has(req) && !(await requireUser(req, res))) return false;
+  const user = verifiedUsers.get(req);
+  if (!user?.confirmed || !allowed.includes(user.email)) return deny(res, 403, 'A verified owner account is required.');
   return true;
 }

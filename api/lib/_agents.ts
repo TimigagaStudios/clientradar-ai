@@ -11,7 +11,7 @@ export interface AgentResult {
   output: Record<string, unknown>;
 }
 
-type Runner = (supabase: any, task: any) => Promise<AgentResult>;
+type Runner = (supabase: any, task: any, options?: { qaMinor?: boolean }) => Promise<AgentResult>;
 
 const MAX_AUTO_SITE_SCANS = 8;
 
@@ -168,10 +168,10 @@ const LEVEL_NAMES: Record<string, string> = { mid: 'Mid-Level', hybrid: 'Hybrid'
 
 const SECTION_NAMES: Record<string, string> = { process: 'How it works', faq: 'Common questions', photos: 'photos' };
 
-const runDemoCreation: Runner = async (supabase, task) => {
+const runDemoCreation: Runner = async (supabase, task, options) => {
   // An update of a finished demo: only the missing sections are added.
   if (task.input?.refresh) {
-    const done = await refreshDemoSections(supabase, String(task.input.jobId || ''));
+    const done = await refreshDemoSections(supabase, String(task.input.jobId || ''), { qaMinor: options?.qaMinor === true });
     const jobId = String(task.input.jobId || '');
     if (!done.added.length) return { summary: `The demo for ${done.name} needed no change (no new section was missing and no photos were found for it).`, output: { jobId, demoUrl: `/demos/preview/${jobId}`, generatedBy: 'none' } };
     const sections = done.added.map((key) => SECTION_NAMES[key] || key).join(' and ');
@@ -190,7 +190,7 @@ const runDemoCreation: Runner = async (supabase, task) => {
   const { data: job, error } = await supabase.from('demo_jobs').insert({ lead_id: leadId, template_key: `auto:${level}`, status: 'queued', prompt: buildDemoPrompt(lead, 'auto', level) }).select().single();
   if (error || !job) throw new Error(error?.message || 'Could not create the demo job');
   await supabase.from('leads').update({ demo_status: 'In Progress', updated_at: new Date().toISOString() }).eq('id', leadId);
-  const built = await processDemoJob(supabase, job.id, { record: false });
+  const built = await processDemoJob(supabase, job.id, { record: false, qaMinor: options?.qaMinor === true });
   const written = built?.content?.generatedBy === 'ai' ? 'AI written' : built?.content?.learnedFrom ? 'built-in text in the style of an earlier AI demo' : 'built-in text';
   return {
     summary: `Built the ${LEVEL_NAMES[level]} demo for ${lead.business_name} (${written}). It is ready for you to review; nothing was sent.`,
@@ -205,8 +205,8 @@ const RUNNERS: Record<string, Runner> = {
 
 export const canRun = (agentKey: string) => Boolean(RUNNERS[agentKey]);
 
-export async function runAgentTask(supabase: any, task: any): Promise<AgentResult> {
+export async function runAgentTask(supabase: any, task: any, options: { qaMinor?: boolean } = {}): Promise<AgentResult> {
   const runner = RUNNERS[task.agent_key];
   if (!runner) throw new Error('This agent is not active yet');
-  return runner(supabase, task);
+  return runner(supabase, task, options);
 }

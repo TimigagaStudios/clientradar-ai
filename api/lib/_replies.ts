@@ -1,6 +1,8 @@
+import { ensureMailRecoveryReady } from './_mail-recovery.js';
 import { timingSafeEqual } from 'node:crypto';
 import { mailReady, sendEmail } from './_outreach.js';
 import { aiConfig } from './_ai-config.js';
+import { QaReviewNeeded, reviewOutreachDemos } from './_qa-outreach.js';
 
 // Customer Communication Agent, first step: the reply inbox.
 // Replies to outreach emails arrive from the owner's own mailbox (a small script in his Google account
@@ -218,26 +220,53 @@ export async function replyNews(supabase: any) {
 
 // Sends the owner-approved answer to a reply through Brevo. The caller (team.ts) has already
 // checked confirm:true. A reply already answered is never sent twice.
-export async function sendReplyAnswer(supabase: any, id: string, text: string) {
+export async function sendReplyAnswer(supabase: any, id: string, text: string, options: { qaOverride?: boolean; qaToken?: string; origin?: string } = {}) {
   const { data: reply } = await supabase.from('outreach_replies').select('*').eq('id', id).maybeSingle();
   if (!reply) throw new Error('Reply not found');
-  if (reply.draft_state === 'sent') throw new Error('This reply was already answered');
+  if (!reply.lead_id) throw new Error('This reply has no linked lead. No email was sent.');
+  if (reply.draft_state !== 'ready') throw new Error('This reply is not ready to send. Check the provider if a send is uncertain.');
   if (!reply.suggested_reply && !clean(text, 4000)) throw new Error('There is no answer to send');
   if (!mailReady()) throw new Error('Email sending is not set up: the Brevo settings are missing in Vercel. Nothing was sent.');
   const body = clean(text, 4000) || String(reply.suggested_reply || '');
   const subject = /^re:/i.test(String(reply.subject || '')) ? String(reply.subject) : `Re: ${String(reply.subject || 'your email')}`;
-  await sendEmail({ leadId: String(reply.lead_id || ''), name: String(reply.from_name || reply.from_email), email: String(reply.from_email), subject, body, demoUrl: '', writtenBy: reply.draft_by === 'ai' ? 'ai' : 'built-in', state: 'pending' });
-  const now = new Date().toISOString();
-  await supabase.from('outreach_replies').update({ suggested_reply: body, draft_state: 'sent', status: 'handled' }).eq('id', id);
-  await supabase.from('outreach_logs').insert([{ lead_id: reply.lead_id, type: 'reply', subject, body, channel: 'email' }]);
+  const review = await reviewOutreachDemos(supabase, subject, body, options.origin);
+  if (review.required && (options.qaOverride !== true || options.qaToken !== review.token)) throw new QaReviewNeeded(review);
+  await ensureMailRecoveryReady(supabase);
+  const { data: claimed, error: claimError } = await supabase.rpc('cr_claim_reply_send', { p_reply_id: id, p_expected_email: reply.from_email, p_body: body, p_demo_proofs: review.proofs });
+  if (claimError || typeof claimed?.state !== 'string') throw new Error('Reply or demo changed, or another send started. Reload and review before retrying.');
+  const claim = claimed.state;
+  try {
+    await sendEmail({ leadId: String(reply.lead_id || ''), name: String(reply.from_name || reply.from_email), email: String(reply.from_email), subject, body, demoUrl: '', writtenBy: reply.draft_by === 'ai' ? 'ai' : 'built-in', state: 'pending' });
+  } catch {
+    await supabase.from('outreach_replies').update({ draft_state: `unknown:${new Date().toISOString()}` }).eq('id', id).eq('draft_state', claim);
+    throw new Error('Send status is uncertain. Check Brevo before trying again.');
+  }
+  const { data: saved, error: saveError } = await supabase.rpc('cr_resolve_reply_send', { p_reply_id: id, p_expected_state: claim, p_resolution: 'provider_accepted' });
+  if (saveError || saved?.state !== 'sent') throw new Error('Send result could not be recorded. Check Brevo before retrying.');
   return { id, sent: true, to: reply.from_email };
+}
+
+export async function resolveReplySend(supabase: any, id: string, resolution: string) {
+  if (!['accepted', 'not_sent'].includes(resolution)) throw new Error('Choose the provider result.');
+  const { data: reply, error } = await supabase.from('outreach_replies').select('id,draft_state').eq('id', id).maybeSingle();
+  if (error || !reply) throw new Error('Reply not found.');
+  const state = String(reply.draft_state || '');
+  if (!state.startsWith('unknown:') && !state.startsWith('sending:')) throw new Error('This send does not need resolution.');
+  if (state.startsWith('sending:')) {
+    const started = Date.parse(state.slice('sending:'.length));
+    if (!Number.isFinite(started) || Date.now() - started < 120000) throw new Error('This send may still be running. Wait and check Brevo.');
+  }
+  const { data: updated, error: updateError } = await supabase.rpc('cr_resolve_reply_send', { p_reply_id: id, p_expected_state: state, p_resolution: resolution });
+  if (updateError || !updated?.state) throw new Error('Could not record the provider result atomically. Keep this reply paused and check the database setup.');
+  return { id, state: updated.state };
 }
 
 export async function skipReplyDraft(supabase: any, id: string) {
   const { data: reply } = await supabase.from('outreach_replies').select('id, draft_state').eq('id', id).maybeSingle();
   if (!reply) throw new Error('Reply not found');
   if (reply.draft_state === 'sent') throw new Error('This reply was already answered');
-  const { error } = await supabase.from('outreach_replies').update({ draft_state: 'skipped' }).eq('id', id);
+  if (String(reply.draft_state || '').startsWith('sending:') || String(reply.draft_state || '').startsWith('unknown:')) throw new Error('Check the send with Brevo before changing this draft.');
+  const { error } = await supabase.from('outreach_replies').update({ draft_state: 'skipped' }).eq('id', id).eq('draft_state', reply.draft_state);
   if (error) throw new Error(error.message);
   return { id, draftState: 'skipped' };
 }
