@@ -1,9 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser } from './lib/auth.js';
+import { requireUser, requireOwner } from './lib/auth.js';
 import { processDemoJob } from './lib/demo-job-process.js';
 import { normalizeStyleLevel, tierRules } from './lib/demo-ai.js';
 import type { DemoStyleLevel } from './lib/demo-ai.js';
+import { applyOwnerCorrection, demoQaStatus, screenDemo } from './lib/_demo-qa.js';
 
 const TEMPLATE_KEYS = ['auto', 'dental', 'restaurant', 'real-estate', 'salon', 'professional-services'];
 
@@ -106,13 +107,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { data, error } = await supabase.from('demo_jobs').select('id, status, template_key, content, demo_url').eq('id', jobId).limit(1);
         if (error) return res.status(500).json({ success: false, error: error.message });
         if (!data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
-        const { stats: _stats, aiError: _aiError, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
+        const { stats: _stats, aiError: _aiError, qa: _qa, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
         return res.status(200).json({ success: true, data: { ...data[0], content: publicContent } });
       }
-      if (!(await requireUser(req, res))) return;
-      const { data, error } = await supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).limit(100);
+      if (!(await requireOwner(req, res))) return;
+      if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Private demo reviews require authentication.' });
+      const offsetValue = Number(req.query.offset || 0);
+      const offset = Number.isInteger(offsetValue) && offsetValue >= 0 ? offsetValue : 0;
+      const { data, error } = await supabase.from('demo_jobs').select('*, leads(*)').order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + 99);
       if (error) return res.status(500).json({ success: false, error: error.message });
-      return res.status(200).json({ success: true, data });
+      return res.status(200).json({ success: true, data: (data || []).map((job: any) => ({ ...job, qaStatus: demoQaStatus(job.content) })) });
     }
     if (req.method === 'POST' && req.body?.action === 'view') {
       // Public: the demo page reports that a visitor opened it. Counted in content.stats; views closer than 5 seconds apart count once.
@@ -124,7 +128,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const now = new Date();
         if (now.getTime() - (Date.parse(stats.lastViewedAt || '') || 0) > 5000) {
           const next = { views: (Number(stats.views) || 0) + 1, firstViewedAt: stats.firstViewedAt || now.toISOString(), lastViewedAt: now.toISOString() };
-          await supabase.from('demo_jobs').update({ content: { ...row.content, stats: next } }).eq('id', viewId);
+          // If content changed after our read, drop this count rather than
+          // overwrite newer demo text or private QA information.
+          await supabase.from('demo_jobs').update({ content: { ...row.content, stats: next } }).eq('id', viewId).eq('status', 'ready').eq('content', JSON.stringify(row.content));
         }
       }
       return res.status(200).json({ success: true });
@@ -134,12 +140,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Master Agent voice (kept here so no extra server function is needed).
     if (req.method === 'POST' && req.body?.action === 'speak') return handleSpeak(req, res);
 
+    if (req.method === 'POST' && req.body?.action === 'qa-correct') {
+      if (!(await requireOwner(req, res))) return;
+      if (process.env.API_AUTH_DISABLED === 'true' || req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'An authenticated owner must approve this correction.' });
+      const jobId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
+      const path = typeof req.body?.path === 'string' ? req.body.path : '';
+      const value = req.body?.value;
+      if (!/^[0-9a-f-]{36}$/i.test(jobId) || typeof value !== 'string') return res.status(400).json({ success: false, error: 'Demo, field and replacement text are required.' });
+      const { data: job, error: readError } = await supabase.from('demo_jobs').select('id,status,content').eq('id', jobId).maybeSingle();
+      if (readError) return res.status(500).json({ success: false, error: readError.message });
+      if (!job) return res.status(404).json({ success: false, error: 'Demo not found.' });
+      if (job.status !== 'ready' || demoQaStatus(job.content) !== 'checked' || job.content?.qa?.fingerprint !== req.body?.fingerprint) return res.status(409).json({ success: false, error: 'The review is not current. Recheck before editing.' });
+      const issueMatches = (issue: any) => issue?.path === path || (issue?.code === 'missing_contact' && issue?.path === 'contact' && ['contact.email', 'contact.phone'].includes(path));
+      if (!Array.isArray(job.content.qa.issues) || !job.content.qa.issues.some(issueMatches)) return res.status(400).json({ success: false, error: 'This field is not part of the current review.' });
+      let corrected: Record<string, unknown>;
+      try { corrected = applyOwnerCorrection(job.content, path, value); } catch (error) { return res.status(400).json({ success: false, error: error instanceof Error ? error.message : 'Invalid correction.' }); }
+      const content = screenDemo(corrected);
+      if (content.qa && typeof content.qa === 'object') (content.qa as Record<string, unknown>).fixes = [{ path, description: 'Owner approved and supplied the replacement text.' }];
+      const { data: saved, error: saveError } = await supabase.from('demo_jobs').update({ content }).eq('id', jobId).eq('status', 'ready').eq('content', JSON.stringify(job.content)).select('id');
+      if (saveError) return res.status(500).json({ success: false, error: saveError.message });
+      if (!saved?.length) return res.status(409).json({ success: false, error: 'Demo changed during correction. Recheck and try again.' });
+      return res.status(200).json({ success: true, data: { id: jobId, qaStatus: demoQaStatus(content), qa: content.qa } });
+    }
+
+    if (req.method === 'POST' && req.body?.action === 'qa-recheck') {
+      if (!(await requireOwner(req, res))) return;
+      if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Private demo reviews require authentication.' });
+      const jobId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
+      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return res.status(400).json({ success: false, error: 'jobId is required' });
+      const { data: job, error: readError } = await supabase.from('demo_jobs').select('id,status,content').eq('id', jobId).maybeSingle();
+      if (readError) return res.status(500).json({ success: false, error: readError.message });
+      if (!job) return res.status(404).json({ success: false, error: 'Demo not found' });
+      if (job.status !== 'ready') return res.status(409).json({ success: false, error: 'Only ready demos can be checked.' });
+      const content = screenDemo(job.content, { fixWhitespace: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' });
+      const { data: saved, error: saveError } = await supabase.from('demo_jobs').update({ content }).eq('id', jobId).eq('status', 'ready').eq('content', JSON.stringify(job.content)).select('id');
+      if (saveError) return res.status(500).json({ success: false, error: saveError.message });
+      if (!saved?.length) return res.status(409).json({ success: false, error: 'Demo changed during the check. Please try again.' });
+      return res.status(200).json({ success: true, data: { id: jobId, qaStatus: demoQaStatus(content), qa: content.qa } });
+    }
+
     if (req.method === 'POST') {
+      if (!(await requireOwner(req, res))) return;
       const { leadId, jobId, action } = req.body || {};
+      if (process.env.API_AUTH_DISABLED === 'true' || req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'An authenticated owner must approve demo creation or retry.' });
       const templateKey = TEMPLATE_KEYS.includes(req.body?.templateKey) ? req.body.templateKey : 'auto';
       const styleLevel = normalizeStyleLevel(req.body?.styleLevel || 'ultra');
       if (action === 'process' && jobId) {
-        const data = await processDemoJob(supabase, jobId);
+        const data = await processDemoJob(supabase, jobId, { qaMinor: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' });
         return res.status(200).json({ success: true, data });
       }
       if (!leadId) return res.status(400).json({ success: false, error: 'leadId is required' });

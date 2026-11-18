@@ -1,11 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser } from './lib/auth.js';
+import { requireUser, requireOwner } from './lib/auth.js';
 import { AGENTS, recordTask, teamClient } from './lib/_team.js';
 import { planRequest, transcribeAudio, searchWishes, batchDemoWish, briefingFor, MAX_BATCH } from './lib/_master.js';
 import { runUpkeep, upkeepSummary } from './lib/_upkeep.js';
 import { outdatedDemos } from './lib/demo-job-process.js';
 import { keepApart, keptApart, listDuplicates, mergeLeads, nameKey } from './lib/_duplicates.js';
-import { listReplies, replyNews, replySenders, secretOk, sendReplyAnswer, setReplyStatus, skipReplyDraft, takeInReplies } from './lib/_replies.js';
+import { listReplies, replyNews, replySenders, resolveReplySend, secretOk, sendReplyAnswer, setReplyStatus, skipReplyDraft, takeInReplies } from './lib/_replies.js';
 import { pushConfigured, pushPublicKey, saveSubscription, deleteSubscription, sendPush, vapidProblem } from './lib/_push.js';
 import { applyEdits, batchOutreachWish, mailReady, outreachReady, pickForOutreach, retryFailed, sendOneDraft, writeDrafts, type OutreachDraft } from './lib/_outreach.js';
 import { followUpReady, followUpWish, pickForFollowUp, sendOneFollowUp, writeFollowUps } from './lib/_followup.js';
@@ -14,6 +14,8 @@ import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { isOfficialWebsiteUrl, isValidContactEmail, isValidContactPhone, scanLead, scanWebsite, scanSummary } from './lib/_website.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
+import { ensureMailRecoveryReady } from './lib/_mail-recovery.js';
+import { QaReviewNeeded, batchApprovalDigest, qaReviewResponse, reviewOutreachDemos } from './lib/_qa-outreach.js';
 
 // AI team endpoint.
 // GET                      team register with live task and activity records.
@@ -248,7 +250,31 @@ const outreachTask = async (supabase: any, taskId: string) => {
   if (!task || task.agent_key !== 'outreach') throw new Error('Outreach batch not found');
   return task;
 };
-const outreachView = (task: any) => ({ id: task.id, title: task.title, status: task.status, createdAt: task.created_at, mailReady: mailReady(), drafts: (Array.isArray(task.output?.drafts) ? task.output.drafts : []) as OutreachDraft[] });
+const hasBatchApproval = (task: any) => {
+  const drafts = Array.isArray(task.output?.drafts) ? task.output.drafts : [];
+  const approval = task.output?.ownerApproval;
+  return Boolean(approval && Array.isArray(approval.leadIds) && approval.digest === batchApprovalDigest(drafts));
+};
+const outreachView = (task: any) => ({ id: task.id, title: task.title, status: task.status, createdAt: task.created_at, mailReady: mailReady(), approvalValid: hasBatchApproval(task), drafts: (Array.isArray(task.output?.drafts) ? task.output.drafts : []) as OutreachDraft[] });
+
+// Older in-progress batches predate approval digests. They may be reviewed and
+// explicitly reapproved, but this action never sends an email.
+async function reapproveBatch(supabase: any, body: any, followUp: boolean) {
+  if (body?.confirm !== true) return { status: 403, body: { success: false, error: 'Reapproval needs your confirmation.' } };
+  const task = followUp ? await followUpTask(supabase, String(body?.taskId || '')) : await outreachTask(supabase, String(body?.taskId || ''));
+  if (!['running', 'done', 'failed'].includes(task.status)) return { status: 409, body: { success: false, error: 'This batch cannot be reapproved.' } };
+  const drafts = Array.isArray(task.output?.drafts) ? task.output.drafts as OutreachDraft[] : [];
+  if (drafts.some((draft) => draft.state === 'sending' || draft.state === 'unknown')) return { status: 409, body: { success: false, error: 'Check the uncertain send in Brevo before reapproving.' } };
+  const leadIds = drafts.filter((draft) => draft.state === 'pending' || draft.state === 'failed').map((draft) => draft.leadId);
+  if (!leadIds.length) return { status: 400, body: { success: false, error: 'There are no unsent drafts to approve.' } };
+  const ownerApproval = { digest: batchApprovalDigest(drafts), leadIds, at: new Date().toISOString() };
+  const output = { ...task.output, ownerApproval };
+  const { data, error } = await supabase.from('agent_tasks').update({ output }).eq('id', task.id).eq('status', task.status).eq('output', JSON.stringify(task.output)).select('id');
+  if (error) return { status: 500, body: { success: false, error: error.message } };
+  if (!data?.length) return { status: 409, body: { success: false, error: 'Batch changed. Reload and review it again.' } };
+  await note(supabase, 'master', 'approved', 'You reapproved the reviewed unsent batch', task.id);
+  return { status: 200, body: { success: true, data: followUp ? followUpView({ ...task, output }) : outreachView({ ...task, output }) } };
+}
 
 // The ONE approval: saves the owner's edits and unlocks sending. Nothing is sent by this call.
 async function approveOutreach(supabase: any, body: any) {
@@ -260,25 +286,62 @@ async function approveOutreach(supabase: any, body: any) {
   const toSend = drafts.filter((draft) => draft.state === 'pending').length;
   if (!toSend) return { status: 400, body: { success: false, error: 'Every draft is left out, so there is nothing to send' } };
   const now = new Date().toISOString();
-  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: now, updated_at: now, output: { ...task.output, drafts, summary: `Approved: ${toSend} to send.` } }).eq('id', task.id).eq('status', 'waiting_approval').select('id');
+  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: now, updated_at: now, output: { ...task.output, drafts, ownerApproval: { digest: batchApprovalDigest(drafts), leadIds: drafts.filter((draft) => draft.state === 'pending').map((draft) => draft.leadId), at: now }, summary: `Approved: ${toSend} to send.` } }).eq('id', task.id).eq('status', 'waiting_approval').eq('output', JSON.stringify(task.output)).select('id');
   if (!claimed?.length) return { status: 409, body: { success: false, error: 'This batch was already approved' } };
   await note(supabase, 'master', 'approved', `You approved sending ${toSend} outreach ${plural(toSend, 'email', 'emails')}`, task.id);
-  return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
+  return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts, ownerApproval: { digest: batchApprovalDigest(drafts), leadIds: drafts.filter((draft) => draft.state === 'pending').map((draft) => draft.leadId), at: now } } }) } };
 }
 
 async function retryOutreach(supabase: any, body: any) {
   const task = await outreachTask(supabase, String(body?.taskId || ''));
+  if (!hasBatchApproval(task)) return { status: 403, body: { success: false, error: 'This batch needs a fresh owner approval before sending.' } };
   if (!['failed', 'done', 'running'].includes(task.status)) return { status: 403, body: { success: false, error: 'This batch was never approved' } };
+  if (outreachView(task).drafts.some((draft) => draft.state === 'sending' || draft.state === 'unknown')) return { status: 409, body: { success: false, error: 'Check the uncertain send in Brevo before retrying.' } };
   if (!outreachView(task).drafts.some((draft) => draft.state === 'failed')) return { status: 400, body: { success: false, error: 'No unsent email to try again' } };
   const drafts = await retryFailed(supabase, task);
   await note(supabase, 'master', 'approved', 'You asked to try the unsent outreach emails again', task.id);
   return { status: 200, body: { success: true, data: outreachView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
 }
 
-async function sendOutreach(supabase: any, body: any) {
+async function claimBatchDraft(supabase: any, task: any, leadId: string, proofs: unknown[]) {
+  const drafts = Array.isArray(task.output?.drafts) ? task.output.drafts as OutreachDraft[] : [];
+  if (drafts.some((item) => item.state === 'sending' || item.state === 'unknown')) throw new Error('A send is in progress or uncertain. Check Brevo before continuing.');
+  const selected = drafts.find((item) => item.leadId === leadId);
+  if (!selected || selected.state !== 'pending') throw new Error('This draft is not pending.');
+  const { data, error } = await supabase.rpc('cr_claim_batch_send', { p_task_id: task.id, p_lead_id: leadId, p_expected_output: task.output, p_demo_proofs: proofs });
+  if (error || !data?.output) throw new Error('Batch changed or this lead already has a send in progress. Check other batches and Brevo before continuing.');
+  return { ...task, output: data.output };
+}
+
+async function resolveUncertainSend(supabase: any, body: any, followUp: boolean) {
+  if (body?.confirm !== true || !['accepted', 'not_sent'].includes(body?.resolution)) return { status: 403, body: { success: false, error: 'Confirm the provider result first.' } };
+  const task = followUp ? await followUpTask(supabase, String(body?.taskId || '')) : await outreachTask(supabase, String(body?.taskId || ''));
+  if (task.status !== 'running' || !hasBatchApproval(task)) return { status: 403, body: { success: false, error: 'The approved batch is not available.' } };
+  const drafts = Array.isArray(task.output?.drafts) ? task.output.drafts as OutreachDraft[] : [];
+  const found = drafts.find((draft) => draft.leadId === String(body?.leadId || ''));
+  if (!found || !['sending', 'unknown'].includes(found.state)) return { status: 409, body: { success: false, error: 'This send does not need resolution.' } };
+  if (found.state === 'sending' && (!found.sendStartedAt || !Number.isFinite(Date.parse(found.sendStartedAt)) || Date.now() - Date.parse(found.sendStartedAt) < 120000)) return { status: 409, body: { success: false, error: 'This send may still be running. Wait and check Brevo.' } };
+  const { data, error } = await supabase.rpc('cr_resolve_batch_send', { p_task_id: task.id, p_lead_id: found.leadId, p_expected_output: task.output, p_resolution: body.resolution });
+  if (error || !data?.output || !data?.status) return { status: 409, body: { success: false, error: 'Could not record the provider result atomically. Keep this batch paused and check the database setup.' } };
+  const updated = { ...task, output: data.output, status: data.status };
+  await note(supabase, 'master', 'approved', `Owner recorded provider result for ${found.name}: ${body.resolution}`, task.id, found.leadId);
+  if (data.status !== 'running') await closeParent(supabase, task.parent_task_id);
+  return { status: 200, body: { success: true, data: followUp ? followUpView(updated) : outreachView(updated) } };
+}
+
+async function sendOutreach(supabase: any, body: any, origin: string) {
   const task = await outreachTask(supabase, String(body?.taskId || ''));
+  if (!hasBatchApproval(task)) return { status: 403, body: { success: false, error: 'This batch needs a fresh owner approval before sending.' } };
   if (task.status !== 'running') return { status: 403, body: { success: false, error: task.status === 'waiting_approval' ? 'This batch needs your approval first' : `This batch is already ${task.status}` } };
-  const out = await sendOneDraft(supabase, task, String(body?.leadId || ''));
+  const draft = outreachView(task).drafts.find((item) => item.leadId === String(body?.leadId || ''));
+  if (!draft) return { status: 404, body: { success: false, error: 'Draft not found.' } };
+  if (!task.output.ownerApproval.leadIds.includes(draft.leadId)) return { status: 403, body: { success: false, error: 'This email was not included in the approved batch.' } };
+  if (draft.state !== 'pending') return { status: 409, body: { success: false, error: 'This draft is not pending. Check its current status.' } };
+  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin);
+  if (review.required && (body?.qaOverride !== true || body?.qaToken !== review.token || body?.confirm !== true)) return { status: 409, body: qaReviewResponse(review) };
+  await ensureMailRecoveryReady(supabase);
+  const claimed = await claimBatchDraft(supabase, task, draft.leadId, review.proofs);
+  const out = await sendOneDraft(supabase, claimed, draft.leadId);
   if (out.draft.state === 'sent') await note(supabase, 'outreach', 'sent', `Sent the first email to ${out.draft.name}`, task.id, out.draft.leadId);
   if (out.finished) {
     await note(supabase, 'outreach', out.sent ? 'task_done' : 'task_failed', `Outreach batch finished: ${out.sent} sent${out.failed ? `, ${out.failed} failed` : ''}.`, task.id);
@@ -315,7 +378,7 @@ const followUpTask = async (supabase: any, taskId: string) => {
   if (!task || task.agent_key !== 'outreach' || !task.input?.followUp) throw new Error('Follow-up batch not found');
   return task;
 };
-const followUpView = (task: any) => ({ id: task.id, title: task.title, status: task.status, createdAt: task.created_at, mailReady: mailReady(), drafts: (Array.isArray(task.output?.drafts) ? task.output.drafts : []) as OutreachDraft[] });
+const followUpView = (task: any) => ({ id: task.id, title: task.title, status: task.status, createdAt: task.created_at, mailReady: mailReady(), approvalValid: hasBatchApproval(task), drafts: (Array.isArray(task.output?.drafts) ? task.output.drafts : []) as OutreachDraft[] });
 
 async function approveFollowUp(supabase: any, body: any) {
   if (body?.confirm !== true) return { status: 403, body: { success: false, error: 'Sending needs your approval' } };
@@ -326,25 +389,36 @@ async function approveFollowUp(supabase: any, body: any) {
   const toSend = drafts.filter((draft) => draft.state === 'pending').length;
   if (!toSend) return { status: 400, body: { success: false, error: 'Every draft is left out, so there is nothing to send' } };
   const now = new Date().toISOString();
-  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: now, updated_at: now, output: { ...task.output, drafts, summary: `Approved: ${toSend} to send.` } }).eq('id', task.id).eq('status', 'waiting_approval').select('id');
+  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: now, updated_at: now, output: { ...task.output, drafts, ownerApproval: { digest: batchApprovalDigest(drafts), leadIds: drafts.filter((draft) => draft.state === 'pending').map((draft) => draft.leadId), at: now }, summary: `Approved: ${toSend} to send.` } }).eq('id', task.id).eq('status', 'waiting_approval').eq('output', JSON.stringify(task.output)).select('id');
   if (!claimed?.length) return { status: 409, body: { success: false, error: 'This batch was already approved' } };
   await note(supabase, 'master', 'approved', `You approved sending ${toSend} follow-up ${plural(toSend, 'email', 'emails')}`, task.id);
-  return { status: 200, body: { success: true, data: followUpView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
+  return { status: 200, body: { success: true, data: followUpView({ ...task, status: 'running', output: { ...task.output, drafts, ownerApproval: { digest: batchApprovalDigest(drafts), leadIds: drafts.filter((draft) => draft.state === 'pending').map((draft) => draft.leadId), at: now } } }) } };
 }
 
 async function retryFollowUp(supabase: any, body: any) {
   const task = await followUpTask(supabase, String(body?.taskId || ''));
+  if (!hasBatchApproval(task)) return { status: 403, body: { success: false, error: 'This batch needs a fresh owner approval before sending.' } };
   if (!['failed', 'done', 'running'].includes(task.status)) return { status: 403, body: { success: false, error: 'This batch was never approved' } };
+  if (followUpView(task).drafts.some((draft) => draft.state === 'sending' || draft.state === 'unknown')) return { status: 409, body: { success: false, error: 'Check the uncertain send in Brevo before retrying.' } };
   if (!followUpView(task).drafts.some((draft) => draft.state === 'failed')) return { status: 400, body: { success: false, error: 'No unsent email to try again' } };
   const drafts = await retryFailed(supabase, task);
   await note(supabase, 'master', 'approved', 'You asked to try the unsent follow-up emails again', task.id);
   return { status: 200, body: { success: true, data: followUpView({ ...task, status: 'running', output: { ...task.output, drafts } }) } };
 }
 
-async function sendFollowUp(supabase: any, body: any) {
+async function sendFollowUp(supabase: any, body: any, origin: string) {
   const task = await followUpTask(supabase, String(body?.taskId || ''));
+  if (!hasBatchApproval(task)) return { status: 403, body: { success: false, error: 'This batch needs a fresh owner approval before sending.' } };
   if (task.status !== 'running') return { status: 403, body: { success: false, error: task.status === 'waiting_approval' ? 'This batch needs your approval first' : `This batch is already ${task.status}` } };
-  const out = await sendOneFollowUp(supabase, task, String(body?.leadId || ''));
+  const draft = followUpView(task).drafts.find((item) => item.leadId === String(body?.leadId || ''));
+  if (!draft) return { status: 404, body: { success: false, error: 'Draft not found.' } };
+  if (!task.output.ownerApproval.leadIds.includes(draft.leadId)) return { status: 403, body: { success: false, error: 'This email was not included in the approved batch.' } };
+  if (draft.state !== 'pending') return { status: 409, body: { success: false, error: 'This draft is not pending. Check its current status.' } };
+  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin);
+  if (review.required && (body?.qaOverride !== true || body?.qaToken !== review.token || body?.confirm !== true)) return { status: 409, body: qaReviewResponse(review) };
+  await ensureMailRecoveryReady(supabase);
+  const claimed = await claimBatchDraft(supabase, task, draft.leadId, review.proofs);
+  const out = await sendOneFollowUp(supabase, claimed, draft.leadId);
   if (out.draft.state === 'sent') await note(supabase, 'outreach', 'sent', `Sent a follow-up to ${out.draft.name}`, task.id, out.draft.leadId);
   if (out.finished) {
     await note(supabase, 'outreach', out.sent ? 'task_done' : 'task_failed', `Follow-up batch finished: ${out.sent} sent${out.failed ? `, ${out.failed} failed` : ''}.`, task.id);
@@ -380,6 +454,8 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if (!taskId) return res.status(400).json({ success: false, error: 'taskId is required' });
   const { data: task } = await supabase.from('agent_tasks').select('*').eq('id', taskId).maybeSingle();
   if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+  if ((task.agent_key === 'demo-creation' || req.body?.autoMinor === true) && !(await requireOwner(req, res))) return;
+  if (process.env.API_AUTH_DISABLED === 'true' && task.agent_key === 'demo-creation') return res.status(403).json({ success: false, error: 'Demo work is unavailable while API authentication is disabled.' });
   if (task.agent_key === 'outreach') return res.status(400).json({ success: false, error: 'Open the drafts to review and send them' });
   if (!canRun(task.agent_key)) return res.status(400).json({ success: false, error: 'This agent is not active yet' });
   // Auto-accept is deliberately narrow: only a single small ordinary research task.
@@ -395,19 +471,24 @@ async function handleRun(supabase: any, req: VercelRequest, res: VercelResponse)
   if ((task.attempts || 0) >= MAX_ATTEMPTS) return res.status(409).json({ success: false, error: 'This task has been tried 3 times. Ask again to start a new one.' });
 
   // Claim the task; if another call claimed it first, stop.
-  const { data: claimed } = await supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: new Date().toISOString(), updated_at: new Date().toISOString(), error: null }).eq('id', taskId).eq('status', task.status).select('id');
+  const started = new Date().toISOString();
+  let taskClaim = supabase.from('agent_tasks').update({ status: 'running', attempts: (task.attempts || 0) + 1, started_at: started, updated_at: started, error: null }).eq('id', taskId).eq('status', task.status);
+  taskClaim = task.attempts == null ? taskClaim.is('attempts', null) : taskClaim.eq('attempts', task.attempts);
+  if (task.status === 'running') taskClaim = taskClaim.eq('started_at', task.started_at);
+  const { data: claimed } = await taskClaim.select('id');
   if (!claimed?.length) return res.status(409).json({ success: false, error: 'This task is already running' });
   if (task.status === 'waiting_approval') await note(supabase, 'master', 'approved', `${autoMinor && req.body?.approve !== true ? 'Auto-approved minor research' : 'You approved'}: ${task.title}`, taskId, task.lead_id);
 
   let result: { status: string; summary: string; output: any; error: string | null };
   try {
-    const done = await runAgentTask(supabase, task);
+    const done = await runAgentTask(supabase, task, { qaMinor: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' });
     result = { status: 'done', summary: done.summary, output: { ...done.output, summary: done.summary }, error: null };
   } catch (error) {
     const message = (error instanceof Error ? error.message : 'The task failed').slice(0, 300);
     result = { status: 'failed', summary: `Could not finish "${task.title}": ${message}`, output: null, error: message };
   }
-  await supabase.from('agent_tasks').update({ status: result.status, output: result.output, error: result.error, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', taskId);
+  const { data: finished, error: finishError } = await supabase.from('agent_tasks').update({ status: result.status, output: result.output, error: result.error, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', taskId).eq('status', 'running').eq('started_at', started).select('id');
+  if (finishError || !finished?.length) return res.status(409).json({ success: false, error: 'A newer task attempt replaced this one. Reload for the current status.' });
   await note(supabase, task.agent_key, result.status === 'done' ? 'task_done' : 'task_failed', result.summary, taskId, task.lead_id);
   await closeParent(supabase, task.parent_task_id);
   return res.status(200).json({ success: true, data: { id: taskId, agentKey: task.agent_key, agentName: nameOf(task.agent_key), title: task.title, ...result } });
@@ -814,6 +895,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const supabase = teamClient();
       if (!supabase) return res.status(500).json({ success: false, error: 'Missing Supabase environment variables' });
       const action = req.body?.action;
+      const ownerActions = ['outreach-resolve', 'followup-resolve', 'outreach-reapprove', 'followup-reapprove', 'outreach-approve', 'outreach-send', 'outreach-retry', 'followup-approve', 'followup-send', 'followup-retry', 'reply-send', 'reply-resolve', 'demo-refresh-start'];
+      if ((ownerActions.includes(action) || (action === 'autopilot' && req.body?.autoMinor === true)) && !(await requireOwner(req, res))) return;
       if (action === 'autopilot') return await handleAutopilot(supabase, req, res);
       if (action === 'briefing') {
         // The opening briefing: important things first, memory of what was already said.
@@ -856,12 +939,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = action === 'tracker-save' ? await saveTracker(supabase, req.body) : await deleteTracker(supabase, req.body);
         return res.status(out.status).json(out.json);
       }
+      if (action === 'outreach-resolve' || action === 'followup-resolve') {
+        if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Sending is unavailable while API authentication is disabled.' });
+        const out = await resolveUncertainSend(supabase, req.body, action === 'followup-resolve');
+        return res.status(out.status).json(out.body);
+      }
+      if (action === 'outreach-reapprove' || action === 'followup-reapprove') {
+        if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Sending is unavailable while API authentication is disabled.' });
+        const out = await reapproveBatch(supabase, req.body, action === 'followup-reapprove');
+        return res.status(out.status).json(out.body);
+      }
       if (action === 'outreach-approve' || action === 'outreach-send' || action === 'outreach-retry') {
-        const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : action === 'outreach-retry' ? await retryOutreach(supabase, req.body) : await sendOutreach(supabase, req.body);
+        if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Sending is unavailable while API authentication is disabled.' });
+        const out = action === 'outreach-approve' ? await approveOutreach(supabase, req.body) : action === 'outreach-retry' ? await retryOutreach(supabase, req.body) : await sendOutreach(supabase, req.body, originOf(req));
         return res.status(out.status).json(out.body);
       }
       if (action === 'followup-approve' || action === 'followup-send' || action === 'followup-retry') {
-        const out = action === 'followup-approve' ? await approveFollowUp(supabase, req.body) : action === 'followup-retry' ? await retryFollowUp(supabase, req.body) : await sendFollowUp(supabase, req.body);
+        if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Sending is unavailable while API authentication is disabled.' });
+        const out = action === 'followup-approve' ? await approveFollowUp(supabase, req.body) : action === 'followup-retry' ? await retryFollowUp(supabase, req.body) : await sendFollowUp(supabase, req.body, originOf(req));
         return res.status(out.status).json(out.body);
       }
       if (action === 'reply-status') return res.status(200).json({ success: true, data: await setReplyStatus(supabase, String(req.body?.id || ''), String(req.body?.status || '')) });
@@ -872,13 +967,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const out = await sendPush(supabase, { title: 'ClientRadar', body: 'Notifications are working. Replies, drafts and demos will reach you here.', url: '/', tag: 'test' });
         return res.status(200).json({ success: true, data: { sent: out.sent, configured: pushConfigured(), errors: out.errors } });
       }
+      if (action === 'reply-resolve') {
+        if (process.env.API_AUTH_DISABLED === 'true' || req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'Confirm the provider result while authenticated.' });
+        const out = await resolveReplySend(supabase, String(req.body?.id || ''), String(req.body?.resolution || ''));
+        await note(supabase, 'master', 'approved', `Owner recorded reply provider result: ${String(req.body?.resolution || '')}`, null);
+        return res.status(200).json({ success: true, data: out });
+      }
       if (action === 'reply-skip-draft') return res.status(200).json({ success: true, data: await skipReplyDraft(supabase, String(req.body?.id || '')) });
       if (action === 'reply-send') {
         // Sending an answer to a client needs the owner's approval, like every other send.
+        if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Sending is unavailable while API authentication is disabled.' });
         if (req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'Sending an answer needs your approval' });
-        const out = await sendReplyAnswer(supabase, String(req.body?.id || ''), String(req.body?.text || ''));
-        await note(supabase, 'customer-communication', 'sent', `You answered a reply from ${out.to}`, null, null);
-        return res.status(200).json({ success: true, data: out });
+        try {
+          const out = await sendReplyAnswer(supabase, String(req.body?.id || ''), String(req.body?.text || ''), { qaOverride: req.body?.qaOverride === true, qaToken: String(req.body?.qaToken || ''), origin: originOf(req) });
+          await note(supabase, 'customer-communication', 'sent', `You answered a reply from ${out.to}`, null, null);
+          return res.status(200).json({ success: true, data: out });
+        } catch (error) {
+          if (error instanceof QaReviewNeeded) return res.status(409).json(qaReviewResponse(error.review));
+          throw error;
+        }
       }
       if (action === 'duplicate-separate') {
         const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
@@ -895,6 +1002,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ success: true, data: merged });
       }
       if (action === 'demo-refresh-start') {
+        if (process.env.API_AUTH_DISABLED === 'true' || req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'An authenticated owner must approve demo updates.' });
         // The owner said yes to the orb's offer: one queued update task per outdated demo.
         const found = await outdatedDemos(supabase, MAX_BATCH);
         if (!found.length) return res.status(200).json({ success: true, data: { queue: [] } });
