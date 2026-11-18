@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 type Finding = { demoId: string; state: string; issues: string[] };
-type Review = { token: string; demos: Finding[] };
+type MessageFinding = { code: string; path: string; message: string };
+type Review = { token: string; demos: Finding[]; messageFindings?: MessageFinding[]; websiteStatus?: string };
 
 export class QaRequestError extends Error {
   constructor(message: string, public code = '', public review: any = null) { super(message); }
@@ -43,16 +44,21 @@ export function useQaReview() {
     return result.data;
   }
   const dialog = review && (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} role="dialog" aria-modal="true" aria-label={stage === 'review' ? 'Review demo quality' : 'Confirm sending'}>
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.7)' }} role="dialog" aria-modal="true" aria-label={stage === 'review' ? 'Review quality findings' : 'Confirm sending'}>
       <div className="neo-card w-full max-w-lg p-5 space-y-3">
         {stage === 'review' ? <>
-          <h3 className="text-lg font-black text-[var(--text-primary)]">Review demo quality first</h3>
-          <p className="text-sm text-[var(--text-secondary)]">A linked demo is unchecked, stale, failed or has possible issues. These limited checks do not verify all facts, links, visuals or safety. Nothing has been sent.</p>
+          <h3 className="text-lg font-black text-[var(--text-primary)]">Review quality findings first</h3>
+          <p className="text-sm text-[var(--text-secondary)]">The message or a linked demo needs your review. These limited checks do not verify all facts, tone, links, visuals or safety. Nothing has been sent.</p>
+          {review.websiteStatus && <p className="text-xs text-[var(--text-secondary)]">Website contact check: {review.websiteStatus === 'available' ? 'home page read' : review.websiteStatus === 'not_provided' ? 'no saved website' : review.websiteStatus === 'unavailable' ? 'unavailable' : 'not checked'}. This does not verify the business or its claims.</p>}
           <div className="max-h-[40vh] overflow-y-auto rounded-xl neo-in p-3 text-sm text-[var(--text-primary)]">
             {review.demos.map((demo, index) => <div key={`${demo.demoId}-${index}`} className="mb-3 last:mb-0 break-words">
               <p className="font-bold">Demo {demo.demoId}: {demo.state}</p>
               {demo.issues.length > 0 && <ul className="list-disc pl-5">{demo.issues.map((issue, i) => <li key={i}>{issue}</li>)}</ul>}
             </div>)}
+            {!!review.messageFindings?.length && <div className="break-words">
+              <p className="font-bold">Message</p>
+              <ul className="list-disc pl-5">{review.messageFindings.map((finding, i) => <li key={`${finding.code}-${i}`}>{finding.message} ({finding.path})</li>)}</ul>
+            </div>}
           </div>
           <p className="text-xs text-[var(--text-secondary)]">Override this QA review only? You will still be asked to approve the actual send.</p>
           <div className="flex flex-wrap gap-2"><button type="button" onClick={() => setStage('send')} className="rounded-full px-4 py-2 text-sm font-bold text-white" style={{ background: '#FF7A00' }}>Override QA</button><button type="button" onClick={() => finish(false)} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)]">Cancel</button></div>
