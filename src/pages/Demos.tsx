@@ -190,7 +190,7 @@ const Demos = () => {
           <MonitorPlay className="text-[var(--accent)]" size={20} />
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold">
-              Demo Leads
+              Leads Tracked
             </p>
             <p className="text-xl font-black text-[var(--text-primary)]">
               {demoLeads.length}
@@ -204,15 +204,15 @@ const Demos = () => {
           <Rocket className="text-[var(--accent)]" size={20} />
           <div><h2 className="font-bold text-[var(--text-primary)]">Demo Factory</h2><p className="text-sm text-[var(--text-secondary)]">Queue a website demo for one lead. The worker will generate the preview later.</p></div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] gap-3">
-          <select value={selectedLeadId} onChange={(event) => handleSelectLead(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3">
+          <select value={selectedLeadId} onChange={(event) => handleSelectLead(event.target.value)} className="neo-in min-w-0 w-full rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             <option value="">Choose a lead without a demo{leadsWithoutDemo.length > 250 ? ' (showing top 250)' : ''}</option>
             {leadsWithoutDemo.slice(0, 250).map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} - {lead.category || 'Business'}</option>)}
           </select>
-          <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+          <select value={templateKey} onChange={(event) => setTemplateKey(event.target.value)} className="neo-in min-w-0 w-full rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             {demoTemplates.map((template) => <option key={template.key} value={template.key}>{template.label}</option>)}
           </select>
-          <select value={styleLevel} onChange={(event) => setStyleLevel(event.target.value)} aria-label="Demo style level" className="neo-in rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
+          <select value={styleLevel} onChange={(event) => setStyleLevel(event.target.value)} aria-label="Demo style level" className="neo-in min-w-0 w-full rounded-2xl px-4 py-3 bg-transparent text-[var(--text-primary)] outline-none">
             {demoStyleLevels.map((level) => <option key={level.key} value={level.key}>{level.label} - {level.hint}</option>)}
           </select>
           <button type="button" onClick={() => void handleCreateDemo()} disabled={creating || !selectedLeadId} className="btn-neumorph-primary px-5 py-3 inline-flex items-center justify-center gap-2 disabled:opacity-50"><Plus size={16} />{creating ? 'Queueing...' : 'Generate Demo'}</button>
@@ -268,7 +268,7 @@ const Demos = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto no-scrollbar">
+          <div className="flex min-w-0 gap-2 overflow-x-auto no-scrollbar">
             {['All', 'Not Started', 'In Progress', 'Ready', 'Sent'].map((status) => (
               <button
                 key={status}
@@ -300,7 +300,7 @@ const Demos = () => {
             } catch { return false; }
           });
           const share = lead.demoLink ? buildDemoShare(lead, lead.demoLink) : null;
-          const qaNeedsReview = !readyJob || readyJob.qaStatus !== 'checked' || (Array.isArray(readyJob.qa?.issues) && readyJob.qa.issues.length > 0);
+          const qaNeedsReview = !readyJob || readyJob.qaStatus !== 'checked' || !Array.isArray(readyJob.qa?.issues) || readyJob.qa.issues.length > 0;
           const allowExternalShare = () => {
             const details = readyJob?.qaStatus === 'checked' && Array.isArray(readyJob.qa?.issues) ? (readyJob.qa.issues.map((issue: any) => issue.message).join('\n') || 'No issues in the last loaded check.') : `Last loaded quality status: ${readyJob?.qaStatus || 'unavailable'}`;
             // External apps cannot hold a server-side send lock. Cached reviews
@@ -309,10 +309,10 @@ const Demos = () => {
             return window.confirm(`Review the Quality check panel and recheck if needed. ${details}\n\nThese limited checks do not verify all facts, links or visual quality. The result may have changed since it was loaded.\n\n${question}`) && window.confirm('Open an external sharing app? You will control any actual send there.');
           };
           return (
-            <div key={lead.id} className="neo-card p-6 hover:-translate-y-1 transition-all duration-300">
+            <div key={lead.id} className="neo-card min-w-0 p-4 sm:p-5" data-demo-card>
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-bold text-[var(--text-primary)] truncate">
+                  <h2 className="text-lg font-bold text-[var(--text-primary)] break-words">
                     {lead.businessName}
                   </h2>
                   <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -324,7 +324,35 @@ const Demos = () => {
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[var(--text-secondary)]">
+                <span>{lead.demoLink ? 'Demo link available' : 'No demo link yet'}</span>
+                <span>Score: {lead.leadScore ?? 'Unknown'}</span>
+                <span>Deal value: {lead.dealValue == null ? 'Not set' : `$${Number(lead.dealValue).toLocaleString()}`}</span>
+              </div>
+              {lead.demoLink && <p className={cn('mt-3 text-xs font-semibold', qaNeedsReview ? 'text-yellow-500' : 'text-[var(--text-secondary)]')} role={qaNeedsReview ? 'status' : undefined}>
+                {readyJob ? (readyJob.qaStatus === 'checked' && Array.isArray(readyJob.qa?.issues) ? (readyJob.qa.issues.length ? `Quality check: ${readyJob.qa.issues.length} possible issue(s)` : 'Quality check: checked') : (readyJob.qaStatus === 'checked' ? 'Quality review unavailable' : `Quality check: ${readyJob.qaStatus}`)) : 'Quality review unavailable for this link'}
+              </p>}
+                <div className="flex flex-wrap gap-3 pt-2">
+                  <Link to={`/leads/${lead.id}`} className="btn-neumorph px-4 py-2 text-sm gap-2 inline-flex items-center">
+                    <Eye size={14} />
+                    View Lead
+                  </Link>
+                  {lead.demoLink && (
+                    <a
+                      href={lead.demoLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn-neumorph-primary px-4 py-2 text-sm gap-2 inline-flex items-center"
+                    >
+                      <ExternalLink size={14} />
+                      Open Demo
+                    </a>
+                  )}
+
+                </div>
+              <details className="mt-4 border-t border-white/10 pt-3" data-demo-details>
+                <summary className="cursor-pointer text-sm font-bold text-[var(--accent)]">More details and actions</summary>
+                <div className="mt-4 space-y-4">
                 <div className="neo-in p-4 rounded-2xl">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
                     Demo Link
@@ -346,11 +374,12 @@ const Demos = () => {
                 {readyJob && (
                   <div className="neo-in p-4 rounded-2xl">
                     <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
-                      Client Views
+                      Demo Opens
                     </p>
                     <p className={cn('text-sm font-bold', readyJob.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>
                       {describeDemoViews(readyJob)}
                     </p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">Opens can include your own visits and repeat visits.</p>
                   </div>
                 )}
 
@@ -396,41 +425,7 @@ const Demos = () => {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="neo-in p-4 rounded-2xl">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
-                      Lead Score
-                    </p>
-                    <p className="text-lg font-black text-[var(--text-primary)]">
-                      {lead.leadScore ?? 0}
-                    </p>
-                  </div>
-                  <div className="neo-in p-4 rounded-2xl">
-                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-1">
-                      Deal Value
-                    </p>
-                    <p className="text-lg font-black text-[var(--text-primary)]">
-                      ${(Number(lead.dealValue) || 0).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-3 pt-2">
-                  <Link to={`/leads/${lead.id}`} className="btn-neumorph px-4 py-2 text-sm gap-2 inline-flex items-center">
-                    <Eye size={14} />
-                    View Lead
-                  </Link>
-                  {lead.demoLink && (
-                    <a
-                      href={lead.demoLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-neumorph-primary px-4 py-2 text-sm gap-2 inline-flex items-center"
-                    >
-                      <ExternalLink size={14} />
-                      Open Demo
-                    </a>
-                  )}
+                  <div className="pt-1">
                   <button
                     type="button"
                     onClick={() => void handleDeleteDemo(lead.id, lead.businessName)}
@@ -440,8 +435,9 @@ const Demos = () => {
                     <Trash2 size={14} />
                     {deletingLeadId === lead.id ? 'Deleting...' : 'Delete Demo'}
                   </button>
+                  </div>
                 </div>
-              </div>
+              </details>
             </div>
           );
         })}
