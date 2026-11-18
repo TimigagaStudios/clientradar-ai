@@ -22,7 +22,7 @@ export type DemoJob = {
   views: number;
   lastViewedAt: string | null;
   qaStatus: 'checked' | 'unchecked' | 'stale' | 'error';
-  qa: { fingerprint?: string; checkedAt?: string; issues?: { code: string; path: string; message: string }[]; fixes?: { path: string; description: string }[] } | null;
+  qa: { fingerprint?: string; checkedAt?: string; issues?: { code: string; path: string; message: string }[]; fixes?: { path: string; description: string }[]; agent?: { websiteStatus?: string; websiteCheckedAt?: string } } | null;
   qaContent: Record<string, unknown> | null;
 };
 
