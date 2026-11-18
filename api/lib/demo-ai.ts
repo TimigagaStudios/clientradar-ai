@@ -1,4 +1,5 @@
 import { aiConfig } from './_ai-config.js';
+import { demoResponseText, parseDemoJson } from './_demo-json.js';
 
 type DemoLead = {
   business_name: string;
@@ -160,26 +161,31 @@ export async function generateDemoContent(lead: DemoLead, templateKey: string, p
   let response: Response;
   const signal = AbortSignal.timeout(40000);
 
-  if (provider === 'gemini') {
-    response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ parts: [{ text: instruction }] }], generationConfig: { responseMimeType: 'application/json' } }),
-    });
-  } else if (provider === 'openrouter') {
-    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: 'user', content: instruction }] }),
-    });
-  } else {
-    throw new Error(`Unsupported DEMO_AI_PROVIDER: ${provider}`);
+  try {
+    if (provider === 'gemini') {
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({ contents: [{ parts: [{ text: instruction }] }], generationConfig: { responseMimeType: 'application/json' } }),
+      });
+    } else if (provider === 'openrouter') {
+      response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, temperature: 0.3, messages: [{ role: 'user', content: instruction }] }),
+      });
+    } else {
+      throw new Error('unsupported provider');
+    }
+  } catch {
+    // Network exceptions may contain request details. Never persist them in a demo.
+    throw new Error('Demo AI provider request failed');
   }
 
-  if (!response.ok) throw new Error(`Demo AI provider returned HTTP ${response.status} for model ${model}`);
-  const body = await response.json();
-  const text = provider === 'gemini' ? body.candidates?.[0]?.content?.parts?.[0]?.text : body.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Demo AI provider returned no content');
-  const jsonText = String(text).replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
-  let parsed: unknown;
-  try { parsed = JSON.parse(jsonText); } catch { throw new Error('Demo AI provider returned text that is not valid JSON'); }
-  return normalizeDemoContent(parsed, styleLevel);
+  if (!response.ok) throw new Error(`Demo AI provider returned HTTP ${response.status}`);
+  let body: any;
+  try { body = await response.json(); } catch {
+    // The provider envelope can itself be invalid and can contain sensitive text.
+    throw new Error('Demo AI provider returned an invalid response');
+  }
+  const text = demoResponseText(provider, body);
+  return normalizeDemoContent(parseDemoJson(text), styleLevel);
 }
