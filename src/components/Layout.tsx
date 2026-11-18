@@ -207,7 +207,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
 
       {/* Header */}
       <header
-        className="fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4"
+        className={cn("fixed top-4 left-4 right-4 lg:left-[19rem] lg:right-6 z-40 rounded-[2rem] px-4 sm:px-6 lg:px-8 py-4", location.pathname === "/globe" && "lg:hidden")}
         style={{
           background:
             theme === 'dark'
