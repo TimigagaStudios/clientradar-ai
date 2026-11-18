@@ -332,7 +332,7 @@ export default function MasterFloat() {
       const response = await fetch('/api/team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'demo-refresh-start' }),
+        body: JSON.stringify({ action: 'demo-refresh-start', confirm: true }),
       });
       const body = JSON.parse(await response.text());
       if (!body?.success) throw new Error(body?.error || 'server error');
