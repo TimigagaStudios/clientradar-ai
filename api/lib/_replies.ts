@@ -229,7 +229,7 @@ export async function sendReplyAnswer(supabase: any, id: string, text: string, o
   if (!mailReady()) throw new Error('Email sending is not set up: the Brevo settings are missing in Vercel. Nothing was sent.');
   const body = clean(text, 4000) || String(reply.suggested_reply || '');
   const subject = /^re:/i.test(String(reply.subject || '')) ? String(reply.subject) : `Re: ${String(reply.subject || 'your email')}`;
-  const review = await reviewOutreachDemos(supabase, subject, body, options.origin);
+  const review = await reviewOutreachDemos(supabase, subject, body, options.origin, { leadId: String(reply.lead_id), recipient: String(reply.from_email || '').trim().toLowerCase(), kind: 'reply' });
   if (review.required && (options.qaOverride !== true || options.qaToken !== review.token)) throw new QaReviewNeeded(review);
   await ensureMailRecoveryReady(supabase);
   const { data: claimed, error: claimError } = await supabase.rpc('cr_claim_reply_send', { p_reply_id: id, p_expected_email: reply.from_email, p_body: body, p_demo_proofs: review.proofs });

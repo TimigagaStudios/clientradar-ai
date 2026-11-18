@@ -5,7 +5,7 @@ import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js'
 import { scanWebsite } from './_website.js';
 import { demoPhotos, photosPossible } from './_photos.js';
 import { learnedParts } from './_patterns.js';
-import { screenDemo } from './_demo-qa.js';
+import { checkDemoWithSources, recordDemoCheck } from './_qa-demo-agent.js';
 
 // How many photographs each level shows: opening and about; Ultra also has one per showcase card.
 const PHOTO_COUNT: Record<string, number> = { mid: 2, hybrid: 2, ultra: 8 };
@@ -207,9 +207,11 @@ export async function refreshDemoSections(supabase: any, id: string, options: { 
   const by = !texts.length ? 'none' : ai === texts.length ? 'ai' : 'fallback';
   content.sectionsAdded = { at: new Date().toISOString(), sections: added, generatedBy: by };
   // Never overwrite a review, view update, or edit made during the refresh.
-  const { data: saved, error: saveError } = await supabase.from('demo_jobs').update({ content: screenDemo(content, { fixWhitespace: options.qaMinor === true }) }).eq('id', id).eq('status', 'ready').eq('content', JSON.stringify(job.content)).select('id');
+  const checkedContent = await checkDemoWithSources(content, lead, { fixWhitespace: options.qaMinor === true });
+  const { data: saved, error: saveError } = await supabase.from('demo_jobs').update({ content: checkedContent }).eq('id', id).eq('status', 'ready').eq('content', JSON.stringify(job.content)).select('id');
   if (saveError) throw new Error(saveError.message);
   if (!saved?.length) throw new Error('Demo changed during refresh. Please retry.');
+  await recordDemoCheck(id, job.lead_id || null, checkedContent);
   const own = (content.photos || []).filter((photo: any) => photo.kind === 'own').length;
   return { name, added, generatedBy: by, photos: added.includes('photos') ? { own, sample: content.photos.length - own } : null };
 }
@@ -281,9 +283,11 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
     const photos = await demoPhotos({ ownImages: scan?.images, businessName: content.businessName, category: content.category, seed: id, count: PHOTO_COUNT[level] || 2 });
     Object.assign(content, { photos, photosChecked: new Date().toISOString() });
     const demoUrl = `/demos/preview/${id}`;
-    const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content: screenDemo(content, { fixWhitespace: options.qaMinor === true }), demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).eq('status', 'generating').eq('started_at', started).select().maybeSingle();
+    const checkedContent = await checkDemoWithSources(content, lead, { fixWhitespace: options.qaMinor === true });
+    const { data, error } = await supabase.from('demo_jobs').update({ status: 'ready', content: checkedContent, demo_url: demoUrl, generated_at: new Date().toISOString(), completed_at: new Date().toISOString(), error: null }).eq('id', id).eq('status', 'generating').eq('started_at', started).select().maybeSingle();
     if (error) throw error;
     if (!data) throw new Error('A newer demo build replaced this attempt.');
+    await recordDemoCheck(id, job.lead_id || null, checkedContent);
     await supabase.from('leads').update({ demo_status: 'Ready', demo_link: demoUrl, updated_at: new Date().toISOString() }).eq('id', job.lead_id);
     // Lock-screen notification when the demo is ready (never breaks the build).
     try { const { sendPush } = await import('./_push.js'); await sendPush(supabase, { title: 'ClientRadar', body: `Demo ready for ${businessName}. Tap to preview.`, url: '/demos', tag: 'demo' }); } catch { /* notifications are optional */ }
