@@ -17,6 +17,20 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
         init = { ...init, headers };
       }
+      // Capture the device-local minor mode only for a QA-capable action.
+      // It is never an approval to build a demo, run a task, or send email.
+      if (init?.method?.toUpperCase() === 'POST' && typeof init.body === 'string') {
+        let body: any;
+        try { body = JSON.parse(init.body); } catch { body = null; }
+        const qaAction = url.pathname === '/api/demo-jobs' && (body?.action === 'process' || body?.action === 'qa-recheck');
+        const teamAction = url.pathname === '/api/team' && body?.action === 'run';
+        const legacyAction = /^\/api\/demo-jobs\/[^/]+$/.test(url.pathname);
+        if (body && (qaAction || teamAction || legacyAction)) {
+          let qaMinor = false;
+          try { qaMinor = localStorage.getItem('cr-auto-minor') === 'on'; } catch { /* default off */ }
+          init = { ...init, body: JSON.stringify({ ...body, qaMinor }) };
+        }
+      }
     }
   } catch {
     // If anything goes wrong here, send the request unchanged.
