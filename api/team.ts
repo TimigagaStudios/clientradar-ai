@@ -337,7 +337,7 @@ async function sendOutreach(supabase: any, body: any, origin: string) {
   if (!draft) return { status: 404, body: { success: false, error: 'Draft not found.' } };
   if (!task.output.ownerApproval.leadIds.includes(draft.leadId)) return { status: 403, body: { success: false, error: 'This email was not included in the approved batch.' } };
   if (draft.state !== 'pending') return { status: 409, body: { success: false, error: 'This draft is not pending. Check its current status.' } };
-  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin);
+  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin, { leadId: draft.leadId, recipient: draft.email.trim().toLowerCase(), kind: 'outreach' });
   if (review.required && (body?.qaOverride !== true || body?.qaToken !== review.token || body?.confirm !== true)) return { status: 409, body: qaReviewResponse(review) };
   await ensureMailRecoveryReady(supabase);
   const claimed = await claimBatchDraft(supabase, task, draft.leadId, review.proofs);
@@ -414,7 +414,7 @@ async function sendFollowUp(supabase: any, body: any, origin: string) {
   if (!draft) return { status: 404, body: { success: false, error: 'Draft not found.' } };
   if (!task.output.ownerApproval.leadIds.includes(draft.leadId)) return { status: 403, body: { success: false, error: 'This email was not included in the approved batch.' } };
   if (draft.state !== 'pending') return { status: 409, body: { success: false, error: 'This draft is not pending. Check its current status.' } };
-  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin);
+  const review = await reviewOutreachDemos(supabase, draft.subject, draft.body, origin, { leadId: draft.leadId, recipient: draft.email.trim().toLowerCase(), kind: 'followup' });
   if (review.required && (body?.qaOverride !== true || body?.qaToken !== review.token || body?.confirm !== true)) return { status: 409, body: qaReviewResponse(review) };
   await ensureMailRecoveryReady(supabase);
   const claimed = await claimBatchDraft(supabase, task, draft.leadId, review.proofs);
