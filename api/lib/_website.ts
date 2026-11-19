@@ -6,6 +6,7 @@
 // The file name starts with "_" so Vercel does not count it as a server function.
 
 import { findImages } from './_photos.js';
+import { safeWebGet } from './_safe-web.js';
 
 export interface WebsiteScan {
   url: string;
@@ -27,7 +28,7 @@ export interface WebsiteScan {
   images: string[]; // pictures found on the business's own pages
 }
 
-const AGENT = { 'User-Agent': 'Mozilla/5.0 (compatible; ClientRadarAI/1.0; website scan)', Accept: 'text/html,text/css,*/*' };
+const AGENT = 'Mozilla/5.0 (compatible; ClientRadarAI/1.0; website scan)';
 
 // Social profiles, third-party directories, booking portals, map links and shorteners are NOT a business's own official website.
 const NON_OFFICIAL_HOST = /(?:^|\.)(facebook\.com|fb\.com|fb\.me|instagram\.com|linkedin\.com|twitter\.com|x\.com|tiktok\.com|youtube\.com|youtu\.be|pinterest\.com|snapchat\.com|reddit\.com|yelp\.[a-z.]+|tripadvisor\.[a-z.]+|yellowpages\.[a-z.]+|yell\.com|trustpilot\.com|foursquare\.com|angi\.com|homeadvisor\.com|thumbtack\.com|houzz\.com|bark\.com|checkatrade\.com|nextdoor\.com|bbb\.org|booking\.com|expedia\.com|airbnb\.[a-z.]+|agoda\.com|hotels\.com|opentable\.com|ubereats\.com|doordash\.com|deliveroo\.[a-z.]+|just-eat\.[a-z.]+|grubhub\.com|linktr\.ee|beacons\.ai|bit\.ly|tinyurl\.com|t\.co|goo\.gl|wa\.me|whatsapp\.com|t\.me|telegram\.me|google\.[a-z.]+|maps\.apple\.com)$/i;
@@ -36,10 +37,10 @@ const NON_OFFICIAL_HOST = /(?:^|\.)(facebook\.com|fb\.com|fb\.me|instagram\.com|
 function safeUrl(value: string, base?: string): URL | null {
   let parsed: URL;
   try { parsed = new URL(base ? value : /^https?:\/\//i.test(value) ? value : `https://${value}`, base); } catch { return null; }
-  if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
   const host = parsed.hostname.toLowerCase();
   if (!host.includes('.') || /^[\d.]+$/.test(host) || host.includes(':') || /(^|\.)(localhost|local|internal|lan|home|corp)$/.test(host)) return null;
-  if (parsed.port && !['80', '443'].includes(parsed.port)) return null;
+  if (parsed.port) return null;
   return parsed;
 }
 
@@ -51,14 +52,10 @@ export function isOfficialWebsiteUrl(value: string | null | undefined): boolean 
   return !NON_OFFICIAL_HOST.test(host);
 }
 
-async function read(url: URL, ms: number, max: number): Promise<{ text: string; finalUrl: string } | null> {
+async function read(url: URL, ms: number, max: number, siteHost: string, type: 'text/html' | 'text/css'): Promise<{ text: string; finalUrl: string } | null> {
   try {
-    const response = await fetch(url.toString(), { signal: AbortSignal.timeout(ms), redirect: 'follow', headers: AGENT });
-    if (!response.ok) return null;
-    return { text: (await response.text()).slice(0, max), finalUrl: String(response.url || url.toString()) };
-  } catch {
-    return null;
-  }
+    return await safeWebGet(url, { timeoutMs: ms, maxBytes: max, types: [type], agent: AGENT, allowHttp: true, siteHost });
+  } catch { return null; }
 }
 
 const decode = (value: string) => value.replace(/&amp;/g, '&').replace(/&#64;|&#x40;/gi, '@').replace(/&#46;|&#x2e;/gi, '.').replace(/&nbsp;/g, ' ').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"');
@@ -92,6 +89,29 @@ export function isValidContactPhone(raw: unknown): boolean {
   return true;
 }
 
+// Linear-time removal of non-visible blocks and tags. Malformed unterminated
+// blocks are treated as unavailable text instead of repeatedly rescanning them.
+function visibleText(html: string): string {
+  const lower = html.toLowerCase();
+  const out: string[] = [];
+  let position = 0;
+  while (position < html.length) {
+    const open = lower.indexOf('<', position);
+    if (open < 0) { out.push(html.slice(position)); break; }
+    out.push(html.slice(position, open), ' ');
+    const end = lower.indexOf('>', open + 1);
+    if (end < 0) break;
+    const tag = lower.slice(open + 1, Math.min(end, open + 30)).match(/^\s*(script|style|svg|noscript)(?:\s|\/|$)/)?.[1];
+    if (!tag) { position = end + 1; continue; }
+    const close = lower.indexOf(`</${tag}`, end + 1);
+    if (close < 0) break;
+    const closeEnd = lower.indexOf('>', close + tag.length + 2);
+    if (closeEnd < 0) break;
+    position = closeEnd + 1;
+  }
+  return decode(out.join(' '));
+}
+
 export function findEmails(html: string, siteHost: string): string[] {
   const found = new Set<string>();
   const add = (raw: string) => {
@@ -100,9 +120,9 @@ export function findEmails(html: string, siteHost: string): string[] {
   };
   (html.match(/mailto:[^"'\s<>]+/gi) || []).forEach((item) => { try { add(decodeURIComponent(item)); } catch { add(item); } });
   (html.match(/data-cfemail="([0-9a-f]+)"/gi) || []).forEach((item) => add(cloudflareEmail(item.replace(/data-cfemail="|"/gi, ''))));
-  const visible = decode(html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' '));
-  (visible.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []).forEach(add);
-  (visible.match(/[a-zA-Z0-9._%+-]+\s*(?:\[at\]|\(at\))\s*[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi) || []).forEach((item) => add(item.replace(/\s*(?:\[at\]|\(at\))\s*/i, '@')));
+  const visible = visibleText(html);
+  (visible.match(/[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,100}\.[a-zA-Z]{2,}/g) || []).forEach(add);
+  (visible.match(/[a-zA-Z0-9._%+-]{1,64}\s{0,10}(?:\[at\]|\(at\))\s{0,10}[a-zA-Z0-9.-]{1,100}\.[a-zA-Z]{2,}/gi) || []).forEach((item) => add(item.replace(/\s*(?:\[at\]|\(at\))\s*/i, '@')));
   // Addresses on the business's own domain come first; they are the most likely to be the right contact.
   const root = siteHost.replace(/^www\./, '');
   return [...found].sort((first, second) => Number(second.endsWith(`@${root}`)) - Number(first.endsWith(`@${root}`))).slice(0, 5);
@@ -123,11 +143,7 @@ export function findPhones(html: string): string[] {
   (html.match(/href=["']tel:([^"']+)["']/gi) || []).forEach((item) => {
     try { push(decodeURIComponent(item.replace(/href=["']tel:|["']/gi, ''))); } catch { /* skip */ }
   });
-  const visible = decode(
-    html
-      .replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<svg[\s\S]*?<\/svg>|<noscript[\s\S]*?<\/noscript>/gi, '\n')
-      .replace(/<[^>]+>/g, '\n'),
-  );
+  const visible = visibleText(html);
   for (const match of visible.matchAll(/(?:tel(?:ephone)?|phone|call(?:\s+us)?|mobile|cell|office|desk|ph)\s*(?:number|no\.?)?\s*[:.-]?\s*(\+?\(?\d[\d \t().-]{5,20}\d)/gi)) {
     push(match[1].split('\n')[0]);
   }
@@ -207,7 +223,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
   if (!address || !isOfficialWebsiteUrl(address)) return null;
   const start = safeUrl(String(address));
   if (!start) return null;
-  const home = await read(start, 5000, 400_000);
+  const home = await read(start, 6000, 524_288, start.hostname, 'text/html');
   if (!home || !/<html|<head|<body/i.test(home.text)) return null;
   if (!isOfficialWebsiteUrl(home.finalUrl)) return null;
   const base = safeUrl(home.finalUrl) || start;
@@ -223,10 +239,10 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
   const sheets = [...html.matchAll(/<link\b[^>]*rel=["']?stylesheet["']?[^>]*>/gi)]
     .map((match) => (match[0].match(/href=["']([^"']+)["']/i) || [])[1])
     .filter((href): href is string => Boolean(href) && !/fonts\.googleapis|font-awesome|fontawesome|bootstrap-icons|swiper|slick|animate|aos\b/i.test(href))
-    .map((href) => safeUrl(decode(href), base.toString())).filter((url): url is URL => Boolean(url)).slice(0, 3);
+    .map((href) => safeUrl(decode(href), base.toString())).filter((url): url is URL => Boolean(url) && url!.hostname.replace(/^www\./, '') === base.hostname.replace(/^www\./, '')).slice(0, 3);
   const [pages, styles] = await Promise.all([
-    Promise.all(extraPages.map((url) => read(url, 4000, 300_000))),
-    Promise.all(sheets.map((url) => read(url, 4000, 400_000))),
+    Promise.all(extraPages.map((url) => read(url, 5000, 300_000, base.hostname, 'text/html'))),
+    Promise.all(sheets.map((url) => read(url, 5000, 400_000, base.hostname, 'text/css'))),
   ]);
 
   const allHtml = [html, ...pages.map((page) => page?.text || '')].join('\n');
@@ -252,7 +268,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     platform: platformOf(html),
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
-    pagesRead: [base.pathname || '/', ...extraPages.filter((_, index) => pages[index]).map((url) => url.pathname)],
+    pagesRead: [base.pathname || '/', ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => new URL(page.finalUrl).pathname)],
     images: findImages(allHtml, base.toString()),
   };
 }
@@ -266,7 +282,7 @@ export function scanSummary(scan: WebsiteScan) {
     scan.darkDesign === null ? '' : scan.darkDesign ? 'dark design' : 'light design',
     scan.fonts.length ? `fonts ${scan.fonts.slice(0, 2).join(', ')}` : '',
     scan.platform ? `built with ${scan.platform}` : '',
-    scan.mobileReady ? '' : 'not built for phones',
+    scan.mobileReady ? '' : 'mobile viewport tag not detected',
     scan.secure ? '' : 'no secure connection',
   ].filter(Boolean);
   return `Website scan (${new Date().toISOString().slice(0, 10)}): ${parts.join('; ')}.`;
