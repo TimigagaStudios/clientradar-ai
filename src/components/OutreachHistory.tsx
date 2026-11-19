@@ -1,3 +1,4 @@
+import EventTime from './ui/EventTime';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLeads } from '../context/LeadContext';
@@ -33,9 +34,10 @@ export default function OutreachHistory() {
       return <article key={log.id} className="neo-card p-4 space-y-2">
         <button type="button" className="w-full text-left" aria-expanded={open === log.id} onClick={() => setOpen(open === log.id ? '' : log.id)}>
           <strong className="block break-words">{log.subject || '(No subject)'}</strong>
-          <span className="block text-sm text-[var(--text-secondary)]">{lead?.businessName || 'Lead unavailable'} - {log.sent_at ? new Date(log.sent_at).toLocaleString() : 'Date unavailable'} - {log.type}</span>
+          <span className="block text-sm text-[var(--text-secondary)]">{lead?.businessName || 'Lead unavailable'} - {log.type}</span>
           {lead?.email && <span className="block text-xs text-[var(--text-secondary)]">Current lead email: {lead.email} (may differ from original recipient)</span>}
         </button>
+        <p className="text-xs text-[var(--text-secondary)]">{log.sent_at ? <EventTime value={log.sent_at} label="Recorded sent" /> : 'Date unavailable'}</p>
         {open === log.id && <div><p className="whitespace-pre-wrap break-words text-sm">{log.body}</p>{lead && <Link className="text-sm text-[var(--accent)]" to={`/leads/${lead.id}`}>Open lead</Link>}</div>}
       </article>;
     })}
