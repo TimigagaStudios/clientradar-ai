@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+const bundle = await build({ entryPoints: ['src/lib/event-time.ts'], bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'silent' });
+const { eventTime } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`);
+const now = Date.parse('2026-11-17T12:00:00Z');
+assert.equal(eventTime(null, now), null);
+assert.equal(eventTime('', now), null);
+assert.equal(eventTime('not-a-date', now), null);
+assert.equal(eventTime('2026-11-17T12:00:00Z', NaN), null);
+assert.equal(eventTime('2026-11-17T11:59:45Z', now).relative, 'just now');
+assert.equal(eventTime('2026-11-17T12:00:45Z', now).relative, 'in less than a minute');
+assert.equal(eventTime('2026-11-17T11:30:00Z', now).relative, new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(-30, 'minute'));
+assert.equal(eventTime('2026-11-19T12:00:00Z', now).relative, new Intl.RelativeTimeFormat(undefined, { numeric: 'always' }).format(2, 'day'));
+const value = eventTime('2026-11-17T12:00:00+01:00', now);
+assert.equal(value.iso, '2026-11-17T11:00:00.000Z');
+assert.ok(value.exact.length > 10);
+console.log('PASS event timestamps: invalid values, past/future labels, timezone offsets and exact display.');
