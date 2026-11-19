@@ -1,3 +1,4 @@
+import EventTime from '../components/ui/EventTime';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, BarChart3, CalendarClock, CheckCircle2, ChevronDown, Clock3, Megaphone, MessagesSquare, MonitorPlay, RefreshCw, Search, Send, ShieldCheck, Sparkles, Wrench, XCircle } from 'lucide-react';
@@ -35,6 +36,8 @@ interface TeamTask {
   followUp?: boolean;
   error: string | null;
   createdAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
 }
 
 interface TeamActivity {
@@ -56,15 +59,6 @@ const ICONS: Record<string, React.ComponentType<{ size?: number; className?: str
   scheduling: CalendarClock,
   'customer-communication': MessagesSquare,
   'social-content': Megaphone,
-};
-
-const timeAgo = (value: string | null) => {
-  if (!value) return '';
-  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
-  return `${Math.floor(seconds / 86400)} d ago`;
 };
 
 const Chips = ({ title, items }: { title: string; items: string[] }) => (
@@ -175,7 +169,7 @@ const Team = () => {
             <span className="block text-sm text-[var(--text-secondary)] mt-0.5">{agent.role}</span>
             {active ? (
               <span className="block text-sm text-[var(--text-primary)] mt-3">
-                {agent.lastSummary ? <>{agent.lastSummary} <span className="text-[var(--text-secondary)]">{timeAgo(agent.lastAt)}</span></> : <span className="text-[var(--text-secondary)]">No recorded work yet.</span>}
+                {agent.lastSummary ? <>{agent.lastSummary}</> : <span className="text-[var(--text-secondary)]">No recorded work yet.</span>}
               </span>
             ) : (
               <span className="block text-sm text-[var(--text-secondary)] mt-3">{agent.stageNote}</span>
@@ -189,6 +183,7 @@ const Team = () => {
           </span>
           <ChevronDown size={18} className={cn('shrink-0 mt-1 text-[var(--text-secondary)] transition-transform', open && 'rotate-180')} />
         </button>
+        {active && agent.lastSummary && <p className="mt-2 text-xs text-[var(--text-secondary)]"><EventTime value={agent.lastAt} label="Last activity" /></p>}
         {open && (
           <div className="mt-5 pt-5 border-t border-slate-500/15 space-y-4">
             <p className="text-sm text-[var(--text-primary)] leading-relaxed">{agent.job}</p>
@@ -249,10 +244,15 @@ const Team = () => {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-[var(--text-primary)] break-words">{task.title}</p>
                   <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                    {nameOf(task.agentKey)} - {task.status.replace('_', ' ')} - {timeAgo(task.createdAt)}
+                    {nameOf(task.agentKey)} - {task.status.replace('_', ' ')}
                     {task.leadId && <> - <Link to={`/leads/${task.leadId}`} className="underline">{task.leadName || 'Open lead'}</Link></>}
                     {task.agentKey === 'outreach' && <> - <Link to={task.followUp ? `/outreach/follow-ups/${task.id}` : `/outreach/drafts/${task.id}`} className="underline" data-drafts-link>Open drafts</Link></>}
                   </p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                    <EventTime value={task.createdAt} label="Created" />
+                    <EventTime value={task.startedAt} label="Started" />
+                    <EventTime value={task.completedAt} label="Finished" />
+                  </div>
                   {task.status === 'waiting_approval' && task.agentKey !== 'outreach' && (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <button
@@ -293,7 +293,7 @@ const Team = () => {
               <li key={row.id} className="flex items-start gap-3 text-sm">
                 <span className={cn('shrink-0 mt-1.5 w-2 h-2 rounded-full', row.kind === 'task_failed' ? 'bg-red-400' : 'bg-blue-400')} />
                 <span className="min-w-0 flex-1 text-[var(--text-primary)] break-words">
-                  <b>{nameOf(row.agentKey)}</b> - {row.summary} <span className="text-[var(--text-secondary)] whitespace-nowrap">{timeAgo(row.createdAt)}</span>
+                  <b>{nameOf(row.agentKey)}</b> - {row.summary} <span className="text-[var(--text-secondary)]"><EventTime value={row.createdAt} label="Recorded" /></span>
                 </span>
               </li>
             ))}

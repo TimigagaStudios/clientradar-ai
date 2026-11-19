@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import { build } from 'esbuild';
+const out = await build({ entryPoints: ['src/lib/demo-factory.ts'], bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'silent' });
+const { mapDemoJob } = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].contents).toString('base64')}`);
+const row = { id: 'demo', lead_id: 'lead', template_key: 'auto:ultra', status: 'ready', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-04T00:00:00Z', started_at: '2026-01-02T00:00:00Z', generated_at: '2026-01-03T00:00:00Z', completed_at: '2026-01-03T00:00:00Z', content: { stats: { views: 2, firstViewedAt: '2026-01-03T01:00:00Z', lastViewedAt: '2026-01-04T00:00:00Z' } } };
+const job = mapDemoJob(row);
+assert.equal(job.createdAt, row.created_at);
+assert.equal(job.updatedAt, row.updated_at);
+assert.equal(job.startedAt, row.started_at);
+assert.equal(job.generatedAt, row.generated_at);
+assert.equal(job.completedAt, row.completed_at);
+assert.equal(job.firstViewedAt, row.content.stats.firstViewedAt);
+assert.equal(job.lastViewedAt, row.content.stats.lastViewedAt);
+const old = mapDemoJob({ id: 'old', template_key: 'auto', content: {} });
+for (const key of ['updatedAt', 'startedAt', 'generatedAt', 'completedAt', 'firstViewedAt', 'lastViewedAt']) assert.equal(old[key], null);
+console.log('PASS demo timestamp mapping and missing historical values.');

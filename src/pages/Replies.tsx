@@ -1,3 +1,4 @@
+import EventTime from '../components/ui/EventTime';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
@@ -102,13 +103,14 @@ export default function Replies() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-bold text-[var(--text-primary)] break-words">{reply.leadName}</p>
-                <p className="text-xs text-[var(--text-secondary)] break-all">{reply.fromEmail} - {new Date(reply.receivedAt).toLocaleString()}</p>
+                <p className="text-xs text-[var(--text-secondary)] break-all">{reply.fromEmail}</p>
               </div>
               <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: LABEL[reply.label]?.color || '#94a3b8', border: `1px solid ${LABEL[reply.label]?.color || '#94a3b8'}` }}>{LABEL[reply.label]?.text || reply.label}</span>
             </div>
             <p className="mt-2 text-sm text-[var(--text-primary)] break-words">{openId === reply.id ? reply.subject : reply.body.slice(0, 140) || reply.subject}</p>
             <p className="mt-1 text-[11px] text-[var(--text-secondary)] break-words">{reply.reason} ({reply.scoredBy === 'ai' ? 'sorted by the AI' : 'sorted by built-in rules'})</p>
           </button>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]"><EventTime value={reply.receivedAt} label="Reply date" /></p>
           {openId === reply.id && (
             <div className="mt-3 space-y-3">
               <p className="whitespace-pre-wrap break-words text-sm leading-6 text-[var(--text-secondary)]">{reply.body || 'The reply had no new text.'}</p>

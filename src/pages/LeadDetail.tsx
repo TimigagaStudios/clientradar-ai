@@ -1,3 +1,4 @@
+import EventTime from '../components/ui/EventTime';
 import BackLink from '../components/ui/BackLink';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -457,6 +458,7 @@ const LeadDetail = () => {
                 <h1 className="text-3xl font-black tracking-tight text-[var(--text-primary)]">
                   {lead.businessName}
                 </h1>
+                <p className="mt-1 text-xs text-[var(--text-secondary)]"><EventTime value={lead.createdAt} label="Lead added" /></p>
                 <div className="flex flex-wrap items-center gap-4 mt-2 text-[var(--text-secondary)]">
                   <span className="flex items-center gap-1">
                     <MapPin size={16} /> {lead.city || 'N/A'}
@@ -832,8 +834,8 @@ const LeadDetail = () => {
                         <Mail size={16} className="text-[var(--accent)]" />
                         <span className="capitalize">{item.type} Email</span>
                       </div>
-                      <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">
-                        {item.sentAt ? format(new Date(item.sentAt), 'MMM d, yyyy h:mm a') : '-'}
+                      <span className="text-xs text-[var(--text-secondary)] text-right">
+                        {item.sentAt ? <EventTime value={item.sentAt} label="Recorded sent" /> : 'Date unavailable'}
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">{item.subject}</p>
@@ -863,7 +865,7 @@ const LeadDetail = () => {
                       <p className="text-sm font-medium text-[var(--text-primary)]">{event.type}</p>
                       <p className="text-xs text-[var(--text-secondary)] mt-0.5">{event.description}</p>
                       <p className="text-[10px] text-[var(--text-secondary)] mt-1 flex items-center gap-1 opacity-70">
-                        <Clock size={10} /> {event.date ? format(new Date(event.date), 'MMM d, yyyy h:mm a') : '-'}
+                        <Clock size={10} /> {event.date ? <EventTime value={event.date} label="Recorded" /> : 'Date unavailable'}
                       </p>
                     </div>
                   </div>

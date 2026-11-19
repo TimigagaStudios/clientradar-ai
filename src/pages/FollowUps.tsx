@@ -1,3 +1,4 @@
+import EventTime from '../components/ui/EventTime';
 import BackLink from '../components/ui/BackLink';
 import { useQaReview } from '../components/QaReviewDialog';
 import DraftQa from '../components/DraftQa';
@@ -10,7 +11,7 @@ import ListPager, { usePagedList } from '../components/ui/ListPager';
 // Drafts can be changed or left out first. A lead is never followed up twice.
 
 type Draft = { leadId: string; name: string; email: string; subject: string; body: string; demoUrl: string; writtenBy: 'ai' | 'built-in'; state: 'pending' | 'sending' | 'unknown' | 'skipped' | 'sent' | 'failed'; error?: string };
-type Batch = { id: string; title: string; status: string; mailReady: boolean; approvalValid: boolean; drafts: Draft[] };
+type Batch = { id: string; title: string; status: string; createdAt?: string | null; mailReady: boolean; approvalValid: boolean; drafts: Draft[] };
 
 const call = async (url: string, body?: Record<string, unknown>) => {
   const response = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : undefined);
@@ -117,6 +118,7 @@ export default function FollowUps() {
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
             {!batch ? 'Loading...' : batch.status === 'waiting_approval' ? `${drafts.length} polite second ${drafts.length === 1 ? 'email is' : 'emails are'} written to businesses that have not replied. Nothing has been sent. Tap one to read or change it.` : batch.status === 'cancelled' ? 'You declined this batch. Nothing was sent.' : `${count('sent')} sent${count('failed') ? `, ${count('failed')} not sent` : ''}${count('skipped') ? `, ${count('skipped')} left out` : ''}${toSend ? `, ${toSend} still to send` : ''}.`}
           </p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]"><EventTime value={batch?.createdAt} label="Batch created" /></p>
         </div>
         {batch?.status === 'waiting_approval' && !sending && drafts.length > 3 && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">

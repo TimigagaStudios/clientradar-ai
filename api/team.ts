@@ -1174,6 +1174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       followUp: Boolean(row.input?.followUp),
       error: row.error,
       createdAt: row.created_at,
+      startedAt: row.started_at,
       completedAt: row.completed_at,
     }));
     res.setHeader('Cache-Control', 'no-store');
