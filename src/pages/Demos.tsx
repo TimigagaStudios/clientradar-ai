@@ -1,3 +1,4 @@
+import EventTime from '../components/ui/EventTime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLeads } from '../context/LeadContext';
 import { ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clock3, Trash2, Share2, Mail, MessageCircle } from 'lucide-react';
@@ -238,6 +239,14 @@ const Demos = () => {
                 <button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button>
               </div>
             </div>
+            <details className="mt-2 text-xs text-[var(--text-secondary)]"><summary className="cursor-pointer font-bold">Timing</summary>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                <EventTime value={job.createdAt} label="Created" />
+                <EventTime value={job.startedAt} label="Started" />
+                <EventTime value={job.generatedAt} label="Generated" />
+                <EventTime value={job.completedAt} label="Finished" />
+              </div>
+            </details>
             {job.status === 'ready' && <details className="mt-2 text-xs text-[var(--text-primary)]"><summary className="cursor-pointer font-bold">Quality details: {job.qaStatus}</summary>
               <p className="mt-2 text-[var(--text-secondary)]">Last loaded result. Recheck after changes on another device. These limited checks do not verify facts, visuals, links, security or legal compliance.</p>
               {job.qaStatus === 'checked' && <>
@@ -353,6 +362,13 @@ const Demos = () => {
               <details className="mt-4 border-t border-white/10 pt-3" data-demo-details>
                 <summary className="cursor-pointer text-sm font-bold text-[var(--accent)]">More details and actions</summary>
                 <div className="mt-4 space-y-4">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                  <EventTime value={lead.createdAt} label="Lead added" />
+                  {readyJob && <EventTime value={readyJob.createdAt} label="Demo job created" />}
+                  {readyJob && <EventTime value={readyJob.generatedAt} label="Demo generated" />}
+                  {readyJob && <EventTime value={readyJob.updatedAt} label="Demo record updated" />}
+                </div>
+                {readyJob?.updatedAt && <p className="text-xs text-[var(--text-secondary)]">Record updates can include QA checks and opens, not just edits.</p>}
                 <div className="neo-in p-4 rounded-2xl">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
                     Demo Link
@@ -380,6 +396,10 @@ const Demos = () => {
                       {describeDemoViews(readyJob)}
                     </p>
                     <p className="mt-1 text-xs text-[var(--text-secondary)]">Opens can include your own visits and repeat visits.</p>
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+                      <EventTime value={readyJob.firstViewedAt} label="First open" />
+                      <EventTime value={readyJob.lastViewedAt} label="Last open" />
+                    </div>
                   </div>
                 )}
 
