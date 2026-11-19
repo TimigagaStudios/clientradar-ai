@@ -18,7 +18,7 @@ function buildPrompt(lead: any, templateKey: string, styleLevel: DemoStyleLevel)
     `Phone: ${lead.phone || 'Not provided'}`,
     `Email: ${lead.email || 'Not provided'}`,
     `Instagram: ${lead.instagram || 'Not provided'}`,
-    `Website status: ${lead.website ? 'Existing website' : 'No website found'}`,
+    `Website address: ${lead.website ? 'Provided; availability not yet known' : 'Not provided'}`,
     `Template: ${templateKey}`,
     ...tierRules(styleLevel),
     'Do not invent medical, legal, financial, awards, pricing, review, or performance claims.',
@@ -108,7 +108,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { data, error } = await supabase.from('demo_jobs').select('id, status, template_key, content, demo_url').eq('id', jobId).limit(1);
         if (error) return res.status(500).json({ success: false, error: error.message });
         if (!data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
-        const { stats: _stats, aiError: _aiError, qa: _qa, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
+        const { stats: _stats, aiError: _aiError, qa: _qa, websiteAnalysis: _websiteAnalysis, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
         return res.status(200).json({ success: true, data: { ...data[0], content: publicContent } });
       }
       if (!(await requireOwner(req, res))) return;

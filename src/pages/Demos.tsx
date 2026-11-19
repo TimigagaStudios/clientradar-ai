@@ -369,6 +369,11 @@ const Demos = () => {
                   {readyJob && <EventTime value={readyJob.updatedAt} label="Demo record updated" />}
                 </div>
                 {readyJob?.updatedAt && <p className="text-xs text-[var(--text-secondary)]">Record updates can include QA checks and opens, not just edits.</p>}
+                {readyJob && <div className="neo-in rounded-2xl p-4 text-xs text-[var(--text-secondary)]" data-website-analysis>
+                  <p className="font-bold text-[var(--text-primary)]">Website used for generation</p>
+                  <p className="mt-1">{readyJob.websiteAnalysis?.status === 'partial' ? `Partial scan: ${readyJob.websiteAnalysis.pagesRead.length} page(s) read. This is not a complete site review.` : readyJob.websiteAnalysis?.status === 'unavailable' ? 'The supplied website could not be read. Review the demo and confirm its details.' : readyJob.websiteAnalysis?.status === 'not_provided' ? 'No website address was supplied. Review the demo and confirm its details.' : 'No generation scan record is available for this demo.'}</p>
+                  <EventTime value={readyJob.websiteAnalysis?.checkedAt} label="Scan recorded" />
+                </div>}
                 <div className="neo-in p-4 rounded-2xl">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
                     Demo Link
