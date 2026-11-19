@@ -5,7 +5,7 @@ import { build } from 'esbuild';
 const modules = {
   '_team.js': 'export async function recordTask() {}',
   '_design.js': "export const describeDesign=()=>''; export const loadEarlierDesigns=async()=>[]; export const pickDesignDna=()=>({version:1})",
-  '_website.js': 'export async function scanWebsite(){return null}',
+  '_website.js': 'export async function scanWebsite(){return globalThis.__testScan || null}',
   '_qa-website.js': "export async function readQaWebsite(){return {status:'not_provided',checkedAt:new Date().toISOString(),host:null,emails:[],phones:[]}}", 
   '_photos.js': 'export async function demoPhotos(){return []}; export function photosPossible(){return false}',
   '_patterns.js': 'export async function learnedParts(){return null}',
@@ -25,6 +25,7 @@ const oldEnv = { ...process.env };
 const id = '11111111-1111-1111-1111-111111111111';
 let row;
 function reset() {
+  globalThis.__testScan = null;
   row = { id, lead_id: 'lead', status: 'queued', attempts: 0, template_key: 'auto:ultra', prompt: 'Synthetic test', leads: { business_name: 'Internal Test', category: 'Test', city: 'Lagos' } };
 }
 function query(table) {
@@ -53,6 +54,14 @@ try {
   reset(); const success = await processDemoJob(db, id, { record: false });
   assert.equal(success.status, 'ready'); assert.equal(row.content.generatedBy, 'ai');
   assert.equal(row.content.hero.title, 'AI title'); assert.equal(row.content.qa.status, 'checked'); assert.equal(calls, 1);
+  assert.equal(row.content.websiteAnalysis.status, 'not_provided'); assert.deepEqual(row.content.websiteAnalysis.pagesRead, []);
+
+  let promptBody = ''; calls = 0; globalThis.fetch = async (_url, options) => { calls += 1; promptBody = String(options.body); return payload('{\"hero\":{\"title\":\"AI title\"}}'); };
+  reset(); row.prompt = 'Website status: No website found'; row.leads.website = 'https://company.test'; await processDemoJob(db, id, { record: false });
+  assert.equal(row.content.websiteAnalysis.status, 'unavailable'); assert.match(promptBody, /could not be analyzed/); assert.doesNotMatch(promptBody, /No existing website was found|Website status: No website found/); assert.equal(calls, 1);
+
+  calls = 0; reset(); row.leads.website = 'https://company.test'; globalThis.__testScan = { url:'https://company.test/', title:'Test', description:null, heading:'Test', colors:[], accent:null, darkDesign:null, fonts:[], platform:null, mobileReady:true, emails:[], pagesRead:['/','/about'], images:[] }; await processDemoJob(db, id, { record: false });
+  assert.equal(row.content.websiteAnalysis.status, 'partial'); assert.deepEqual(row.content.websiteAnalysis.pagesRead, ['/','/about']); assert.match(promptBody, /untrusted extracted data/); assert.equal(calls, 1);
 
   calls = 0; globalThis.fetch = async () => { calls += 1; return payload('{"hero":{"title":"truncated"}', 'MAX_TOKENS'); };
   reset(); const fallback = await processDemoJob(db, id, { record: false });

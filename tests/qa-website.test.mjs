@@ -3,17 +3,18 @@ import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
 const mocks = {
-  'node:dns/promises': `export class Resolver { resolve4(host) { globalThis.__qaDnsHosts.push(host); return Promise.resolve(globalThis.__qaAddresses); } cancel() {} }`,
+  'node:dns/promises': `export class Resolver { resolve4(host) { globalThis.__qaDnsHosts.push(host); return globalThis.__qaDnsFail ? Promise.reject(new Error('sensitive error')) : Promise.resolve(globalThis.__qaDnsMap?.[host] || globalThis.__qaAddresses); } cancel() {} }`,
   'node:https': `import { EventEmitter } from 'node:events';
     export function request(url, options, callback) {
       globalThis.__qaRequests.push({url: String(url), options});
       const req = new EventEmitter(); req.destroy = () => { globalThis.__qaDestroyed = true; };
       req.end = () => queueMicrotask(() => {
         options.lookup('attacker.invalid', {}, (err, address, family) => { globalThis.__qaPinned = {err, address, family}; });
-        const response = new EventEmitter(); response.headers = {'content-type': globalThis.__qaType};
-        response.statusCode = globalThis.__qaStatus; response.destroy = () => { globalThis.__qaDestroyed = true; };
+        const current = globalThis.__qaByUrl?.[String(url)] || {};
+        const response = new EventEmitter(); response.headers = {'content-type': globalThis.__qaType, location: current.location || globalThis.__qaLocation, 'content-encoding': current.encoding || 'identity'};
+        response.statusCode = current.status || globalThis.__qaStatus; response.destroy = () => { globalThis.__qaDestroyed = true; };
         callback(response);
-        for (const chunk of globalThis.__qaChunks) response.emit('data', Buffer.from(chunk));
+        for (const chunk of current.chunks || globalThis.__qaChunks) response.emit('data', Buffer.from(chunk));
         response.emit('end');
       }); return req;
     }`,
@@ -28,7 +29,7 @@ for (const ip of ['0.0.0.0', '10.0.0.1', '127.0.0.1', '169.254.169.254', '172.16
 for (const ip of ['8.8.8.8', '1.1.1.1', '172.15.1.1', '172.32.1.1']) assert.equal(isPublicQaIpv4(ip), true, ip);
 function setup(addresses = ['8.8.8.8'], status = 200, chunks = ['<html><a href="mailto:info@company.test">Email</a><a href="tel:+2348005550123">Call</a></html>'], type = 'text/html; charset=utf-8') {
   globalThis.__qaDnsHosts = []; globalThis.__qaRequests = []; globalThis.__qaAddresses = addresses; globalThis.__qaStatus = status;
-  globalThis.__qaChunks = chunks; globalThis.__qaType = type; globalThis.__qaDestroyed = false; globalThis.__qaPinned = null;
+  globalThis.__qaChunks = chunks; globalThis.__qaType = type; globalThis.__qaByUrl = {}; globalThis.__qaDnsMap = {}; globalThis.__qaLocation = ''; globalThis.__qaDnsFail = false; globalThis.__qaDestroyed = false; globalThis.__qaPinned = null;
 }
 setup();
 const ok = await readQaWebsite('https://company.test/private?token=secret#x');
@@ -45,8 +46,21 @@ for (const addresses of [[], ['127.0.0.1'], ['8.8.8.8', '10.0.0.1'], ['::1'], Ar
   setup(addresses); assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert.equal(globalThis.__qaRequests.length, 0);
 }
 setup(['8.8.8.8'], 302); assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert.equal(globalThis.__qaRequests.length, 1); assert(globalThis.__qaDestroyed);
-setup(['8.8.8.8'], 200, ['x'.repeat(131073)]); assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert(globalThis.__qaDestroyed);
+setup(['8.8.8.8'], 200, ['x'.repeat(524289)]); assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert(globalThis.__qaDestroyed);
 setup(['8.8.8.8'], 200, ['secret'], 'application/json'); assert.equal((await readQaWebsite('company.test')).status, 'unavailable');
-setup(); const failDns = { resolve4: async () => { throw new Error('sensitive error'); }, get: async () => { throw new Error('unexpected'); }, now: () => new Date('2026-01-01T00:00:00Z') };
-const failed = await readQaWebsite('company.test', failDns); assert.equal(failed.status, 'unavailable'); assert(!JSON.stringify(failed).includes('sensitive'));
-console.log('PASS simulated DNS pinning, unsafe address rejection, HTTPS, redirect, size and source limits. No website was contacted.');
+setup(); globalThis.__qaDnsFail = true;
+const failed = await readQaWebsite('company.test'); assert.equal(failed.status, 'unavailable'); assert(!JSON.stringify(failed).includes('sensitive'));
+setup(); globalThis.__qaByUrl['https://company.test/'] = { status: 301, location: 'https://www.company.test/' };
+const redirected = await readQaWebsite('company.test'); assert.equal(redirected.status, 'available'); assert.equal(redirected.host, 'company.test'); assert.equal(globalThis.__qaRequests.length, 2); assert.deepEqual(globalThis.__qaDnsHosts, ['company.test', 'www.company.test']);
+setup(); globalThis.__qaByUrl['https://company.test/'] = { status: 301, location: 'https://www.company.test/' }; globalThis.__qaDnsMap['www.company.test'] = ['127.0.0.1'];
+assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert.equal(globalThis.__qaRequests.length, 1);
+for (const location of ['https://evil.test/', 'https://127.0.0.1/', 'http://www.company.test/', 'https://user:pass@www.company.test/', 'https://www.company.test:8443/']) {
+ setup(); globalThis.__qaByUrl['https://company.test/'] = {status: 302, location}; assert.equal((await readQaWebsite('company.test')).status, 'unavailable', location); assert.equal(globalThis.__qaRequests.length, 1, location);
+}
+setup(); globalThis.__qaByUrl['https://company.test/'] = {status: 302, location: 'https://www.company.test/path?token=secret'};
+assert.equal((await readQaWebsite('company.test')).status, 'available'); assert.equal(globalThis.__qaRequests[1].url, 'https://www.company.test/path');
+setup(); globalThis.__qaByUrl['https://company.test/'] = {status: 302, location: 'https://www.company.test/'}; globalThis.__qaByUrl['https://www.company.test/'] = {status: 302, location: 'https://company.test/'};
+assert.equal((await readQaWebsite('company.test')).status, 'unavailable'); assert.equal(globalThis.__qaRequests.length, 2);
+setup(); globalThis.__qaByUrl['https://company.test/'] = {status: 200, encoding: 'gzip'}; assert.equal((await readQaWebsite('company.test')).status, 'unavailable');
+setup(['8.8.8.8'], 200, ['<html><script>' + 'x'.repeat(167851) + '</script><body>Ready</body></html>']); assert.equal((await readQaWebsite('company.test')).status, 'available');
+console.log('PASS simulated DNS pinning, per-redirect validation, HTTPS, size and source limits. No website was contacted.');
