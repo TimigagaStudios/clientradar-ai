@@ -18,9 +18,13 @@ export type DemoJob = {
   error: string | null;
   attempts: number;
   createdAt: string;
+  updatedAt: string | null;
+  startedAt: string | null;
+  generatedAt: string | null;
   completedAt: string | null;
   views: number;
   lastViewedAt: string | null;
+  firstViewedAt: string | null;
   qaStatus: 'checked' | 'unchecked' | 'stale' | 'error';
   qa: { fingerprint?: string; checkedAt?: string; issues?: { code: string; path: string; message: string }[]; fixes?: { path: string; description: string }[]; agent?: { websiteStatus?: string; websiteCheckedAt?: string } } | null;
   qaContent: Record<string, unknown> | null;
@@ -157,9 +161,13 @@ export function mapDemoJob(row: any): DemoJob {
     error: row.error || null,
     attempts: row.attempts || 0,
     createdAt: row.created_at,
+    updatedAt: row.updated_at || null,
+    startedAt: row.started_at || null,
+    generatedAt: row.generated_at || null,
     completedAt: row.completed_at || null,
     views: Number(row.content?.stats?.views) || 0,
     lastViewedAt: typeof row.content?.stats?.lastViewedAt === 'string' ? row.content.stats.lastViewedAt : null,
+    firstViewedAt: typeof row.content?.stats?.firstViewedAt === 'string' ? row.content.stats.firstViewedAt : null,
     qaStatus: ['checked', 'unchecked', 'stale', 'error'].includes(row.qaStatus) ? row.qaStatus : 'unchecked',
     qa: row.content?.qa && typeof row.content.qa === 'object' ? row.content.qa : null,
     qaContent: row.content && typeof row.content === 'object' ? row.content : null,
