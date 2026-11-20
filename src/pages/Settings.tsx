@@ -275,7 +275,7 @@ const Settings = () => {
             </div>
 
             <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-4 text-sm text-red-400">
-              All {leads.length} saved {leads.length === 1 ? 'lead' : 'leads'}, notes, outreach logs, demos, and lead deals will be permanently deleted.
+              All {leads.length} saved {leads.length === 1 ? 'lead' : 'leads'}, notes, outreach logs, demos, and lead deals will be permanently deleted. Linked invoice records block this reset. Deletion is not transactional: if a later step fails, some changes may already have happened.
             </div>
 
             {resetError && (

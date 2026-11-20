@@ -313,7 +313,7 @@ const LeadDetail = () => {
         alert('deleteLead() not wired in LeadContext yet.');
       }
     } catch (e) {
-      alert('Delete failed.');
+      alert(e instanceof Error ? e.message : 'Delete failed.');
     }
   };
 

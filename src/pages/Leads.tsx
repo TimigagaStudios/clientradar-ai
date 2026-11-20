@@ -90,14 +90,15 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   };
 
   const handleDeleteLead = async () => {
-    await deleteLead(lead.id);
-    setConfirmDeleteOpen(false);
-    setMenuOpen(false);
-    showToast({
-      type: 'success',
-      title: 'Lead deleted',
-      message: `${lead.businessName} removed from pipeline.`,
-    });
+    try {
+      await deleteLead(lead.id);
+      setConfirmDeleteOpen(false);
+      setMenuOpen(false);
+      showToast({ type: 'success', title: 'Lead deleted', message: `${lead.businessName} removed from pipeline.` });
+    } catch (reason) {
+      setConfirmDeleteOpen(false);
+      showToast({ type: 'error', title: 'Delete failed', message: reason instanceof Error ? reason.message : 'Could not delete lead.' });
+    }
   };
 
   const handleSendOutreach = (e: React.MouseEvent) => {

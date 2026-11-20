@@ -3,326 +3,147 @@ import { useLeads } from '../context/LeadContext';
 import { FileText, Plus, Download, Trash2, X } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { supabase } from '../lib/supabase';
+import { amountLabel, invoiceAmount, invoiceDate, invoiceRecordHtml } from '../lib/invoice-safety';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import EventTime from '../components/ui/EventTime';
 
 type Invoice = {
   id: string;
-  lead_id: string;
+  lead_id: string | null;
   business_name: string;
-  amount: number;
+  amount: number | string;
   status: 'Pending' | 'Paid';
-  due_date: string;
+  due_date: string | null;
   created_at: string;
-  notes?: string;
+  notes?: string | null;
 };
 
 const Invoices = () => {
   const { leads } = useLeads() as any;
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedLeadId, setSelectedLeadId] = useState('');
   const [amount, setAmount] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
   const invoicePager = usePagedList(invoices, 'invoices', 10);
 
-  // Fetch invoices from Supabase
   const fetchInvoices = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
+    try {
+      const { data, error: readError } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
+      if (readError || !data) throw new Error('Could not load invoice records. Check your connection and permissions, then retry.');
       setInvoices(data as Invoice[]);
-    }
-    setLoading(false);
+      return true;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not load invoice records.');
+      return false;
+    } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    fetchInvoices();
-  }, []);
-
-  const dealLeads = leads.filter((lead: any) =>
-    ['Interested', 'Negotiating', 'Deal Closed'].includes(lead.status)
-  );
+  useEffect(() => { void fetchInvoices(); }, []);
+  const dealLeads = leads.filter((lead: any) => ['Interested', 'Negotiating', 'Deal Closed'].includes(lead.status));
+  const begin = () => { setError(''); setNotice(''); };
 
   const handleCreateInvoice = async () => {
-    if (!selectedLeadId || !amount || !dueDate) return;
-
-    const lead = leads.find((l: any) => l.id === selectedLeadId);
-    if (!lead) return;
-
-    setIsCreating(true);
-
-    const { error } = await supabase.from('invoices').insert({
-      lead_id: selectedLeadId,
-      business_name: lead.businessName,
-      amount: Number(amount),
-      status: 'Pending',
-      due_date: dueDate,
-      notes: notes.trim() || null,
-    });
-
-    if (!error) {
-      await fetchInvoices();
-      setShowCreateForm(false);
-      setSelectedLeadId('');
-      setAmount('');
-      setDueDate('');
-      setNotes('');
-    } else {
-      alert('Failed to create invoice');
-    }
-    setIsCreating(false);
+    if (busy) return;
+    begin();
+    const lead = dealLeads.find((item: any) => item.id === selectedLeadId);
+    const parsed = invoiceAmount(amount);
+    if (!lead || parsed === null || !invoiceDate(dueDate)) { setError('Choose a deal, a positive amount with at most two decimal places, and a valid due date.'); return; }
+    if (!window.confirm('Create this internal invoice record? The amount and due date are your entries. No invoice or email will be sent.')) return;
+    setBusy(true);
+    try {
+      const { error: writeError } = await supabase.from('invoices').insert({ lead_id: selectedLeadId, business_name: lead.businessName, amount: parsed, status: 'Pending', due_date: dueDate, notes: notes.trim() || null });
+      if (writeError) throw new Error('Save was not confirmed. Reload the list and check whether the record exists before trying again.');
+      setShowCreateForm(false); setSelectedLeadId(''); setAmount(''); setDueDate(''); setNotes('');
+      setNotice('Record created. No invoice or email was sent.');
+      if (!(await fetchInvoices())) setNotice('Record created, but the list could not refresh. Reload before trying again.');
+    } catch { setError('Save was not confirmed. Reload the list and check whether the record exists before trying again.'); }
+    finally { setBusy(false); }
   };
 
-  const handleMarkPaid = async (id: string) => {
-    const { error } = await supabase
-      .from('invoices')
-      .update({ status: 'Paid' })
-      .eq('id', id);
-
-    if (!error) {
-      await fetchInvoices();
-      if (selectedInvoice && selectedInvoice.id === id) {
-        setSelectedInvoice({ ...selectedInvoice, status: 'Paid' });
-      }
-    }
+  const handleMarkPaid = async (invoice: Invoice) => {
+    if (busy || !window.confirm('Manually mark this record as paid? Confirm the payment independently first. This does not check your bank or payment provider.')) return;
+    begin(); setBusy(true);
+    try {
+      const { data, error: writeError } = await supabase.from('invoices').update({ status: 'Paid' }).eq('id', invoice.id).eq('status', 'Pending').select('id');
+      if (writeError) throw new Error('Could not update the record. Check your connection and permissions.');
+      if (!Array.isArray(data) || data.length !== 1) throw new Error('Record was not updated. It may have changed or your account may not have permission. Reload and check.');
+      setSelectedInvoice({ ...invoice, status: 'Paid' }); setNotice('Marked paid manually. This is not independent proof of payment.');
+      if (!(await fetchInvoices())) setNotice('Record updated, but the list could not refresh. Reload before making more changes.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not update the record.'); }
+    finally { setBusy(false); }
   };
 
   const handleDeleteInvoice = async (id: string) => {
-    if (!confirm('Delete this invoice?')) return;
-
-    const { error } = await supabase.from('invoices').delete().eq('id', id);
-
-    if (!error) {
-      await fetchInvoices();
-      setSelectedInvoice(null);
-    }
+    if (busy || !window.confirm('Permanently delete this invoice record? This cannot be undone.')) return;
+    begin(); setBusy(true);
+    try {
+      const { data, error: writeError } = await supabase.from('invoices').delete().eq('id', id).select('id');
+      if (writeError) throw new Error('Could not delete the record. Check your connection and permissions.');
+      if (!Array.isArray(data) || data.length !== 1) throw new Error('Record was not deleted. It may have changed or your account may not have permission. Reload and check.');
+      setSelectedInvoice(null); setNotice('Invoice record deleted.');
+      if (!(await fetchInvoices())) setNotice('Record deleted, but the list could not refresh. Reload before making more changes.');
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not delete the record.'); }
+    finally { setBusy(false); }
   };
 
-  const generatePDF = (invoice: Invoice) => {
+  const printRecord = (invoice: Invoice) => {
+    begin();
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const html = `
-      <html>
-        <head>
-          <title>Invoice - ${invoice.business_name}</title>
-          <style>
-            body { font-family: system-ui, sans-serif; padding: 30px; background: #0F0F0F; color: white; }
-            .container { max-width: 800px; margin: 0 auto; background: #111; border-radius: 20px; padding: 40px; }
-            .logo { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
-            .logo img { height: 48px; width: auto; }
-            table { width: 100%; border-collapse: collapse; margin: 30px 0; }
-            th { text-align: left; padding: 12px 0; border-bottom: 1px solid #333; color: #FF7A00; }
-            .total { font-size: 20px; font-weight: 700; text-align: right; }
-            .orange { color: #FF7A00; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="logo">
-              <img src="/timigaga-logo-full.png" alt="Timigaga Studios" />
-            </div>
-            <h2>Invoice #${invoice.id}</h2>
-            <p><strong>Bill To:</strong> ${invoice.business_name}</p>
-            <p><strong>Date:</strong> ${new Date(invoice.created_at).toLocaleDateString()}</p>
-            <table>
-              <tr><th>Description</th><th style="text-align:right">Amount</th></tr>
-              <tr><td>Website Project</td><td style="text-align:right">$${invoice.amount.toLocaleString()}</td></tr>
-            </table>
-            <div class="total">Total Due: <span class="orange">$${invoice.amount.toLocaleString()}</span></div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    printWindow.document.write(html);
-    printWindow.document.close();
-    setTimeout(() => printWindow.print(), 300);
+    if (!printWindow) { setError('Could not open the print window. Allow pop-ups and try again.'); return; }
+    printWindow.document.open(); printWindow.document.write(invoiceRecordHtml(invoice)); printWindow.document.close();
+    window.setTimeout(() => { try { printWindow.focus(); printWindow.print(); } catch { setError('Could not open the print dialog.'); } }, 300);
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 md:px-0">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight mb-2 text-[var(--text-primary)]">Invoices</h1>
-          <p className="text-[var(--text-secondary)] font-medium">Create and manage invoices for your closed deals.</p>
-        </div>
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium w-full md:w-auto justify-center"
-        >
-          <Plus size={18} /> Create Invoice
-        </button>
-      </header>
-
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="neo-card p-6 md:p-8">
-          <h3 className="text-xl font-bold mb-5">Create New Invoice</h3>
-          <div className="space-y-4">
-            <select
-              value={selectedLeadId}
-              onChange={(e) => setSelectedLeadId(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-            >
-              <option value="">Select a deal...</option>
-              {dealLeads.slice(0, 250).map((lead: any) => (
-                <option key={lead.id} value={lead.id}>
-                  {lead.businessName} - ${Number(lead.dealValue || 0).toLocaleString()}
-                </option>
-              ))}
-            </select>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input
-                type="number"
-                placeholder="Invoice Amount ($)"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-              />
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-              />
-            </div>
-
-            <input
-              type="text"
-              placeholder="Notes (optional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded-2xl neo-in px-4 py-3.5 text-[var(--text-primary)]"
-            />
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-3 mt-6">
-            <button
-              onClick={handleCreateInvoice}
-              disabled={!selectedLeadId || !amount || !dueDate || isCreating}
-              className="px-6 py-3.5 bg-[var(--accent)] text-white rounded-2xl font-medium disabled:opacity-50 flex-1 md:flex-none"
-            >
-              {isCreating ? "Creating..." : "Create Invoice"}
-            </button>
-            <button onClick={() => setShowCreateForm(false)} className="px-6 py-3.5 neo-button rounded-2xl flex-1 md:flex-none">
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Invoice History - Transaction List Style */}
-      <div className="neo-card p-6 md:p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <FileText size={20} className="text-[var(--accent)]" />
-          <h3 className="text-xl font-bold">Invoice History</h3>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12 text-[var(--text-secondary)]">Loading invoices...</div>
-        ) : invoices.length === 0 ? (
-          <div className="text-center py-12 text-[var(--text-secondary)]">No invoices created yet.</div>
-        ) : (
-          <div className="space-y-3">
-            <div className="space-y-2">
-              {invoicePager.visible.map((invoice) => (
-                <div
-                  key={invoice.id}
-                  onClick={() => setSelectedInvoice(invoice)}
-                  className="flex items-center justify-between p-4 rounded-2xl neo-in active:bg-black/5 dark:active:bg-white/5 cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-[var(--accent)] font-bold text-sm">
-                      {invoice.business_name.slice(0, 1)}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-[var(--text-primary)]">{invoice.business_name}</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        {new Date(invoice.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="font-bold text-[var(--text-primary)]">${invoice.amount.toLocaleString()}</p>
-                    <span className={cn(
-                      "text-xs px-2 py-0.5 rounded-full",
-                      invoice.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'
-                    )}>
-                      {invoice.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <ListPager pager={invoicePager} noun="invoices" />
-          </div>
-        )}
+  return <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 px-4 md:px-0">
+    <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div><h1 className="text-3xl font-black tracking-tight mb-2 text-[var(--text-primary)]">Invoices</h1><p className="text-[var(--text-secondary)] font-medium">Internal invoice records for deals. No invoice is sent or payment verified here.</p></div>
+      <button onClick={() => setShowCreateForm(!showCreateForm)} className="flex items-center gap-2 px-5 py-3 bg-[var(--accent)] text-white rounded-2xl font-medium w-full md:w-auto justify-center"><Plus size={18} /> Create record</button>
+    </header>
+    <p className="text-sm text-[var(--text-secondary)]">This screen does not record or verify a currency. Confirm currency, services, taxes and terms separately before issuing an invoice.</p>
+    {error && <div role="alert" className="rounded-xl border border-red-500/40 p-3 text-sm text-red-500">{error} <button type="button" onClick={() => { setError(''); void fetchInvoices(); }} className="underline font-bold">Reload list</button></div>}
+    {notice && <p role="status" className="text-sm text-[var(--text-secondary)]">{notice}</p>}
+    {showCreateForm && <section className="neo-card p-4 sm:p-6 md:p-8 space-y-4">
+      <h2 className="text-xl font-bold">Create invoice record</h2>
+      <label className="block text-sm font-bold">Deal<select value={selectedLeadId} onChange={e => setSelectedLeadId(e.target.value)} className="mt-1 w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]"><option value="">Select a deal...</option>{dealLeads.slice(0, 250).map((lead: any) => <option key={lead.id} value={lead.id}>{lead.businessName} - saved deal amount: {lead.dealValue == null ? 'not set' : amountLabel(lead.dealValue)}</option>)}</select></label>
+      {dealLeads.length > 250 && <p className="text-xs text-[var(--text-secondary)]">Showing the first 250 eligible leads.</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label className="block text-sm font-bold">Amount (currency not verified)<input type="number" min="0.01" max="999999999.99" step="0.01" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} className="mt-1 w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]" /></label>
+        <label className="block text-sm font-bold">Due date<input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="mt-1 w-full min-w-0 rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]" /></label>
       </div>
-
-      {/* Invoice Detail Modal */}
-      {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60" onClick={() => setSelectedInvoice(null)}>
-          <div 
-            className="w-full max-w-md neo-card p-6 rounded-t-3xl md:rounded-3xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h3 className="text-xl font-bold">{selectedInvoice.business_name}</h3>
-                <p className="text-sm text-[var(--text-secondary)]">
-                  {new Date(selectedInvoice.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              <button onClick={() => setSelectedInvoice(null)} className="text-[var(--text-secondary)]">
-                <X size={22} />
-              </button>
-            </div>
-
-            <div className="text-center mb-8">
-              <p className="text-sm text-[var(--text-secondary)]">Total Amount</p>
-              <p className="text-4xl font-black mt-1">${selectedInvoice.amount.toLocaleString()}</p>
-            </div>
-
-            <div className="space-y-3">
-              <button
-                onClick={() => generatePDF(selectedInvoice)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl neo-button text-sm"
-              >
-                <Download size={18} /> Download PDF
-              </button>
-
-              {selectedInvoice.status === 'Pending' && (
-                <button
-                  onClick={() => handleMarkPaid(selectedInvoice.id)}
-                  className="w-full px-4 py-3 rounded-2xl bg-green-600 text-white text-sm font-medium"
-                >
-                  Mark as Paid
-                </button>
-              )}
-
-              <button
-                onClick={() => handleDeleteInvoice(selectedInvoice.id)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-500/10 text-sm"
-              >
-                <Trash2 size={18} /> Delete Invoice
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+      <label className="block text-sm font-bold">Internal notes (optional)<input type="text" maxLength={4000} value={notes} onChange={e => setNotes(e.target.value)} className="mt-1 w-full rounded-2xl neo-in px-4 py-3 text-[var(--text-primary)]" /></label>
+      <div className="flex flex-wrap gap-3"><button onClick={() => void handleCreateInvoice()} disabled={busy || !selectedLeadId || invoiceAmount(amount) === null || !invoiceDate(dueDate)} className="px-6 py-3 bg-[var(--accent)] text-white rounded-2xl disabled:opacity-50">{busy ? 'Saving...' : 'Create record'}</button><button disabled={busy} onClick={() => setShowCreateForm(false)} className="px-6 py-3 neo-button rounded-2xl">Cancel</button></div>
+    </section>}
+    <section className="neo-card p-4 sm:p-6 md:p-8">
+      <div className="flex items-center gap-3 mb-6"><FileText size={20} className="text-[var(--accent)]" /><h2 className="text-xl font-bold">Invoice records</h2></div>
+      {loading ? <p className="text-center py-12 text-[var(--text-secondary)]">Loading invoice records...</p> : invoices.length === 0 ? <p className="text-center py-12 text-[var(--text-secondary)]">No invoice records loaded.</p> : <div className="space-y-3">
+        {invoicePager.visible.map(invoice => <button type="button" key={invoice.id} onClick={() => setSelectedInvoice(invoice)} className="w-full flex items-center justify-between gap-3 p-4 rounded-2xl neo-in text-left">
+          <span className="min-w-0"><span className="block font-semibold text-[var(--text-primary)] break-words">{invoice.business_name || 'Business not recorded'}</span><span className="block text-xs text-[var(--text-secondary)]">Created date: {invoiceDate(invoice.created_at?.slice(0, 10)) ? invoice.created_at.slice(0, 10) : 'Not recorded'}</span></span>
+          <span className="shrink-0 text-right"><span className="block font-bold text-[var(--text-primary)]">{amountLabel(invoice.amount)}</span><span className={cn('text-xs px-2 py-0.5 rounded-full', invoice.status === 'Paid' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500')}>{invoice.status === 'Paid' ? 'Marked paid' : invoice.status}</span></span>
+        </button>)}
+        <ListPager pager={invoicePager} noun="invoice records" />
+      </div>}
+    </section>
+    {selectedInvoice && <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 p-2" onClick={() => { if (!busy) setSelectedInvoice(null); }} role="dialog" aria-modal="true" aria-label="Invoice record details">
+      <div className="w-full max-w-md max-h-[90dvh] overflow-y-auto neo-card p-6 rounded-3xl" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between gap-4 items-start mb-6"><div className="min-w-0"><h2 className="text-xl font-bold break-words">{selectedInvoice.business_name || 'Business not recorded'}</h2><p className="text-sm text-[var(--text-secondary)]"><EventTime value={selectedInvoice.created_at} label="Created" /></p></div><button disabled={busy} onClick={() => setSelectedInvoice(null)} aria-label="Close invoice details" className="text-[var(--text-secondary)]"><X size={22} /></button></div>
+        <div className="mb-6 space-y-2"><p className="text-sm text-[var(--text-secondary)]">Amount (currency not verified)</p><p className="text-3xl font-black break-words">{amountLabel(selectedInvoice.amount)}</p><p className="text-sm">Due date: {invoiceDate(selectedInvoice.due_date) ? selectedInvoice.due_date : 'Not recorded'}</p><p className="text-sm">Status: {selectedInvoice.status === 'Paid' ? 'Manually marked paid - not independently verified' : selectedInvoice.status}</p>{selectedInvoice.notes && <p className="text-sm break-words">Internal notes: {selectedInvoice.notes}</p>}</div>
+        {error && <p role="alert" className="mb-3 text-sm text-red-500">{error}</p>}
+        {notice && <p role="status" className="mb-3 text-sm text-[var(--text-secondary)]">{notice}</p>}
+        <p className="mb-3 text-xs text-[var(--text-secondary)]">Print opens an internal record, not a complete client-ready invoice or verified receipt. Internal notes are not printed.</p>
+        <div className="space-y-3"><button onClick={() => printRecord(selectedInvoice)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl neo-button text-sm"><Download size={18} /> Print or save record as PDF</button>
+          {selectedInvoice.status === 'Pending' && <button disabled={busy} onClick={() => void handleMarkPaid(selectedInvoice)} className="w-full px-4 py-3 rounded-2xl bg-green-600 text-white text-sm font-medium disabled:opacity-50">Mark paid manually</button>}
+          <button disabled={busy} onClick={() => void handleDeleteInvoice(selectedInvoice.id)} className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-2xl text-red-500 hover:bg-red-500/10 text-sm disabled:opacity-50"><Trash2 size={18} /> Delete record</button></div>
+      </div>
+    </div>}
+  </div>;
 };
 
 export default Invoices;
