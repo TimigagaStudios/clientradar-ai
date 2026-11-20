@@ -25,7 +25,7 @@ export type DemoJob = {
   views: number;
   lastViewedAt: string | null;
   firstViewedAt: string | null;
-  websiteAnalysis: { status: 'partial' | 'unavailable' | 'not_provided'; checkedAt: string | null; pagesRead: string[] } | null;
+  websiteAnalysis: { status: 'partial' | 'unavailable' | 'not_provided'; checkedAt: string | null; pagesRead: string[]; linkedPages: { path: string; label: string; kind: string; read: boolean }[] } | null;
   qaStatus: 'checked' | 'unchecked' | 'stale' | 'error';
   qa: { fingerprint?: string; checkedAt?: string; issues?: { code: string; path: string; message: string }[]; fixes?: { path: string; description: string }[]; agent?: { websiteStatus?: string; websiteCheckedAt?: string } } | null;
   qaContent: Record<string, unknown> | null;
@@ -169,7 +169,7 @@ export function mapDemoJob(row: any): DemoJob {
     views: Number(row.content?.stats?.views) || 0,
     lastViewedAt: typeof row.content?.stats?.lastViewedAt === 'string' ? row.content.stats.lastViewedAt : null,
     firstViewedAt: typeof row.content?.stats?.firstViewedAt === 'string' ? row.content.stats.firstViewedAt : null,
-    websiteAnalysis: ['partial', 'unavailable', 'not_provided'].includes(row.content?.websiteAnalysis?.status) ? { status: row.content.websiteAnalysis.status, checkedAt: typeof row.content.websiteAnalysis.checkedAt === 'string' ? row.content.websiteAnalysis.checkedAt : null, pagesRead: Array.isArray(row.content.websiteAnalysis.pagesRead) ? row.content.websiteAnalysis.pagesRead.filter((path: unknown): path is string => typeof path === 'string').slice(0, 3) : [] } : null,
+    websiteAnalysis: ['partial', 'unavailable', 'not_provided'].includes(row.content?.websiteAnalysis?.status) ? { status: row.content.websiteAnalysis.status, checkedAt: typeof row.content.websiteAnalysis.checkedAt === 'string' ? row.content.websiteAnalysis.checkedAt : null, pagesRead: Array.isArray(row.content.websiteAnalysis.pagesRead) ? row.content.websiteAnalysis.pagesRead.filter((path: unknown): path is string => typeof path === 'string').slice(0, 3) : [], linkedPages: Array.isArray(row.content.websiteAnalysis.linkedPages) ? row.content.websiteAnalysis.linkedPages.filter((item: any) => item && typeof item.path === 'string' && item.path.startsWith('/') && typeof item.label === 'string' && typeof item.kind === 'string').slice(0, 20).map((item: any) => ({ path: item.path.slice(0, 200), label: item.label.slice(0, 80), kind: item.kind.slice(0, 40), read: item.read === true })) : [] } : null,
     qaStatus: ['checked', 'unchecked', 'stale', 'error'].includes(row.qaStatus) ? row.qaStatus : 'unchecked',
     qa: row.content?.qa && typeof row.content.qa === 'object' ? row.content.qa : null,
     qaContent: row.content && typeof row.content === 'object' ? row.content : null,
