@@ -2,6 +2,7 @@
 // security, legal, or live-link audit. Do not treat a lack of findings as
 // proof that a demo is safe or ready to send.
 import { createHash } from 'node:crypto';
+import { demoEmail, demoInstagram, demoPhone } from '../../shared/demo-contacts.js';
 
 export type DemoQaIssue = { code: string; path: string; message: string };
 export type DemoQaFix = { path: string; description: string };
@@ -48,8 +49,14 @@ export function inspectDemo(input: unknown, options: { fixWhitespace?: boolean }
   const email = text(contact.email);
   const phone = text(contact.phone);
   if (!email && !phone) add('missing_contact', 'contact', 'No email or phone contact is present.');
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) add('invalid_email', 'contact.email', 'Email format may be invalid.');
-  if (phone && (phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15)) add('invalid_phone', 'contact.phone', 'Phone format may be invalid.');
+  if (email && !demoEmail(email)) add('invalid_email', 'contact.email', 'Email cannot be rendered as a safe contact link. Confirm the address.');
+  if (phone && !demoPhone(phone)) add('invalid_phone', 'contact.phone', 'Phone cannot be rendered as a safe contact link. Confirm the number.');
+  if (text(contact.instagram) && !demoInstagram(contact.instagram)) add('invalid_instagram', 'contact.instagram', 'Instagram cannot be rendered as a safe profile link. Confirm the handle.');
+  if (Array.isArray(content.services)) content.services.slice(0, 30).forEach((item, index) => {
+    const service = object(item);
+    if (/^example\b/i.test(text(service.title))) add('example_services', `services.${index}.title`, 'Example service title is illustrative. Replace it with a confirmed business offering.');
+    if (/^replace this example with a service confirmed by the business\.?$/i.test(text(service.body))) add('example_services', `services.${index}.body`, 'Example service description is illustrative. Replace it with confirmed wording.');
+  });
   if (email && /(^|@)(example\.(com|org|net)|test\.com)$|^(test|yourname)@/i.test(email)) add('placeholder_email', 'contact.email', 'Email may be a placeholder.');
   if (phone && (/^(\d)\1{6,}$/.test(phone.replace(/\D/g, '')) || /1234567/.test(phone.replace(/\D/g, '')))) add('placeholder_phone', 'contact.phone', 'Phone may be a placeholder.');
   const checked: { path: string; value: unknown }[] = [];
@@ -72,7 +79,9 @@ export function inspectDemo(input: unknown, options: { fixWhitespace?: boolean }
   return { content, issues, fixes };
 }
 
-const QA_VERSION = 1;
+// New contact-link rules make earlier checks stale, rather than silently
+// presenting an older, narrower review as current.
+const QA_VERSION = 2;
 
 // JSONB does not preserve object key order. Sort keys recursively so the
 // fingerprint survives a round trip through the database. View statistics
@@ -115,7 +124,7 @@ export function demoQaStatus(input: unknown): 'unchecked' | 'stale' | 'error' | 
 // Apply only owner-supplied text to a narrowly allowed field. The caller must
 // require explicit approval and compare-and-swap the content in the database.
 export function applyOwnerCorrection(input: unknown, path: string, value: string): Data {
-  const allowed = /^(businessName|disclaimer|contact\.(email|phone)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer))$/;
+  const allowed = /^(businessName|disclaimer|contact\.(email|phone|instagram)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer))$/;
   if (!allowed.test(path) || typeof value !== 'string' || value.length > 4000) throw new Error('This field cannot be corrected here.');
   const content = JSON.parse(JSON.stringify(object(input))) as Data;
   const parts = path.split('.');

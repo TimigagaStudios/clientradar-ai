@@ -16,32 +16,17 @@ function fallbackContent(lead: any, level: DemoStyleLevel) {
   const lower = category.toLowerCase();
   const city = lead.city || 'your area';
   const limits = TIER_LIMITS[level];
-  const services = [
-    { title: 'Core services', body: `Practical ${lower} services explained clearly, so customers know what to expect before they get in touch.` },
-    { title: 'Enquiries and bookings', body: `A simple way to ask a question or arrange a time with ${business}.` },
-    { title: 'Customer care', body: 'Friendly, direct communication from the first message to the finished job.' },
-    { title: 'Tailored options', body: 'Options shaped around what each customer actually needs, discussed before any commitment.' },
-    { title: 'Clear information', body: 'Opening details, location and contact routes kept easy to find on every screen size.' },
-    { title: 'After-service support', body: `A clear route back to ${business} for follow-up questions.` },
-  ];
-  const highlights = [
-    { title: 'Local and reachable', body: `Based in ${city} and easy to contact by phone or message.` },
-    { title: 'Clear and honest', body: 'Straightforward information with no confusing fine print.' },
-    { title: 'Built for mobile', body: 'Customers can find what they need in seconds on any phone.' },
-    { title: 'A professional first impression', body: `A modern online home that reflects the quality of ${business}.` },
-  ];
-  const process = [
-    { title: 'Get in touch', body: `Call or message ${business} with what you need.` },
-    { title: 'Talk it through', body: 'Discuss the details and agree the best option for you.' },
-    { title: 'Confirm', body: 'Agree a time and the next steps.' },
-    { title: 'Enjoy the service', body: 'Sit back while the team takes care of the rest.' },
-  ];
+  // The lead's category does not establish specific offerings, promises or
+  // processes. Keep fallback sections visibly illustrative until confirmed.
+  const services = Array.from({ length: 6 }, (_, index) => ({ title: `Example ${lower} service ${index + 1}`, body: 'Replace this example with a service confirmed by the business.' }));
+  const highlights = Array.from({ length: 4 }, (_, index) => ({ title: `Example highlight ${index + 1}`, body: 'Replace this example with a detail confirmed by the business.' }));
+  const process = Array.from({ length: 4 }, (_, index) => ({ title: `Example step ${index + 1}`, body: 'Confirm the actual process with the business before use.' }));
   const faq = [
-    { question: `Where is ${business} located?`, answer: `${business} serves customers in ${city}. Contact the team for exact directions.` },
-    { question: 'How do I make an enquiry?', answer: 'Use the contact details on this page to call or send a message.' },
-    { question: 'What services are available?', answer: `See the services section for an overview, or ask the team about a specific ${lower} need.` },
-    { question: 'What are the opening hours?', answer: 'Opening hours will be confirmed by the business before this site goes live.' },
-    { question: 'How quickly will I get a reply?', answer: 'The team aims to respond as soon as possible during working hours.' },
+    { question: `Where is ${business} located?`, answer: 'Confirm the address and service area with the business.' },
+    { question: 'How do I make an enquiry?', answer: 'Confirm the correct contact details with the business.' },
+    { question: 'What services are available?', answer: 'Confirm the actual services with the business.' },
+    { question: 'What are the opening hours?', answer: 'Confirm the opening hours with the business.' },
+    { question: 'How quickly will I get a reply?', answer: 'Confirm response times with the business.' },
   ];
   return {
     hero: { eyebrow: category, title: `${business} made simple for ${city}`, description: `A polished demo concept for ${business}, designed to help customers understand the offer and take the next step.`, cta: 'Get in touch' },
@@ -75,8 +60,8 @@ function fallbackShowcase(kind: DemoShowcaseKind, lead: any, limit: number) {
       { title: 'Signature drink', subtitle: 'Drinks', detail: 'A refreshing house blend.' },
     ] },
     products: { title: 'Featured products', items: [
-      { title: 'Best seller', subtitle: 'Popular', detail: 'A customer favourite from the main range.' },
-      { title: 'New arrival', subtitle: 'Just in', detail: 'The latest addition to the collection.' },
+      { title: 'Example product', subtitle: 'Sample', detail: 'Illustrative product details to be confirmed.' },
+      { title: 'Example selection', subtitle: 'Sample', detail: 'Replace this with a confirmed product.' },
       { title: 'Everyday essential', subtitle: 'Essentials', detail: 'A dependable choice for daily use.' },
       { title: 'Gift pick', subtitle: 'Gifts', detail: 'A thoughtful option for someone special.' },
       { title: 'Premium selection', subtitle: 'Premium', detail: 'A higher-end option with extra detail.' },
@@ -84,7 +69,7 @@ function fallbackShowcase(kind: DemoShowcaseKind, lead: any, limit: number) {
     ] },
     booking: { title: 'Book a service', items: [
       { title: 'Initial consultation', subtitle: 'New customers', detail: 'A first conversation to understand what you need.' },
-      { title: 'Standard appointment', subtitle: 'All customers', detail: 'The most requested service, by appointment.' },
+      { title: 'Example appointment', subtitle: 'Sample', detail: 'An illustrative appointment to be confirmed.' },
       { title: 'Follow-up visit', subtitle: 'Returning customers', detail: 'A shorter visit to review progress.' },
       { title: 'Extended session', subtitle: 'All customers', detail: 'Extra time for more detailed work.' },
       { title: 'Group booking', subtitle: 'Families and teams', detail: 'One booking for several people.' },
