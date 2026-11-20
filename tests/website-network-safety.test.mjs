@@ -39,6 +39,37 @@ assert.equal(requests.length,5);assert(requests.every(x=>!x.url.includes('?') &&
 assert(requests.every(x=>x.options.family===4 && x.options.agent===false && !x.options.headers.Authorization && !x.options.headers.Cookie));
 assert(pins.every(x=>x.address==='8.8.8.8' && x.family===4));
 assert.equal(isOfficialWebsiteUrl('https://user:password@company.test'),false);
+// Additional reads are opt-in, same-origin, robots-gated and never follow a
+// redirect. Existing homepage/contact/about behavior is unchanged.
+setup();
+pages['https://company.test/']={status:200,body:'<html><title>Company</title><a href="/services">Services</a><a href="/products">Products</a><a href="/pricing">Pricing</a><a href="/blog">Blog</a><a href="/logout">Services</a></html>'};
+pages['https://company.test/robots.txt']={status:200,type:'text/plain',body:'User-agent: *\nDisallow: /products\n'};
+pages['https://company.test/services']={status:200,body:'<html><h1>Services</h1>service@company.test</html>'};
+pages['https://company.test/pricing']={status:302,location:'/blocked'};
+pages['https://company.test/blog']={status:200,body:'<html><h1>News</h1></html>'};
+let expanded=await scanWebsite('https://company.test/',{discoverMore:true});
+assert.equal(expanded.extraPagesStatus,'attempted');
+assert(expanded.sourcePages.some(p=>p.path==='/services' && p.emails.includes('service@company.test')));
+assert(expanded.linkedPages.some(p=>p.path==='/services' && p.read));
+assert(!expanded.pagesRead.includes('/products')); assert(!expanded.pagesRead.includes('/pricing'));
+assert(!requests.some(x=>x.url.endsWith('/products')||x.url.endsWith('/blocked')||x.url.endsWith('/logout')));
+assert(!expanded.emails.includes('service@company.test'),'new discovery does not silently populate contact fields');
+setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};
+pages['https://company.test/robots.txt']={status:403};
+expanded=await scanWebsite('https://company.test/',{discoverMore:true});assert.equal(expanded.extraPagesStatus,'robots_unavailable');assert.equal(requests.length,2);
+setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};
+pages['https://company.test/robots.txt']={status:404};pages['https://company.test/services']={status:200,body:'<html><h1>Services</h1></html>'};
+expanded=await scanWebsite('https://company.test/',{discoverMore:true});assert.equal(expanded.extraPagesStatus,'attempted');assert(expanded.pagesRead.includes('/services'));assert.equal(requests.length,3);
+setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};pages['https://company.test/robots.txt']={status:302,location:'https://www.company.test/robots.txt'};
+expanded=await scanWebsite('https://company.test/',{discoverMore:true});assert.equal(expanded.extraPagesStatus,'robots_unavailable');assert.equal(requests.length,2);
+for (const status of [401,429,500,503]) {
+  setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};pages['https://company.test/robots.txt']={status};
+  expanded=await scanWebsite('https://company.test/',{discoverMore:true});assert.equal(expanded.extraPagesStatus,'robots_unavailable');assert.equal(requests.length,2);
+}
+setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};pages['https://company.test/robots.txt']={status:200,type:'text/plain',body:'User-agent: *\nDisallow: /\n'};
+expanded=await scanWebsite('https://company.test/',{discoverMore:true});assert.equal(expanded.extraPagesStatus,'attempted');assert.equal(requests.length,2);assert(!expanded.pagesRead.includes('/services'));
+setup();pages['https://company.test/']={status:200,body:'<html><a href="/services">Services</a></html>'};
+expanded=await scanWebsite('https://company.test/');assert.equal(expanded.extraPagesStatus,'not_requested');assert.equal(requests.length,1);
 setup();ipByHost['company.test']=['8.8.8.8','10.0.0.1'];assert.equal(await scanWebsite('https://company.test/'),null);assert.equal(requests.length,0);
 setup();pages['https://company.test/']={status:302,location:'https://www.company.test/'};ipByHost['www.company.test']=['169.254.169.254'];assert.equal(await scanWebsite('https://company.test/'),null);assert.equal(requests.length,1);
 setup();pages['https://company.test/']={status:302,location:'https://attacker.test/'};assert.equal(await scanWebsite('https://company.test/'),null);assert.equal(requests.length,1);

@@ -1,5 +1,5 @@
 import { buildDemoPrompt, processDemoJob, refreshDemoSections } from './demo-job-process.js';
-import { normalizeStyleLevel } from './demo-ai.js';
+import { normalizeNewStyleLevel } from './demo-ai.js';
 import { searchBusinesses, type FoundBusiness } from './_places.js';
 import { isOfficialWebsiteUrl, isValidContactEmail, isValidContactPhone, scanSummary, scanWebsite } from './_website.js';
 
@@ -181,7 +181,7 @@ const runDemoCreation: Runner = async (supabase, task, options) => {
     };
   }
   const leadId = String(task.input?.leadId || '');
-  const level = normalizeStyleLevel(task.input?.level || 'ultra');
+  const level = normalizeNewStyleLevel(task.input?.level);
   if (!leadId) throw new Error('The task has no lead');
   const { data: lead, error: leadError } = await supabase.from('leads').select('*').eq('id', leadId).single();
   if (leadError || !lead) throw new Error('Lead not found');

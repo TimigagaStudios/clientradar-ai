@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser, requireOwner } from './lib/auth.js';
 import { processDemoJob } from './lib/demo-job-process.js';
-import { normalizeStyleLevel, tierRules } from './lib/demo-ai.js';
+import { normalizeNewStyleLevel, tierRules } from './lib/demo-ai.js';
 import type { DemoStyleLevel } from './lib/demo-ai.js';
 import { applyOwnerCorrection } from './lib/_demo-qa.js';
 import { checkDemoWithSources, evidenceDemoStatus, recordDemoCheck } from './lib/_qa-demo-agent.js';
@@ -187,7 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { leadId, jobId, action } = req.body || {};
       if (process.env.API_AUTH_DISABLED === 'true' || req.body?.confirm !== true) return res.status(403).json({ success: false, error: 'An authenticated owner must approve demo creation or retry.' });
       const templateKey = TEMPLATE_KEYS.includes(req.body?.templateKey) ? req.body.templateKey : 'auto';
-      const styleLevel = normalizeStyleLevel(req.body?.styleLevel || 'ultra');
+      const styleLevel = normalizeNewStyleLevel(req.body?.styleLevel);
       if (action === 'process' && jobId) {
         const data = await processDemoJob(supabase, jobId, { qaMinor: req.body?.qaMinor === true && process.env.API_AUTH_DISABLED !== 'true' });
         return res.status(200).json({ success: true, data });

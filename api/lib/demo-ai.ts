@@ -46,6 +46,14 @@ export function normalizeStyleLevel(value: unknown): DemoStyleLevel {
   return level === 'hybrid' || level === 'ultra' ? level : 'mid';
 }
 
+// New jobs default to Ultra Premium. Keep the legacy normalizer above for
+// reading older saved jobs, whose missing tier historically meant Mid-Level.
+export function normalizeNewStyleLevel(value: unknown): DemoStyleLevel {
+  const level = String(value || '').trim().toLowerCase();
+  if (level === 'mid' || level === 'mid-level' || level === 'mid level') return 'mid';
+  return level === 'hybrid' ? 'hybrid' : 'ultra';
+}
+
 // The style level travels inside template_key as "template:level" so no database change is needed.
 export function splitTemplateKey(value: unknown) {
   const [template, level] = String(value || 'auto').split(':');
