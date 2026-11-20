@@ -1,0 +1,17 @@
+# Demo review and safety batch
+
+Base: main be32650e527b92ca56ab8266fd1153f31c48b8b6. Apply all package paths in a single review branch, including shared/demo-contacts.ts. No migration, secret, new service or production write is included.
+
+## Changes
+
+- Newer designed demo pages and exported pages have a visible concept notice that business details and examples are unverified. The legacy React preview also says details and examples need confirmation. This is not a claim that a demo is factually correct or approved for sharing.
+- Built-in fallback services, highlights and process steps are explicitly marked as examples and request confirmation instead of presenting invented offerings or promises as business facts. The AI prompt also asks for unsupported details to be illustrative, but cannot guarantee compliance. Sample showcase sections remain labeled as samples. Existing saved content is not rewritten automatically.
+- Preview and export contact links use one conservative validation helper shared with server QA. Invalid or ambiguous email, phone and Instagram values are not turned into links. A valid format does not verify ownership, reachability, consent or identity. Some legitimate formats, including telephone extensions, will need owner correction; original saved content remains unchanged. QA flags invalid contact fields and example service titles/descriptions, and the owner can supply exact corrections through the existing confirmation workflow.
+- Older QA results are deliberately marked stale because the review rules changed. Recheck before relying on them. A review override and explicit send approval remain separate. This change does not auto-approve, generate a real demo, contact a business or send email.
+- Unknown/non-sample photos are no longer mislabeled as sample photos. Existing rights warnings still require review; a label or source does not prove rights. The isolated preview accepts page-change messages only from its own iframe, while normal in-frame navigation remains supported.
+
+## Verification and limits
+
+27 offline suites passed, including simulated review gates, mock worker fallback, contact validation, stale review detection and exact owner-correction tests. Targeted server TypeScript checks passed; full-client diagnostics matched 17 pre-existing errors after line-number normalization. Synthetic browser checks passed in Chromium and WebKit: generated multi-page exports and the isolated frame at 320, 390, 768 and 1280 pixels, including normal frame navigation, rejection of a forged parent message, invalid contact-link suppression, and a sample form that sends nothing. The legacy preview was checked at 390 and 1280. External fonts/images/providers, real databases, physical devices, live deliverability and comprehensive security or visual correctness were not tested.
+
+No real demo, business website or email was used in testing. The prior stability PR was merged and Vercel reported deployment complete. This new package was bundled for synthetic browser tests, but its production Vite build has not been verified locally. Require a successful Vercel branch build and real-device checks after deployment. The safeguards do not validate facts, website ownership or image rights. More comprehensive website-aware generation and industry-specific pricing remain unfinished and need owner direction. Do not claim all provider usage is free.
