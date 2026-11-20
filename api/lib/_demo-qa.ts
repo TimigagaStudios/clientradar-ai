@@ -79,9 +79,8 @@ export function inspectDemo(input: unknown, options: { fixWhitespace?: boolean }
   return { content, issues, fixes };
 }
 
-// New contact-link rules make earlier checks stale, rather than silently
-// presenting an older, narrower review as current.
-const QA_VERSION = 2;
+// The expanded visible-text review makes earlier, narrower checks stale.
+const QA_VERSION = 3;
 
 // JSONB does not preserve object key order. Sort keys recursively so the
 // fingerprint survives a round trip through the database. View statistics
@@ -124,8 +123,14 @@ export function demoQaStatus(input: unknown): 'unchecked' | 'stale' | 'error' | 
 // Apply only owner-supplied text to a narrowly allowed field. The caller must
 // require explicit approval and compare-and-swap the content in the database.
 export function applyOwnerCorrection(input: unknown, path: string, value: string): Data {
-  const allowed = /^(businessName|disclaimer|contact\.(email|phone|instagram)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer))$/;
+  const allowed = /^(businessName|disclaimer|contact\.(email|phone|instagram)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer)|showcase\.title|showcase\.items\.\d+\.(?:title|subtitle|detail))$/;
   if (!allowed.test(path) || typeof value !== 'string' || value.length > 4000) throw new Error('This field cannot be corrected here.');
+  const itemPath = /^showcase\.items\.(\d+)\.(?:title|subtitle|detail)$/.exec(path);
+  if (itemPath) {
+    const items = object(object(input).showcase).items;
+    const index = Number(itemPath[1]);
+    if (!Number.isSafeInteger(index) || index >= 30 || String(index) !== itemPath[1] || !Array.isArray(items) || !items[index] || typeof items[index] !== 'object' || Array.isArray(items[index])) throw new Error('The selected showcase item is not available.');
+  }
   const content = JSON.parse(JSON.stringify(object(input))) as Data;
   const parts = path.split('.');
   if (parts.length === 2 && ['contact', 'hero', 'about', 'closing'].includes(parts[0]) && content[parts[0]] == null) content[parts[0]] = {};

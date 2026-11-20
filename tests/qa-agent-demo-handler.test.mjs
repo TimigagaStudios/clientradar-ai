@@ -52,6 +52,14 @@ r=await call('POST',{action:'qa-correct',jobId:id,path:'hero.title',value:'A cle
 row.leads=structuredClone(lead); const fp=row.content.qa.fingerprint;
 r=await call('POST',{action:'qa-correct',jobId:id,path:'hero.title',value:'A clear title',fingerprint:fp}); assert.equal(r.code,403);
 r=await call('POST',{action:'qa-correct',jobId:id,path:'hero.title',value:'A clear title',fingerprint:fp,confirm:true}); assert.equal(r.code,200); assert.equal(row.content.hero.title,'A clear title');
+row.content.showcase = { sample:true, title:'Showcase', items:[{title:'Sample',detail:'Sample detail'}] };
+r=await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,200); assert(row.content.qa.issues.some(x=>x.code==='sample_showcase'));
+let sampleFp = row.content.qa.fingerprint;
+r=await call('POST',{action:'qa-correct',jobId:id,path:'showcase.items.0.detail',value:'Owner supplied',fingerprint:sampleFp}); assert.equal(r.code,403); assert.equal(row.content.showcase.items[0].detail,'Sample detail');
+r=await call('POST',{action:'qa-correct',jobId:id,path:'showcase.items.99.detail',value:'No item',fingerprint:sampleFp,confirm:true}); assert.equal(r.code,400);
+r=await call('POST',{action:'qa-correct',jobId:id,path:'showcase.sample',value:'false',fingerprint:sampleFp,confirm:true}); assert.equal(r.code,400);
+r=await call('POST',{action:'qa-correct',jobId:id,path:'showcase.items.0.detail',value:'Owner supplied',fingerprint:sampleFp,confirm:true}); assert.equal(r.code,200); assert.equal(row.content.showcase.items[0].detail,'Owner supplied'); assert.equal(row.content.showcase.sample,true); assert(row.content.qa.issues.some(x=>x.code==='sample_showcase'));
+r=await call('POST',{action:'qa-correct',jobId:id,path:'showcase.items.0.title',value:'Stale',fingerprint:sampleFp,confirm:true}); assert.equal(r.code,409);
 mutate=()=>{row.content={...row.content,hero:{title:'Concurrent edit'}}}; r=await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,409); assert.equal(row.content.hero.title,'Concurrent edit');
 row.status='queued'; r=await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,409);
 console.log('PASS offline demo handler: owner auth, website evidence status, stale lead/content, explicit correction, CAS and public QA privacy.');

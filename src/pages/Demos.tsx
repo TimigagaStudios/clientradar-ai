@@ -230,11 +230,11 @@ const Demos = () => {
           return <div key={job.id} className="neo-in rounded-2xl px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0"><p className="font-semibold text-[var(--text-primary)] truncate">{lead?.businessName || 'Lead demo'}</p>
-                <p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : job.learned ? ' - built-in text, AI style' : ' - built-in text') : ''}</p>
+                <p className="text-xs text-[var(--text-secondary)]">{styleLevelLabel(job.styleLevel)} - {job.templateKey} - {job.status === 'ready' ? 'generated' : job.status} - attempt {job.attempts}{job.generatedBy ? (job.generatedBy === 'ai' ? ' - AI written' : job.learned ? ' - built-in text, AI style' : ' - built-in text') : ''}</p>
                 {job.status === 'ready' && <p className={cn('text-xs font-semibold', job.views ? 'text-green-500' : 'text-[var(--text-secondary)]')}>{describeDemoViews(job)}</p>}
                 {job.aiError && <p className="text-xs text-yellow-500 truncate">AI not used: {job.aiError}</p>}
               </div>
-              <div className="flex flex-wrap items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status}</span>
+              <div className="flex flex-wrap items-center gap-3"><span className={cn('text-xs font-bold uppercase', job.status === 'failed' ? 'text-red-500' : job.status === 'ready' ? 'text-green-500' : 'text-[var(--accent)]')}>{job.status === 'ready' ? 'Generated' : job.status}</span>
                 {job.status === 'ready' && <><button type="button" disabled={Boolean(checkingJobId)} onClick={() => void recheckQa(job.id)} className="text-xs font-bold text-[var(--accent)]">{checkingJobId === job.id ? 'Checking...' : `Recheck (${job.qaStatus})`}</button>{job.demoUrl && <a href={job.demoUrl} className="text-xs font-bold text-[var(--accent)]">Open</a>}</>}
                 {job.status === 'failed' && <button type="button" onClick={() => void retryDemo(job.id)} className="text-xs font-bold text-[var(--accent)]">Retry</button>}
                 <button type="button" onClick={() => void handleDeleteDemo(job.leadId, lead?.businessName || 'this lead')} disabled={deletingLeadId === job.leadId} aria-label="Delete demo" className="text-xs font-bold text-red-500 disabled:opacity-50">{deletingLeadId === job.leadId ? 'Deleting...' : 'Delete'}</button>
@@ -249,7 +249,7 @@ const Demos = () => {
               </div>
             </details>
             {job.status === 'ready' && <details className="mt-2 text-xs text-[var(--text-primary)]"><summary className="cursor-pointer font-bold">Quality details: {job.qaStatus}</summary>
-              <p className="mt-2 text-[var(--text-secondary)]">Last loaded result. Recheck after changes on another device. These limited checks do not verify facts, visuals, links, security or legal compliance.</p>
+              <p className="mt-2 text-[var(--text-secondary)]">Generated means the build finished, not that it is approved to share. This is the last loaded result; recheck after changes on another device. Limited checks do not verify facts, visuals, links, security or legal compliance.</p>
               {job.qaStatus === 'checked' && <>
                 <p className="mt-2">{job.qa?.issues?.length || 0} possible issue(s).</p>
                 <p className="mt-1 text-[var(--text-secondary)]">Website contact check: {job.qa?.agent?.websiteStatus === 'available' ? 'home page read' : job.qa?.agent?.websiteStatus === 'not_provided' ? 'no website supplied' : 'unavailable'}. This does not verify all business facts.</p>
