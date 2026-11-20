@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import DemoSiteView from '../components/DemoSiteView';
 import { hasDesign } from '../lib/demoSite';
+import { demoEmail, demoInstagram, demoPhone } from '../../shared/demo-contacts';
 import { ArrowLeft, ArrowRight, CalendarCheck, CheckCircle2, ChevronDown, Home, Instagram, Mail, MapPin, Minus, Phone, Plus, ShoppingBag, Sparkles, UtensilsCrossed, X } from 'lucide-react';
 
 type Pair = { title: string; body: string };
@@ -114,7 +115,9 @@ export default function DemoPreview() {
   const ShowcaseIcon = SHOWCASE_ICON[showcaseKind];
   const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0);
   const contact = content.contact || {};
-  const instagram = typeof contact.instagram === 'string' ? contact.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') : '';
+  const instagram = demoInstagram(contact.instagram);
+  const email = demoEmail(contact.email);
+  const phone = demoPhone(contact.phone);
 
   const border = `1px solid ${theme.muted}33`;
   const muted: CSSProperties = { color: theme.muted };
@@ -163,7 +166,7 @@ export default function DemoPreview() {
     <main className="min-h-screen" style={{ backgroundColor: theme.background, color: theme.text }}>
       <div className="px-5 py-2 text-center text-[11px] font-bold uppercase tracking-[0.18em] sm:px-8" style={{ backgroundColor: theme.surface, color: theme.muted, borderBottom: border }}>
         <BackLink fallback="/demos" className="mr-3 inline-flex items-center gap-1 align-middle"><ArrowLeft size={12} /> Back</BackLink>
-        <span className="inline-flex items-center gap-1 align-middle" style={accentText}><Sparkles size={12} /> Demo concept</span>
+        <span className="inline-flex items-center gap-1 align-middle" style={accentText}><Sparkles size={12} /> Demo concept - details and examples need confirmation</span>
       </div>
 
       <header className="sticky top-0 z-20" style={{ backgroundColor: theme.background, borderBottom: border }}>
@@ -360,10 +363,10 @@ export default function DemoPreview() {
             <h2 className="text-3xl font-black leading-tight sm:text-4xl">{closing.title || 'Get in touch'}</h2>
             {closing.body && <p className="mt-4 max-w-2xl text-lg leading-8" style={muted}>{closing.body}</p>}
             <div className="mt-8 flex flex-wrap gap-3">
-              {contact.phone && <a href={`tel:${String(contact.phone).replace(/[^+\d]/g, '')}`} className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-bold" style={primaryButton}><Phone size={16} />{contact.phone}</a>}
-              {contact.email && <a href={`mailto:${contact.email}`} className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-bold" style={{ border, color: theme.text }}><Mail size={16} style={accentText} />{contact.email}</a>}
+              {phone && <a href={`tel:${phone}`} className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-bold" style={primaryButton}><Phone size={16} />{contact.phone}</a>}
+              {email && <a href={`mailto:${email}`} className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-bold" style={{ border, color: theme.text }}><Mail size={16} style={accentText} />{email}</a>}
               {instagram && <a href={`https://instagram.com/${encodeURIComponent(instagram)}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-2xl px-5 py-3 font-bold" style={{ border, color: theme.text }}><Instagram size={16} style={accentText} />@{instagram}</a>}
-              {!contact.phone && !contact.email && !instagram && <p style={muted}>Contact details will be added before this site goes live.</p>}
+              {!phone && !email && !instagram && <p style={muted}>Contact details will be added before this site goes live.</p>}
             </div>
             {content.city && <p className="mt-6 inline-flex items-center gap-2 text-sm" style={muted}><MapPin size={16} style={accentText} />{content.city}</p>}
           </Reveal>
