@@ -3,6 +3,8 @@
 // The same files are shown in the live preview and packed into the ZIP download.
 // All business text is escaped, and facts that are missing become visible placeholders.
 
+import { demoEmail, demoInstagram, demoPhone } from '../../shared/demo-contacts';
+
 export type SiteFiles = Record<string, string>;
 export type SitePage = { key: string; file: string; label: string };
 
@@ -100,7 +102,7 @@ function readContent(content: any) {
   const level: 'mid' | 'hybrid' | 'ultra' = content?.styleLevel === 'ultra' || content?.styleLevel === 'hybrid' ? content.styleLevel : 'mid';
   const kind = oneOf(content?.showcase?.kind, Object.keys(SHOWCASE), 'booking');
   const contact = content?.contact || {};
-  const instagram = typeof contact.instagram === 'string' ? contact.instagram.replace(/^@/, '').replace(/^https?:\/\/(www\.)?instagram\.com\//i, '').replace(/\/$/, '') : '';
+  const instagram = demoInstagram(contact.instagram);
   const name = String(content?.businessName || 'Business');
   return {
     name,
@@ -121,10 +123,10 @@ function readContent(content: any) {
     kind,
     showcaseTitle: String(content?.showcase?.title || SHOWCASE[kind].nav),
     showcase: (Array.isArray(content?.showcase?.items) ? content.showcase.items : []).filter((item: any) => item && item.title && item.detail) as { title: string; subtitle?: string; detail: string }[],
-    phone: contact.phone ? String(contact.phone) : '',
-    email: contact.email ? String(contact.email) : '',
+    phone: demoPhone(contact.phone) ? String(contact.phone).trim() : '',
+    email: demoEmail(contact.email),
     instagram,
-    photos: (Array.isArray(content?.photos) ? content.photos : []).filter((photo: any) => photo && typeof photo.url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(photo.url)).slice(0, 12).map((photo: any) => ({ url: String(photo.url), sample: photo.kind !== 'own', alt: String(photo.alt || ''), credit: String(photo.credit || ''), unsplash: photo.source === 'unsplash', link: typeof photo.link === 'string' && /^https:\/\/(www\.pexels\.com|unsplash\.com)\/[^\s"'<>]*$/.test(photo.link) ? photo.link : photo.source === 'unsplash' ? 'https://unsplash.com/?utm_source=clientradar_ai&utm_medium=referral' : 'https://www.pexels.com' })) as { url: string; sample: boolean; alt: string; credit: string; link: string; unsplash: boolean }[],
+    photos: (Array.isArray(content?.photos) ? content.photos : []).filter((photo: any) => photo && typeof photo.url === 'string' && /^https:\/\/[^\s"'<>]+$/.test(photo.url)).slice(0, 12).map((photo: any) => ({ url: String(photo.url), sample: photo.kind === 'sample', alt: String(photo.alt || ''), credit: String(photo.credit || ''), unsplash: photo.source === 'unsplash', link: typeof photo.link === 'string' && /^https:\/\/(www\.pexels\.com|unsplash\.com)\/[^\s"'<>]*$/.test(photo.link) ? photo.link : photo.source === 'unsplash' ? 'https://unsplash.com/?utm_source=clientradar_ai&utm_medium=referral' : 'https://www.pexels.com' })) as { url: string; sample: boolean; alt: string; credit: string; link: string; unsplash: boolean }[],
     disclaimer: String(content?.disclaimer || 'Demo concept content. Confirm business details before production use.'),
     colors,
     onAccent: readableOn(colors.accent),
@@ -186,7 +188,7 @@ function art(model: Model, variant: number) {
   const photo = model.photos[place];
   if (!photo) return drawn;
   shownPhotos.add(place);
-  return `<span class="pic">${drawn}<img src="${esc(photo.url)}" alt="${esc(photo.alt || model.name)}" loading="${variant === 1 ? 'eager' : 'lazy'}" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('nopic');this.remove()">${photo.sample ? '<em class="pic-tag">Sample photo</em>' : ''}</span>`;
+  return `<span class="pic">${drawn}<img src="${esc(photo.url)}" alt="${esc(photo.alt || (photo.sample ? 'Illustrative sample photo' : 'Image'))}" loading="${variant === 1 ? 'eager' : 'lazy'}" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('nopic');this.remove()">${photo.sample ? '<em class="pic-tag">Sample photo</em>' : ''}</span>`;
 }
 
 // A visible, clearly labelled gap for a fact that is not known yet. Never filled with a guess.
@@ -775,6 +777,7 @@ function document_(model: Model, page: SitePage, inline: boolean) {
 ${css}
 </head>
 <body data-level="${model.level}">
+<div role="note" style="background:#fff8e5;color:#352800;padding:10px 16px;text-align:center;font:600 13px/1.4 system-ui,sans-serif">Demo concept: content and examples are unverified. Confirm business details before use.</div>
 <div class="bar" data-bar></div>
 ${header(model, page.key)}
 <main>
