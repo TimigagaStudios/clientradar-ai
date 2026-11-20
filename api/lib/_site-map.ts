@@ -15,16 +15,21 @@ const kinds: [string, RegExp][] = [
 ];
 const text = (value: string) => value.replace(/<[^>]{0,512}>/g, ' ').replace(/&amp;/gi, '&').replace(/&nbsp;/gi, ' ').replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 
-// Drop non-visible script/style blocks in linear time before looking for links.
-function withoutBlocks(html: string): string {
+// Drop comments and selected non-visible blocks in linear time before parsing.
+export function withoutBlocks(html: string): string {
   const lower = html.toLowerCase(); const out: string[] = []; let position = 0;
   while (position < html.length) {
     const open = lower.indexOf('<', position);
     if (open < 0) { out.push(html.slice(position)); break; }
     out.push(html.slice(position, open));
+    if (lower.startsWith('<!--', open)) {
+      const close = lower.indexOf('-->', open + 4);
+      if (close < 0) break;
+      position = close + 3; continue;
+    }
     const end = lower.indexOf('>', open + 1);
     if (end < 0) break;
-    const tag = lower.slice(open + 1, Math.min(end, open + 30)).match(/^\s*(script|style|svg|noscript)(?:\s|\/|$)/)?.[1];
+    const tag = lower.slice(open + 1, Math.min(end, open + 30)).match(/^\s*(script|style|svg|noscript|template|iframe)(?:\s|\/|$)/)?.[1];
     if (!tag) { out.push(html.slice(open, end + 1)); position = end + 1; continue; }
     const close = lower.indexOf(`</${tag}`, end + 1);
     if (close < 0) break;

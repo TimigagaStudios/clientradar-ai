@@ -13,4 +13,8 @@ assert.equal(job.firstViewedAt, row.content.stats.firstViewedAt);
 assert.equal(job.lastViewedAt, row.content.stats.lastViewedAt);
 const old = mapDemoJob({ id: 'old', template_key: 'auto', content: {} });
 for (const key of ['updatedAt', 'startedAt', 'generatedAt', 'completedAt', 'firstViewedAt', 'lastViewedAt']) assert.equal(old[key], null);
+const oldScan = mapDemoJob({ id:'old', template_key:'auto', content:{websiteAnalysis:{status:'partial',pagesRead:['/']}} });
+assert.deepEqual(oldScan.websiteAnalysis.sourcePages, []);
+const mapped = mapDemoJob({ id:'new',template_key:'auto',content:{websiteAnalysis:{status:'partial',sourcePages:[{host:'example.test',path:'/about',title:'About',heading:null,emails:['contact@example.test',42],phones:['+12345678']},{host:'example.test',path:'bad'}]}} });
+assert.equal(mapped.websiteAnalysis.sourcePages.length,1); assert.deepEqual(mapped.websiteAnalysis.sourcePages[0].emails,['contact@example.test']);
 console.log('PASS demo timestamp mapping and missing historical values.');
