@@ -70,6 +70,9 @@ try {
   reset(); const fallback = await processDemoJob(db, id, { record: false });
   assert.equal(fallback.status, 'ready'); assert.equal(row.content.generatedBy, 'fallback');
   assert.match(row.content.aiError, /incomplete or blocked/); assert.equal(row.content.qa.status, 'checked'); assert.equal(calls, 1);
+  assert(row.content.services.every(item => item.title.startsWith('Example ') && item.body.includes('confirmed')));
+  assert(row.content.qa.issues.some(issue => issue.code === 'example_services'));
+  assert(!JSON.stringify(row.content.faq).includes('aims to respond'));
 
   // Older ready demo: a photo-only refresh must not pass website images.
   row.content.photos = []; delete row.content.photosChecked;

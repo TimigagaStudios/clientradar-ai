@@ -1,0 +1,15 @@
+// Offline contact-link and rendered preview checks. No messages are sent.
+import assert from 'node:assert/strict';import {build} from 'esbuild';
+const out=await build({entryPoints:['shared/demo-contacts.ts','src/lib/demoSite.ts'],bundle:true,platform:'node',format:'esm',outdir:'/virtual',write:false,logLevel:'silent'});
+const load=n=>import(`data:text/javascript;base64,${Buffer.from(out.outputFiles.find(x=>x.path.endsWith(n)).contents).toString('base64')}`);
+const {demoEmail,demoPhone,demoInstagram}=await load('demo-contacts.js');const {buildDemoSite}=await load('demoSite.js');
+assert.equal(demoEmail('info@company.test'),'info@company.test');for(const x of ['info@company.test?bcc=third@evil.test','info@company.test#foo','person%0Abcc@company.test','x\nBCC:bad@evil.test','no@site','name..x@company.test','contact@example.com',null])assert.equal(demoEmail(x),'');
+assert.equal(demoPhone('+234 (802) 345-6789'),'+2348023456789');for(const x of ['2026-11-17','+234 802 345 6789 ext 3','123','abc1234567','0000000000','17.11.2026','34.049544',null])assert.equal(demoPhone(x),'');
+for(const x of ['@salon.name','https://www.instagram.com/salon.name/'])assert.equal(demoInstagram(x),'salon.name');for(const x of ['https://evil.test/salon.name','https://instagram.com/other/post','https://instagram.com/handle?foo=bar','..','javascript:alert(1)',null])assert.equal(demoInstagram(x),'');
+const base={businessName:'Test',styleLevel:'ultra',design:{version:1},hero:{title:'Hello'},about:{body:'About'},services:[{title:'Example service',body:'Example'}],contact:{},showcase:{kind:'booking',items:[{title:'Example',detail:'Example'}]}};
+let files=buildDemoSite({...base,contact:{email:'info@company.test?bcc=x@evil.test',phone:'+234 802 345 6789 ext 4',instagram:'https://evil.test/abc'}});
+for(const [name,html] of Object.entries(files).filter(([name])=>name.endsWith('.html'))){assert.match(html,/Demo concept: content and examples are unverified/);assert(!html.includes('mailto:info@company.test?'));assert(!html.includes('tel:+23480234567894'));assert(!html.includes('instagram.com/https'));}
+files=buildDemoSite({...base,contact:{email:'info@company.test',phone:'+234 (802) 345-6789',instagram:'@salon.name'}});assert(files['index.html'].includes('mailto:info@company.test'));assert(files['index.html'].includes('tel:+2348023456789'));assert(files['index.html'].includes('https://instagram.com/salon.name'));
+const unknown=buildDemoSite({...base,photos:[{url:'https://company.test/image.jpg'}]});const unknownHtml=Object.values(unknown).filter(x=>typeof x==='string').join('\n');assert(!unknownHtml.includes('Sample photo</em>'));assert(!unknown['README.md'].includes('Photos marked "Sample photo"'));
+const sample=buildDemoSite({...base,photos:[{kind:'sample',url:'https://images.pexels.com/image.jpg',source:'pexels'}]});const sampleHtml=Object.values(sample).filter(x=>typeof x==='string').join('\n');assert(sampleHtml.includes('Sample photo</em>'));assert(sample['README.md'].includes('Photos marked "Sample photo"'));
+console.log('PASS safe demo links, visible concept notes, and honest photo labels.');
