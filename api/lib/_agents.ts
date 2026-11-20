@@ -2,6 +2,7 @@ import { buildDemoPrompt, processDemoJob, refreshDemoSections } from './demo-job
 import { normalizeNewStyleLevel } from './demo-ai.js';
 import { searchBusinesses, type FoundBusiness } from './_places.js';
 import { isOfficialWebsiteUrl, isValidContactEmail, isValidContactPhone, scanSummary, scanWebsite } from './_website.js';
+import { prioritizeProspects } from './_prospect-priority.js';
 
 // Specialist agents. Each runner receives ONE task and only the tools listed for that agent:
 // it cannot reach another agent's tools or data. Each task runs in its own server call.
@@ -35,7 +36,8 @@ const runLeadResearch: Runner = async (_supabase, task) => {
     if (pool.length >= (onlyWithoutSite ? wanted : Math.max(wanted, 16)) || !found.hasMore || found.source !== 'geoapify' || page >= 3) break;
     found = await searchBusinesses({ category, city, limit: pageSize, offset: (page + 1) * pageSize });
   }
-  const candidates = pool.slice(0, Math.max(wanted, Math.min(pool.length, 20)));
+  // Rank within the results already fetched; do not add provider requests.
+  const candidates = prioritizeProspects(pool).slice(0, Math.max(wanted, Math.min(pool.length, 20)));
 
   // Route 1: map already has email + phone. Route 2: official website checked for missing contact(s).
   const toScan = candidates
@@ -127,8 +129,10 @@ const runLeadResearch: Runner = async (_supabase, task) => {
     if (!entry.websiteChecked && isOfficialWebsiteUrl(entry.website)) return 1;
     return 2;
   };
-  const sorted = [...enriched].sort((a, b) => rankOf(a) - rankOf(b)).slice(0, wanted);
+  const sorted = prioritizeProspects([...enriched].sort((a, b) => rankOf(a) - rankOf(b))).slice(0, wanted);
   const qualifiedTotal = sorted.filter((entry) => isValidContactEmail(entry.email) && isValidContactPhone(entry.phone)).length;
+  const shownFromMap = sorted.filter((entry) => entry.emailSource === 'map' && entry.phoneSource === 'map').length;
+  const shownFromSite = sorted.filter((entry) => isValidContactEmail(entry.email) && isValidContactPhone(entry.phone) && (entry.emailSource === 'website' || entry.phoneSource === 'website')).length;
   const pendingShown = sorted.filter((entry) => !(isValidContactEmail(entry.email) && isValidContactPhone(entry.phone)) && !entry.websiteChecked && isOfficialWebsiteUrl(entry.website)).length;
   const incompleteShown = sorted.length - qualifiedTotal - pendingShown;
 
@@ -136,7 +140,7 @@ const runLeadResearch: Runner = async (_supabase, task) => {
   const summary = !sorted.length
     ? `Found no ${category} in ${city}${onlyWithoutSite ? ` without a listed website (looked at ${looked})` : ''}.${where}`
     : [
-        `Checked ${sorted.length} ${category} in ${city}: ${qualifiedTotal} qualified with both email and phone (${route1} from map contacts, ${route2} confirmed on official websites).`,
+        `Checked ${sorted.length} ${category} in ${city}: ${qualifiedTotal} have both email and phone in a usable format (${shownFromMap} from map contacts, ${shownFromSite} using website contact text). Contact accuracy and whether a website exists still need checking.`,
         pendingShown ? `${pendingShown} more have an official website you can check below before saving.` : '',
         incompleteShown ? `${incompleteShown} ${incompleteShown === 1 ? 'is' : 'are'} incomplete (missing email or phone) and kept out of Save.` : '',
         onlyWithoutSite && !qualifiedTotal ? 'Note: businesses without a website only qualify when the map listing itself includes both email and phone.' : '',

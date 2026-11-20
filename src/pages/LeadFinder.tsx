@@ -227,11 +227,16 @@ const LeadFinder = () => {
       }
     }
 
+    // Qualified contacts with no listed site come first; retain the provider's
+    // order within each group. A missing listing is not proof of no website.
+    const noSite = qualified.filter(({ item }) => !item.website?.trim());
+    const withSite = qualified.filter(({ item }) => Boolean(item.website?.trim()));
+    const ranked = [...noSite, ...withSite];
     return {
-      qualified,
+      qualified: ranked,
       pendingCheck,
       incomplete,
-      active: [...qualified, ...pendingCheck],
+      active: [...ranked, ...pendingCheck],
       route1Count,
       route2Count,
     };
@@ -412,7 +417,7 @@ const LeadFinder = () => {
                   Qualified & Reviewable Candidates ({partitioned.active.length} of {baseVisible.length})
                 </h2>
                 <p className="text-sm text-[var(--text-secondary)] mt-1">
-                  Leads require both an email address and a phone number before they can be saved.
+                  Leads need both email and phone before saving. Results with no website listed appear first; confirm their website and contact details before outreach.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">

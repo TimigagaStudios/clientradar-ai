@@ -13,6 +13,7 @@ import { billsLine, deleteTracker, listTracker, saveTracker } from './lib/_track
 import type { MasterContext } from './lib/_master.js';
 import { canRun, runAgentTask } from './lib/_agents.js';
 import { isOfficialWebsiteUrl, isValidContactEmail, isValidContactPhone, scanLead, scanWebsite, scanSummary } from './lib/_website.js';
+import { prioritizeProspects } from './lib/_prospect-priority.js';
 import { handleExtract, handleImportSave, handleImportUpdate, listPendingImports } from './lib/_screenshots.js';
 import { ensureMailRecoveryReady } from './lib/_mail-recovery.js';
 import { QaReviewNeeded, batchApprovalDigest, qaReviewResponse, reviewOutreachDemos } from './lib/_qa-outreach.js';
@@ -173,19 +174,20 @@ async function handleChat(supabase: any, req: VercelRequest, res: VercelResponse
 }
 
 async function handleBatchDemos(supabase: any, res: VercelResponse, message: string, wish: { count: number; noWebsite: boolean; level: 'mid' | 'hybrid' | 'ultra' }) {
-  let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website, notes').order('lead_score', { ascending: false }).limit(400);
+  let query = supabase.from('leads').select('id, business_name, lead_score, demo_status, website, email, phone, notes').order('lead_score', { ascending: false }).limit(400);
   if (wish.noWebsite) query = query.is('website', null);
   const { data: leads } = await query;
   const { data: active } = await supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']);
   const busy = new Set((active || []).map((row: any) => row.lead_id));
-  // Only leads with no demo yet; the strongest first.
+  // Prefer complete contacts with no saved website within the bounded results;
+  // the existing score order remains the tie-breaker. Missing is not proof.
   // One demo per business name: a name saved twice (two branches, or the same business imported twice)
   // gets a single demo, and a name that already has a demo is not built again.
   // Leads the owner marked as different branches each count as their own business.
   const keyOf = (lead: any) => (keptApart(lead) ? `${nameKey(lead.business_name)}:${lead.id}` : nameKey(lead.business_name));
   const taken = new Set((leads || []).filter((lead: any) => busy.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')).map(keyOf));
   let sameName = 0;
-  const open = (leads || []).filter((lead: any) => {
+  const open = prioritizeProspects(leads || []).filter((lead: any) => {
     if (busy.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')) return false;
     const key = keyOf(lead);
     if (key && taken.has(key)) { sameName += 1; return false; }
@@ -202,12 +204,12 @@ async function handleBatchDemos(supabase: any, res: VercelResponse, message: str
     await note(supabase, 'master', 'handoff', `Asked ${nameOf('demo-creation')} to: ${created.title} (waiting for your approval)`, created.id);
     return res.status(200).json({ success: true, data: { reply, source: 'rules', tasks: [{ id: created.id, agentKey: created.agent_key, agentName: nameOf(created.agent_key), title: created.title, status: created.status }] } });
   };
-  if (!picked.length) return await say(`I looked for leads${wish.noWebsite ? ' without a website' : ''} that have no demo yet and found none, so there is nothing to build.`, null);
+  if (!picked.length) return await say(`I looked for leads${wish.noWebsite ? ' with no saved website' : ''} that have no demo yet and found none, so there is nothing to build.`, null);
   const names = picked.map((lead: any) => String(lead.business_name));
   const listed = names.slice(0, 3).join(', ') + (names.length > 3 ? ` and ${names.length - 3} more` : '');
   const more = open.length > picked.length ? ` ${open.length - picked.length} more are waiting after this batch.` : '';
   const capped = wish.count === MAX_BATCH && open.length > MAX_BATCH ? ` I keep a batch to ${MAX_BATCH} so the free AI limit is not used up at once.` : '';
-  const reply = `I picked the ${picked.length} strongest ${picked.length === 1 ? 'lead' : 'leads'}${wish.noWebsite ? ' without a website' : ''} that have no demo yet: ${listed}. Approve once and the Demo Creation Agent builds them one after another; I will tell you when they are ready. Nothing is sent to anyone.${capped}${more}${sameName ? ` I left out ${sameName} ${sameName === 1 ? 'lead that shares its' : 'leads that share their'} business name with another lead, so no business gets two demos.` : ''}`;
+  const reply = `I selected ${picked.length} ${picked.length === 1 ? 'lead' : 'leads'}${wish.noWebsite ? ' with no saved website' : ''} that have no demo yet: ${listed}. Leads with no saved website and both email and phone are prioritized when available; details still need checking. Approve once and the Demo Creation Agent builds them one after another; I will tell you when they are ready. Nothing is sent to anyone.${capped}${more}${sameName ? ` I left out ${sameName} ${sameName === 1 ? 'lead that shares its' : 'leads that share their'} business name with another lead, so no business gets two demos.` : ''}`;
   return await say(reply, {
     agent_key: 'demo-creation',
     title: `Build ${picked.length} ${LEVEL_NAMES[wish.level]} ${picked.length === 1 ? 'demo' : 'demos'} (one approval for all)`,
@@ -541,7 +543,7 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
   // 1. Inspect saved leads (bounded first 400 highest-scored for demo picking + total count) and open tasks.
   const [{ count: totalLeadsRaw }, { data: candidateLeads }, { data: activeDemoJobs }, { data: openTasks }] = await Promise.all([
     supabase.from('leads').select('id', { count: 'exact', head: true }),
-    supabase.from('leads').select('id, business_name, lead_score, demo_status, website, email, status, notes').order('lead_score', { ascending: false }).limit(400),
+    supabase.from('leads').select('id, business_name, lead_score, demo_status, website, email, phone, status, notes').order('lead_score', { ascending: false }).limit(400),
     supabase.from('demo_jobs').select('lead_id').in('status', ['queued', 'generating']),
     supabase.from('agent_tasks').select('id, agent_key, title, status, lead_id, input, requested_by, parent_task_id, created_at').in('status', ['queued', 'running', 'waiting_approval']).order('created_at', { ascending: false }).limit(60),
   ]);
@@ -606,7 +608,7 @@ async function handleAutopilot(supabase: any, req: VercelRequest, res: VercelRes
         .map(keyOf),
     );
     const pickedDemos: any[] = [];
-    for (const lead of candidateLeads) {
+    for (const lead of prioritizeProspects(candidateLeads)) {
       if (pickedDemos.length >= AUTO_DEMO_CAP) break;
       if (busyLeadIds.has(lead.id) || (lead.demo_status && lead.demo_status !== 'Not Started')) continue;
       const key = keyOf(lead);
