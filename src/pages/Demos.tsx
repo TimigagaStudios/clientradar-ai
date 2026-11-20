@@ -373,6 +373,12 @@ const Demos = () => {
                   <p className="font-bold text-[var(--text-primary)]">Website used for generation</p>
                   <p className="mt-1">{readyJob.websiteAnalysis?.status === 'partial' ? `Partial scan: ${readyJob.websiteAnalysis.pagesRead.length} page(s) read. This is not a complete site review.` : readyJob.websiteAnalysis?.status === 'unavailable' ? 'The supplied website could not be read. Review the demo and confirm its details.' : readyJob.websiteAnalysis?.status === 'not_provided' ? 'No website address was supplied. Review the demo and confirm its details.' : 'No generation scan record is available for this demo.'}</p>
                   <EventTime value={readyJob.websiteAnalysis?.checkedAt} label="Scan recorded" />
+                  {readyJob.websiteAnalysis?.linkedPages?.length > 0 && <details className="mt-2" data-site-map>
+                    <summary className="cursor-pointer font-bold text-[var(--accent)]">Pages found on the starting page</summary>
+                    <p className="mt-2">These are links found in the page, not proof of the linked content. Only pages marked Read were fetched. Results are limited and may miss pages.</p>
+                    <ul className="mt-2 space-y-1">{readyJob.websiteAnalysis.linkedPages.map((page: any) => <li key={page.path} className="break-words"><span className="font-semibold text-[var(--text-primary)]">{page.label}</span> - {page.path} - {page.read ? 'Read' : 'Link found only'}</li>)}</ul>
+                  </details>}
+
                 </div>}
                 <div className="neo-in p-4 rounded-2xl">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
