@@ -4,6 +4,7 @@ import { DollarSign, Handshake, TrendingUp, Search, CheckCircle2, XCircle, Clock
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { savedClosedValue } from '../lib/lead-insights';
 
 const Deals = () => {
   const { leads, updateLead } = useLeads() as any;
@@ -39,11 +40,7 @@ const Deals = () => {
       .reduce((acc: number, lead: any) => acc + (Number(lead.dealValue) || 0), 0);
   }, [dealLeads]);
 
-  const totalClosedValue = useMemo(() => {
-    return dealLeads
-      .filter((lead: any) => lead.status === 'Deal Closed')
-      .reduce((acc: number, lead: any) => acc + (Number(lead.dealValue) || 0), 0);
-  }, [dealLeads]);
+  const totalClosedValue = useMemo(() => savedClosedValue(dealLeads), [dealLeads]);
 
   const interestedCount = dealLeads.filter((lead: any) => lead.status === 'Interested').length;
   const negotiatingCount = dealLeads.filter((lead: any) => lead.status === 'Negotiating').length;
@@ -75,14 +72,14 @@ const Deals = () => {
             Deals Pipeline
           </h1>
           <p className="text-[var(--text-secondary)] font-medium">
-            Track commercial opportunities, negotiation progress, and closed revenue.
+            Track commercial opportunities, negotiation progress, and saved closed values. Saved amounts do not confirm payment.
           </p>
         </div>
         <div className="rounded-2xl neo-card px-5 py-4 inline-flex items-center gap-3">
           <DollarSign className="text-[var(--accent)]" size={20} />
           <div>
             <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold">
-              Closed Revenue
+              Saved Closed Value
             </p>
             <p className="text-xl font-black text-[var(--text-primary)]">
               ${totalClosedValue.toLocaleString()}

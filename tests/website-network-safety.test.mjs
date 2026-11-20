@@ -17,9 +17,9 @@ const modules = {
 };
 modules['node:http'] = modules['node:https'];
 const plugin={name:'offline-network',setup(b){b.onResolve({filter:/^node:(dns\/promises|http|https)$/},a=>({path:a.path,namespace:'fake'}));b.onLoad({filter:/.*/,namespace:'fake'},a=>({contents:modules[a.path],loader:'js'}));}};
-const out=await build({entryPoints:['api/lib/_website.ts','api/lib/_safe-web.ts'],bundle:true,platform:'node',format:'esm',outdir:'/virtual',write:false,plugins:[plugin],logLevel:'silent'});
+const out=await build({entryPoints:['api/lib/_website.ts','api/lib/_safe-web.ts','api/lib/_places.ts'],bundle:true,platform:'node',format:'esm',outdir:'/virtual',write:false,plugins:[plugin],logLevel:'silent'});
 const load=(suffix)=>import(`data:text/javascript;base64,${Buffer.from(out.outputFiles.find(x=>x.path.endsWith(suffix)).contents).toString('base64')}`);
-const {scanWebsite,isOfficialWebsiteUrl,findEmails}=await load('_website.js');const {safeWebGet}=await load('_safe-web.js');
+const {scanWebsite,isOfficialWebsiteUrl,findEmails}=await load('_website.js');const {safeWebGet}=await load('_safe-web.js');const {checkWebsite}=await load('_places.js');
 function setup(){globalThis.dns=[];globalThis.requests=[];globalThis.pins=[];globalThis.ipByHost={};globalThis.pages={};}
 setup();
 pages['https://company.test/']={status:301,location:'https://www.company.test/'};
@@ -80,4 +80,12 @@ setup();pages['https://company.test/']={status:302,location:'http://company.test
 setup();pages['http://company.test/']={status:301,location:'https://company.test/'};pages['https://company.test/']={status:200,body:'<html>OK</html>'};assert(await scanWebsite('http://company.test/'));
 setup();pages['https://company.test/']={status:302,location:'/a'};pages['https://company.test/a']={status:302,location:'/b'};pages['https://company.test/b']={status:302,location:'/c'};pages['https://company.test/c']={status:302,location:'/d'};pages['https://company.test/d']={status:200,body:'ok'};assert.equal(await safeWebGet(new URL('https://company.test/'),{maxBytes:1000,timeoutMs:6000,types:['text/html'],agent:'test'}),null);assert.equal(requests.length,4);
 assert.deepEqual(findEmails('x'.repeat(200000),'company.test'),[]);
-console.log('PASS safe scanner: pinned IPv4, same-site redirects, private destinations, credentials, body/type limits and no external stylesheets.');
+// Lead Finder's provider-supplied site checks must use the same safe transport.
+setup();assert.deepEqual(await checkWebsite('http://127.0.0.1/admin'),{outdated:false,note:null});assert.equal(requests.length,0);
+setup();assert.deepEqual(await checkWebsite('https://user:password@company.test/'),{outdated:false,note:null});assert.equal(requests.length,0);
+setup();ipByHost['company.test']=['169.254.169.254'];assert.deepEqual(await checkWebsite('https://company.test/'),{outdated:false,note:null});assert.equal(requests.length,0);
+setup();pages['https://company.test/']={status:302,location:'http://127.0.0.1/private'};assert.deepEqual(await checkWebsite('https://company.test/'),{outdated:false,note:null});assert.equal(requests.length,1);
+setup();pages['https://company.test/']={status:200,body:'<html><meta name="viewport" content="width=device-width"></html>'};assert.deepEqual(await checkWebsite('https://company.test/?token=secret'),{outdated:false,note:null});assert.equal(requests[0].url,'https://company.test/');
+setup();pages['https://company.test/']={status:200,body:'<html><head></head></html>'};assert.deepEqual(await checkWebsite('https://company.test/'),{outdated:true,note:'Mobile viewport tag not detected'});
+setup();pages['https://company.test/']={status:200,body:'x'.repeat(120001)};assert.deepEqual(await checkWebsite('https://company.test/'),{outdated:false,note:null});
+console.log('PASS safe scanner and Lead Finder site checks: pinned IPv4, same-site redirects, private destinations, credentials and body/type limits.');

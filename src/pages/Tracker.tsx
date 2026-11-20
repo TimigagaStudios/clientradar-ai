@@ -3,6 +3,7 @@ import { AlertTriangle, CalendarClock, Pencil, Plus, Trash2, TrendingUp, Wallet,
 import { useLeads } from '../context/LeadContext';
 import { useToast } from '../components/ui/useToast';
 import { priceStage } from '../lib/demo-factory';
+import { savedClosedValue } from '../lib/lead-insights';
 import { cn } from '../utils/cn';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
 
@@ -77,7 +78,7 @@ const Tracker = () => {
   }, [items]);
   const dueSoon = useMemo(() => items.filter((item) => item.status === 'paid' && item.nextDue && (daysUntil(item.nextDue) as number) <= 30).sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue))), [items]);
   const closed = useMemo(() => (leads || []).filter((lead: any) => lead.status === 'Deal Closed'), [leads]);
-  const income = closed.reduce((sum: number, lead: any) => sum + (Number(lead.dealValue) || 0), 0);
+  const income = savedClosedValue(closed);
   const stage = priceStage(closed.length);
   const usdYear = totals.USD?.yearly || 0;
   const otherCurrencies = Object.keys(totals).filter((code) => code !== 'USD');
@@ -137,14 +138,14 @@ const Tracker = () => {
           <p className="mt-1 text-xs text-[var(--text-secondary)]">{items.filter((item) => item.status === 'paid').length} paying, {items.filter((item) => item.status === 'free').length} free, {items.filter((item) => item.status === 'paused').length} paused</p>
         </div>
         <div className="neo-card p-5">
-          <p className={labelClasses}><TrendingUp size={12} className="inline mr-1" />Closed deals</p>
+          <p className={labelClasses}><TrendingUp size={12} className="inline mr-1" />Saved closed value</p>
           <p className="mt-2 text-2xl font-black text-[var(--text-primary)]">{money(income, 'USD')}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">{closed.length} closed {closed.length === 1 ? 'deal' : 'deals'}, all time, from your leads.</p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">{closed.length} closed {closed.length === 1 ? 'deal' : 'deals'}, all time. Saved values do not confirm payment.</p>
         </div>
         <div className="neo-card p-5">
           <p className={labelClasses}>Profit or loss</p>
-          <p className={cn('mt-2 text-2xl font-black', income - usdYear >= 0 ? 'text-green-500' : 'text-red-400')}>{money(income - usdYear, 'USD')}</p>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">Closed deals minus one year of USD costs.{otherCurrencies.length ? ' Other currencies are not included.' : ''}</p>
+          <p className="mt-2 text-lg font-bold text-[var(--text-primary)]">Not available</p>
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">Payment records and matched-period costs are needed for a meaningful profit calculation.</p>
         </div>
       </section>
 

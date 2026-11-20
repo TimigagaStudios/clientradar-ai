@@ -3,6 +3,7 @@
 // instead. OpenStreetMap has fewer listings and no ratings, and nothing here is invented:
 // missing phone, website or rating stays empty.
 import { isValidContactEmail, isValidContactPhone } from './_website.js';
+import { safeWebGet } from './_safe-web.js';
 
 export interface FoundBusiness {
   businessName: string;
@@ -45,12 +46,12 @@ export async function checkWebsite(url: string | null | undefined): Promise<{ ou
   let parsed: URL;
   try { parsed = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`); } catch { return { outdated: false, note: null }; }
   try {
-    const response = await fetch(parsed.toString(), { signal: AbortSignal.timeout(3500), redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ClientRadarAI/1.0)' } });
-    if (!response.ok) return { outdated: false, note: null };
-    const html = (await response.text()).slice(0, 120_000);
-    if (!/<html|<head|<body/i.test(html)) return { outdated: false, note: null };
-    if (!/<meta[^>]+name=["']?viewport/i.test(html)) return { outdated: true, note: 'Not built for phones' };
-    if (String(response.url || parsed.toString()).startsWith('http://')) return { outdated: true, note: 'No secure connection (https)' };
+    // Treat provider website fields as untrusted. Reuse the bounded, DNS-pinned
+    // transport rather than following arbitrary URLs with an unrestricted fetch.
+    const page = await safeWebGet(parsed, { timeoutMs: 3500, maxBytes: 120_000, types: ['text/html'], agent: 'Mozilla/5.0 (compatible; ClientRadarAI/1.0)', allowHttp: true, siteHost: parsed.hostname });
+    if (!page || !/<html|<head|<body/i.test(page.text)) return { outdated: false, note: null };
+    if (!/<meta[^>]+name=["']?viewport/i.test(page.text)) return { outdated: true, note: 'Mobile viewport tag not detected' };
+    if (page.finalUrl.startsWith('http://')) return { outdated: true, note: 'No secure connection (https)' };
     return { outdated: false, note: null };
   } catch {
     return { outdated: false, note: null };
