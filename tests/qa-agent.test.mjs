@@ -17,6 +17,10 @@ changed.hero.title = 'Award-winning, guaranteed results'; changed.showcase.items
 const findings = inspectQaDemo(changed, lead, site).findings;
 for (const code of ['name_differs_from_lead', 'email_differs_from_lead', 'email_not_seen_on_site', 'phone_differs_from_lead', 'phone_not_seen_on_site', 'sample_showcase', 'credentials', 'guarantee', 'promotion', 'price']) assert(findings.some(x => x.code === code), code);
 assert(findings.some(x => x.path === 'showcase.items.0.detail' && x.code === 'price'));
+const extraText = inspectQaDemo({ businessName: 'Guaranteed business', disclaimer: 'Sale ends tomorrow', showcase: { title: 'Certified work', items: [] } }).findings;
+assert(extraText.some(x => x.path === 'businessName' && x.code === 'guarantee'));
+assert(extraText.some(x => x.path === 'disclaimer' && x.code === 'promotion'));
+assert(extraText.some(x => x.path === 'showcase.title' && x.code === 'credentials'));
 const unavailable = inspectQaDemo(content, lead, null);
 assert.equal(unavailable.sources.websiteContacts, false);
 assert(!unavailable.findings.some(x => x.code.endsWith('_not_seen_on_site')));
