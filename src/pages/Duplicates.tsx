@@ -5,7 +5,7 @@ import ListPager, { usePagedList } from '../components/ui/ListPager';
 
 // Duplicate review: business names saved more than once, side by side.
 // Nothing is removed until you choose. "Different branches" keeps both and stops asking;
-// "Merge into this one" keeps the chosen record, moves everything over and removes the other.
+// "Merge into this one" attempts to move listed records and remove the other.
 
 type DupLead = { id: string; name: string; category: string; city: string; address: string; phone: string; email: string; website: string; status: string; demoStatus: string; score: number; createdAt: string };
 type Group = { key: string; name: string; hint: 'same' | 'unclear'; reason: string; leads: DupLead[] };
@@ -43,9 +43,9 @@ export default function Duplicates() {
     try {
       // One removal at a time, so a failure never leaves a half-finished group unreported.
       for (const other of group.leads.filter((lead) => lead.id !== keep.id)) await call('/api/team', { action: 'duplicate-merge', keepId: keep.id, removeId: other.id, confirm: true });
-      setDone(`Merged: ${group.name} is now one lead. Its demos, notes and outreach history were moved to it.`);
+      setDone(`Merge completed for ${group.name}. Review the kept lead and its related records; not all fields or relationships are combined.`);
       await load();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not merge'); await load(); }
+    } catch (reason) { const message = reason instanceof Error ? reason.message : 'Could not merge'; await load(); setError(`${message} Earlier merge steps may have changed records. Review before retrying.`); }
     setBusy('');
   };
 
@@ -93,7 +93,7 @@ export default function Duplicates() {
         <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }} role="dialog" aria-modal="true" aria-label="Confirm merge">
           <div className="neo-card w-full max-w-md p-5 space-y-3">
             <h3 className="text-lg font-black text-[var(--text-primary)]">Merge {confirm.group.leads.length} records into one?</h3>
-            <p className="text-sm text-[var(--text-secondary)]">The record you chose{confirm.keep.city ? ` (${confirm.keep.city})` : ''} stays. It takes any detail it is missing from the {confirm.group.leads.length === 2 ? 'other record' : 'other records'}, and their demos, notes and outreach history move to it. Then the {confirm.group.leads.length === 2 ? 'other record is' : 'other records are'} removed. This cannot be undone.</p>
+            <p className="text-sm text-[var(--text-secondary)]">The record you chose{confirm.keep.city ? ` (${confirm.keep.city})` : ''} stays. Missing fields are filled where possible, and the app attempts to move demo jobs, lead notes, outreach logs and agent records before removing the others. Not all fields or relationships are combined. Linked invoice records block removal. Merging is not transactional; some steps may complete even if a later step fails. This cannot be undone.</p>
             <div className="flex gap-2 pt-1">
               <button type="button" onClick={() => void merge()} className="rounded-full px-4 py-2 text-sm font-bold text-white" style={{ background: '#FF7A00' }}>Yes, merge</button>
               <button type="button" onClick={() => setConfirm(null)} className="neo-button rounded-full px-4 py-2 text-sm font-bold text-[var(--text-primary)]">Cancel</button>

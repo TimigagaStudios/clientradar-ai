@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './lib/auth.js';
 import { isValidContactEmail, isValidContactPhone } from './lib/_website.js';
+import { assertNoLinkedInvoices } from './lib/_invoice-guard.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -13,6 +14,8 @@ function isMissingTable(error: any): boolean {
 
 async function resetAllLeads(supabase: any): Promise<number> {
   const now = new Date().toISOString();
+  // Check before touching any tasks or child records. This is not transactional.
+  await assertNoLinkedInvoices(supabase);
 
   // 1. Cancel open lead-bound tasks so background queues do not chase deleted leads, then detach lead_id.
   for (const op of [
@@ -35,16 +38,11 @@ async function resetAllLeads(supabase: any): Promise<number> {
     }
   }
 
-  // 3. Preserve invoices when lead_id is nullable; only delete linked invoices if NOT NULL blocks detaching.
-  const detachInvoices = await supabase.from('invoices').update({ lead_id: null }).not('lead_id', 'is', null);
-  if (detachInvoices.error && !isMissingTable(detachInvoices.error)) {
-    const removeInvoices = await supabase.from('invoices').delete().not('lead_id', 'is', null);
-    if (removeInvoices.error && !isMissingTable(removeInvoices.error)) {
-      throw new Error(`Could not clear linked invoices: ${removeInvoices.error.message}`);
-    }
-  }
+  // Recheck before lead deletion; a new invoice could have appeared. Earlier
+  // child operations are not rolled back if this check fails.
+  await assertNoLinkedInvoices(supabase);
 
-  // 4. Delete all leads in one query and return how many were removed.
+  // Delete all leads in one query and return how many were removed.
   const { data: deletedRows, error: deleteError } = await supabase
     .from('leads')
     .delete()
