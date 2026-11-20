@@ -374,6 +374,8 @@ const Demos = () => {
                   <p className="font-bold text-[var(--text-primary)]">Website used for generation</p>
                   <p className="mt-1">{readyJob.websiteAnalysis?.status === 'partial' ? `Partial scan: ${readyJob.websiteAnalysis.pagesRead.length} page(s) read. This is not a complete site review.` : readyJob.websiteAnalysis?.status === 'unavailable' ? 'The supplied website could not be read. Review the demo and confirm its details.' : readyJob.websiteAnalysis?.status === 'not_provided' ? 'No website address was supplied. Review the demo and confirm its details.' : 'No generation scan record is available for this demo.'}</p>
                   <EventTime value={readyJob.websiteAnalysis?.checkedAt} label="Scan recorded" />
+                  {readyJob.websiteAnalysis?.extraPagesStatus === 'robots_unavailable' && <p className="mt-1">Additional page reads were skipped because robots.txt could not be checked.</p>}
+                  {readyJob.websiteAnalysis?.extraPagesStatus === 'attempted' && <p className="mt-1">Additional page reads were screened using robots.txt; blocked or unreadable pages remain links only. This does not establish permission to reuse content.</p>}
                   {readyJob.websiteAnalysis?.linkedPages?.length > 0 && <details className="mt-2" data-site-map>
                     <summary className="cursor-pointer font-bold text-[var(--accent)]">Pages found on the starting page</summary>
                     <p className="mt-2">These are links found in the page, not proof of the linked content. Only pages marked Read were fetched. Results are limited and may miss pages.</p>
