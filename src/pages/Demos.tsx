@@ -5,6 +5,7 @@ import { ExternalLink, Search, CheckCircle2, Eye, MonitorPlay, Plus, Rocket, Clo
 import { Link } from 'react-router-dom';
 import { cn } from '../utils/cn';
 import { buildDemoShare, deleteLeadDemo, describeDemoViews, demoStyleLevels, demoTemplates, mapDemoJob, styleLevelLabel, suggestStyleLevel } from '../lib/demo-factory';
+import type { SitePageEvidence } from '../lib/demo-factory';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
 import QaCorrection from '../components/QaCorrection';
 
@@ -378,7 +379,18 @@ const Demos = () => {
                     <p className="mt-2">These are links found in the page, not proof of the linked content. Only pages marked Read were fetched. Results are limited and may miss pages.</p>
                     <ul className="mt-2 space-y-1">{readyJob.websiteAnalysis.linkedPages.map((page: any) => <li key={page.path} className="break-words"><span className="font-semibold text-[var(--text-primary)]">{page.label}</span> - {page.path} - {page.read ? 'Read' : 'Link found only'}</li>)}</ul>
                   </details>}
-
+                  {readyJob.websiteAnalysis?.sourcePages?.length > 0 && <details className="mt-2" data-site-evidence>
+                    <summary className="cursor-pointer font-bold text-[var(--accent)]">Details found on pages read</summary>
+                    <p className="mt-2">Private scan notes from pages actually read. Extraction is partial and may be wrong; confirm details before sharing. These notes do not prove a fact or permission to reuse content.</p>
+                    <ul className="mt-2 space-y-2">{readyJob.websiteAnalysis.sourcePages.map((page: SitePageEvidence) => <li key={`${page.host}${page.path}`} className="break-words">
+                      <span className="font-semibold text-[var(--text-primary)]">{page.host}{page.path}</span>
+                      {page.title && <p>Page title: {page.title}</p>}
+                      {page.heading && <p>Main heading: {page.heading}</p>}
+                      {page.emails.length > 0 && <p>Possible email: {page.emails.join(', ')}</p>}
+                      {page.phones.length > 0 && <p>Possible phone: {page.phones.join(', ')}</p>}
+                      {!page.title && !page.heading && !page.emails.length && !page.phones.length && <p>No listed details detected in this limited extraction.</p>}
+                    </li>)}</ul>
+                  </details>}
                 </div>}
                 <div className="neo-in p-4 rounded-2xl">
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--text-secondary)] font-bold mb-2">
