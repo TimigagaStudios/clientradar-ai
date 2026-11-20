@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useLeads } from '../context/LeadContext';
+import { savedClosedValue } from '../lib/lead-insights';
 import {
   TrendingUp,
   Mail,
@@ -28,7 +29,7 @@ const Analytics = () => {
   const { leads } = useLeads() as any;
 
   const totalLeads = leads.length;
-  const totalRevenue = leads.reduce((acc: number, lead: any) => acc + (Number(lead.dealValue) || 0), 0);
+  const totalClosedValue = savedClosedValue(leads);
   const noWebsite = leads.filter((lead: any) => !lead.website).length;
   const outdatedWebsite = leads.filter((lead: any) => lead.outdatedWebsite).length;
   const emailSent = leads.filter((lead: any) => lead.status === 'Email Sent' || lead.status === 'Pending Reply').length;
@@ -37,9 +38,9 @@ const Analytics = () => {
 
   const metrics = [
     { label: 'Total Leads', value: totalLeads, icon: Users, helper: 'All saved prospects' },
-    { label: 'No Website', value: noWebsite, icon: MonitorOff, helper: 'High opportunity leads' },
-    { label: 'Outdated Website', value: outdatedWebsite, icon: Globe, helper: 'Redesign opportunities' },
-    { label: 'Closed Revenue', value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, helper: 'Tracked deal value' },
+    { label: 'No Site Listed', value: noWebsite, icon: MonitorOff, helper: 'Website existence not confirmed' },
+    { label: 'Outdated Website', value: outdatedWebsite, icon: Globe, helper: 'Saved site flags' },
+    { label: 'Saved Closed Value', value: `$${totalClosedValue.toLocaleString()}`, icon: DollarSign, helper: 'Saved amounts, not proof of payment' },
   ];
 
   const statusData = useMemo(() => {
@@ -157,7 +158,7 @@ const Analytics = () => {
         <section className={chartCard}>
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h3 className="text-xl font-bold text-[var(--text-primary)]">Lead Category Demand</h3>
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">Saved Lead Categories</h3>
               <p className="text-sm text-[var(--text-secondary)] mt-1">Which niches appear most often in your system</p>
             </div>
             <TrendingUp className="text-[var(--accent)]" size={20} />
@@ -222,7 +223,7 @@ const Analytics = () => {
           </div>
           <div className="grid grid-cols-1 gap-4">
             <div className="neo-in p-5 rounded-2xl">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-2">Highest Demand Category</p>
+              <p className="text-[11px] uppercase tracking-[0.22em] text-[var(--text-secondary)] mb-2">Most Saved Category</p>
               <p className="text-[var(--text-primary)] text-xl font-semibold">{categoryData[0]?.name || 'N/A'}</p>
             </div>
             <div className="neo-in p-5 rounded-2xl">

@@ -14,24 +14,17 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/useToast';
 import EditLeadModal from '../components/EditLeadModal';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { reputationPoints, savedRating } from '../lib/lead-insights';
 
 // --- AI helpers (same as LeadDetail, no paid LLM) ---
 const computeAiLeadScore = (lead: Lead): number => {
   const hasWebsite = !!lead.website;
-  const rating = Number((lead as any).rating) || 0;
   let score = 0;
   score += hasWebsite ? 15 : 35;
-  score += Math.min(25, Math.round((rating || 3.5) * 5));
+  score += reputationPoints((lead as any).rating);
   score += lead.category ? 15 : 5;
   score += ((lead as any).phone ? 10 : 0) + (hasWebsite ? 5 : 0) + 5;
   return Math.min(100, score);
-};
-
-const getAiRating = (lead: Lead, score: number): { value: string; isAi: boolean } => {
-  const realRating = Number((lead as any).rating);
-  if (realRating > 0) return { value: realRating.toFixed(1), isAi: false };
-  const aiRating = score > 75 ? 4.7 : score > 55 ? 4.3 : score > 35 ? 4.0 : 3.8;
-  return { value: aiRating.toFixed(1), isAi: true };
 };
 
 const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
@@ -69,7 +62,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
   }, [menuOpen]);
 
   const displayScore = lead.leadScore && lead.leadScore > 0 ? lead.leadScore : computeAiLeadScore(lead);
-  const aiRating = getAiRating(lead, displayScore);
+  const rating = savedRating((lead as any).rating);
   const reviewCount = Number((lead as any).reviewCount) || 0;
 
   const handleMarkInterested = async (e: React.MouseEvent) => {
@@ -140,8 +133,7 @@ const LeadCard: React.FC<{ lead: Lead }> = ({ lead }) => {
               <div className="flex items-center text-yellow-500">
                 <Star size={14} fill="currentColor" />
                 <span className="ml-1 text-[var(--text-primary)]">
-                  {aiRating.value}
-                  {aiRating.isAi && <span className="text-[10px] opacity-70 ml-1">AI</span>}
+                  {rating === null ? 'Rating unavailable' : rating.toFixed(1)}
                 </span>
               </div>
               {reviewCount > 0 && <span>({reviewCount} reviews)</span>}

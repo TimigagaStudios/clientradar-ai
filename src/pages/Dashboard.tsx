@@ -8,8 +8,6 @@ import {
   Mail,
   DollarSign,
   TrendingUp,
-  ArrowUpRight,
-  ArrowDownRight,
   MonitorPlay,
   ExternalLink,
   CheckCircle2,
@@ -18,6 +16,7 @@ import {
   Clock3,
 } from 'lucide-react';
 import ListPager, { usePagedList } from '../components/ui/ListPager';
+import { hasTrackedDemo, savedClosedValue } from '../lib/lead-insights';
 
 const Dashboard = () => {
   const { leads } = useLeads();
@@ -26,7 +25,7 @@ const Dashboard = () => {
   const totalLeads = leads.length;
   const noWebsite = leads.filter((l: any) => !l.website).length;
   const outdatedWebsite = leads.filter((l: any) => l.outdatedWebsite).length;
-  const demosTracked = leads.filter((l: any) => l.demoLink || l.demoStatus).length;
+  const demosTracked = leads.filter(hasTrackedDemo).length;
   const readyDemos = leads.filter((l: any) => l.demoStatus === 'Ready').length;
   const sentDemos = leads.filter((l: any) => l.demoStatus === 'Sent').length;
 
@@ -35,7 +34,7 @@ const Dashboard = () => {
   ).length;
 
   const dealsClosed = leads.filter((l: any) => l.status === 'Deal Closed').length;
-  const totalRevenue = leads.reduce((acc: number, lead: any) => acc + (Number(lead.dealValue) || 0), 0);
+  const totalClosedValue = savedClosedValue(leads);
 
   const needsOutreach = leads.filter(
     (lead: any) =>
@@ -56,16 +55,16 @@ const Dashboard = () => {
   );
 
   const stats = [
-    { label: 'Total Leads', value: totalLeads, icon: Users, trend: '+12%', up: true, filter: 'All' },
-    { label: 'No Website', value: noWebsite, icon: MonitorOff, trend: '+4%', up: true, filter: 'No Website' },
-    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, trend: '-2%', up: false, filter: 'Outdated Website' },
-    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, trend: '+8%', up: true, filter: 'Demo Ready' },
-    { label: 'Emails Sent', value: emailsSent, icon: Mail, trend: '+25%', up: true, filter: 'Pending Reply' },
-    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, trend: '+5%', up: true, filter: 'Closed Deals' },
+    { label: 'Total Leads', value: totalLeads, icon: Users, filter: 'All' },
+    { label: 'No Site Listed', value: noWebsite, icon: MonitorOff, filter: 'No Website' },
+    { label: 'Outdated Site', value: outdatedWebsite, icon: Globe, filter: 'Outdated Website' },
+    { label: 'Demos Tracked', value: demosTracked, icon: MonitorPlay, filter: 'Demo Ready' },
+    { label: 'Sent / Awaiting Reply', value: emailsSent, icon: Mail, filter: 'Pending Reply' },
+    { label: 'Deals Closed', value: dealsClosed, icon: DollarSign, filter: 'Closed Deals' },
   ];
 
   const demoLeads = useMemo(
-    () => leads.filter((lead: any) => lead.demoLink || lead.demoStatus),
+    () => leads.filter(hasTrackedDemo),
     [leads],
   );
   const recentDemosPager = usePagedList(demoLeads, 'dashboard-demos', 10);
@@ -120,9 +119,9 @@ const Dashboard = () => {
         >
           <TrendingUp className="text-[var(--accent)]" size={20} />
           <span className="font-bold text-lg text-[var(--text-primary)]">
-            ${totalRevenue.toLocaleString()}{' '}
+            ${totalClosedValue.toLocaleString()}{' '}
             <span className="text-xs font-medium text-[var(--text-secondary)]">
-              Revenue
+              Saved closed value (not payments)
             </span>
           </span>
         </button>
@@ -139,12 +138,6 @@ const Dashboard = () => {
             <div className="flex items-start justify-between mb-4">
               <div className="p-2.5 neo-in rounded-xl group-hover:scale-110 transition-transform">
                 <stat.icon size={22} className="text-[var(--accent)]" />
-              </div>
-              <div className={stat.up ? 'text-green-500' : 'text-red-500'}>
-                <div className="flex items-center gap-0.5 text-xs font-bold">
-                  {stat.up ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-                  {stat.trend}
-                </div>
               </div>
             </div>
             <div>

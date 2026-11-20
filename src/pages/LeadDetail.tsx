@@ -31,6 +31,7 @@ import { format } from 'date-fns';
 import { LeadStatus } from '../types';
 import { cn } from '../utils/cn';
 import { deleteLeadDemo, estimateLeadValue } from '../lib/demo-factory';
+import { reputationPoints, savedRating } from '../lib/lead-insights';
 
 const LeadDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -117,19 +118,19 @@ const LeadDetail = () => {
         label: 'Website Status',
         value: lead.website ? 15 : 35,
         max: 35,
-        reason: lead.website ? 'Has website - upgrade play' : 'No website - high urgency',
+        reason: lead.website ? 'Website address recorded' : 'No website address recorded; existence unknown',
       },
       {
         label: 'Rating / Reputation',
-        value: Math.min(25, Math.round((Number(lead.rating) || 3.5) * 5)),
+        value: reputationPoints(lead.rating),
         max: 25,
-        reason: lead.rating ? `${lead.rating} star rating` : 'AI-estimated reputation',
+        reason: savedRating(lead.rating) !== null ? `${savedRating(lead.rating)} star rating recorded` : 'No rating recorded; zero points',
       },
       {
         label: 'Business Activity',
         value: lead.category ? 15 : 5,
         max: 20,
-        reason: lead.category ? 'Verified category' : 'Category missing',
+        reason: lead.category ? 'Category recorded' : 'Category missing',
       },
       {
         label: 'Contact Completeness',
@@ -145,67 +146,38 @@ const LeadDetail = () => {
   const computedLeadScore = Number(lead?.leadScore) > 0 ? Number(lead.leadScore) : aiScoreBreakdown.total;
 
   const aiDisplayRating = useMemo(() => {
-    if (!lead) return null;
-    const realRating = Number(lead.rating);
-    if (realRating > 0) return { value: realRating.toFixed(1), isAi: false };
-    const score = computedLeadScore;
-    const aiRating = score > 75 ? 4.7 : score > 55 ? 4.3 : score > 35 ? 4.0 : 3.8;
-    return { value: aiRating.toFixed(1), isAi: true };
-  }, [lead, computedLeadScore]);
+    const value = savedRating(lead?.rating);
+    return value === null ? null : { value: value.toFixed(1) };
+  }, [lead?.rating]);
 
   const closedDeals = useMemo(() => leads.filter((item: any) => item.status === 'Deal Closed').length, [leads]);
   const valueEstimate = useMemo(() => estimateLeadValue(lead, computedLeadScore, closedDeals), [lead, computedLeadScore, closedDeals]);
   const aiLeadValue = lead?.dealValue && Number(lead.dealValue) > 0 ? Number(lead.dealValue) : valueEstimate.value;
 
-  // === ORIGINAL AI SUMMARY (kept exactly) ===
+  // A local review aid based on saved fields, not verified facts or buyer intent.
   const aiSummary = useMemo(() => {
     if (!lead) return null;
-    const hasWebsite = !!lead.website;
-    const ratingStr = aiDisplayRating?.value || '4.0';
-    const score = computedLeadScore;
+    const hasWebsite = Boolean(lead.website);
     const strengths: string[] = [];
     const opportunities: string[] = [];
-    const pitchAngle: string[] = [];
-
-    if (Number(ratingStr) >= 4.3) {
-      strengths.push(`Strong reputation (${ratingStr} star${aiDisplayRating?.isAi ? ' AI est.' : ''})`);
-      pitchAngle.push('leverage their strong reviews with a modern site');
-    }
-    if (!hasWebsite) {
-      opportunities.push('No website - first-mover advantage');
-      pitchAngle.push('be the first to get them online professionally');
-    } else {
-      opportunities.push('Existing website can likely be modernized');
-      pitchAngle.push('upgrade to a fast, mobile-first site');
-    }
-    if (score > 70) {
-      strengths.push('High AI lead score - strong buyer intent');
-    } else if (score > 40) {
-      opportunities.push('Medium score - warm nurture candidate');
-    }
-    if (lead.category) strengths.push(`Active in ${lead.category}`);
-
-    const summaryText = hasWebsite
-      ? `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'} with a ${ratingStr} star rating. Great candidate for a modern 24-48hr redesign that converts better on mobile.`
-      : `${lead.businessName} is a ${lead.category || 'local business'} in ${lead.city || 'their area'}${aiDisplayRating ? ` ~${ratingStr} sta` : ''}, currently operating without a strong web presence. High-impact, fast-close opportunity.`;
-
-    return {
-      summaryText,
-      strengths: strengths.slice(0, 3),
-      opportunities: opportunities.slice(0, 3),
-      pitchAngle: pitchAngle[0] || 'offer a fast, revenue-focused website in 24-48hrs',
-      confidence: score > 70 ? 'High' : score > 40 ? 'Medium' : 'Low',
-    };
-  }, [lead, aiDisplayRating, computedLeadScore]);
+    if (aiDisplayRating) strengths.push(`Rating recorded: ${aiDisplayRating.value} stars`);
+    if (lead.category) strengths.push(`Category recorded: ${lead.category}`);
+    if (lead.email) strengths.push('Email recorded; confirm before use');
+    if (lead.phone) strengths.push('Phone recorded; confirm before use');
+    opportunities.push(hasWebsite ? 'Review the listed website and confirm the business needs' : 'No website address recorded; confirm whether one exists');
+    if (!lead.email || !lead.phone) opportunities.push('Some contact details are missing');
+    const summaryText = `${lead.businessName}${lead.category ? ` is listed under ${lead.category}` : ''}${lead.city ? ` in ${lead.city}` : ''}. These are saved details, not independently verified facts.`;
+    return { summaryText, strengths: strengths.slice(0, 4), opportunities, pitchAngle: 'Confirm the business needs and agree the scope, price and timing before making an offer.' };
+  }, [lead, aiDisplayRating]);
 
   // Sync deal amount
   useEffect(() => {
     if (lead?.dealValue) {
       setDealAmount(String(lead.dealValue));
     } else if (lead) {
-      setDealAmount(String(aiLeadValue));
+      setDealAmount('');
     }
-  }, [lead?.id, lead?.dealValue, aiLeadValue]);
+  }, [lead?.id, lead?.dealValue]);
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (!lead) return;
@@ -277,7 +249,7 @@ const LeadDetail = () => {
   const handleSaveDealValue = async () => {
     if (!lead) return;
     const val = Number(dealAmount);
-    if (!val || val <= 0) return;
+    if (!Number.isFinite(val) || val <= 0) return;
     setSavingDeal(true);
     try {
       if (typeof updateLead === 'function') {
@@ -528,7 +500,7 @@ const LeadDetail = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="neo-in p-4 rounded-2xl">
                     <span className="text-xs text-[var(--text-secondary)] block mb-1">
-                      Rating {aiDisplayRating?.isAi && <span className="text-[10px]">AI</span>}
+                      Recorded rating
                     </span>
                     <div className="flex items-center gap-1 font-bold text-lg text-[var(--text-primary)]">
                       {aiDisplayRating ? aiDisplayRating.value : 'N/A'}
@@ -554,14 +526,8 @@ const LeadDetail = () => {
             <div className={cardClasses}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-lg text-[var(--text-primary)] flex items-center gap-2">
-                  <Sparkles size={18} className="text-[var(--accent)]" /> AI Lead Summary
+                  <Sparkles size={18} className="text-[var(--accent)]" /> Saved Lead Summary
                 </h3>
-                <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full neo-in",
-                  aiSummary.confidence === 'High' ? 'text-green-500' : aiSummary.confidence === 'Medium' ? 'text-yellow-500' : 'text-gray-400'
-                )}>
-                  {aiSummary.confidence}
-                </span>
               </div>
               <p className="text-[var(--text-primary)] leading-relaxed mb-5">{aiSummary.summaryText}</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -609,6 +575,7 @@ const LeadDetail = () => {
                 </div>
               </div>
             </div>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">{Number(lead?.leadScore) > 0 ? 'The total is the saved score; the breakdown below is a current guide and may differ.' : 'This local guide is based on saved fields, not a prediction of buyer intent.'}</p>
             <div className="space-y-3">
               {aiScoreBreakdown.items.map((item) => (
                 <div key={item.label}>
@@ -720,7 +687,7 @@ const LeadDetail = () => {
                 <DollarSign size={18} className="text-green-500" /> Close Deal - Final Amount
               </h3>
               <p className="text-sm text-[var(--text-secondary)] mb-4">
-                Deal marked as closed. Enter the actual amount accepted from the client.
+                Deal marked as closed. Enter the actual amount accepted from the client; a saved amount does not confirm payment.
               </p>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
@@ -728,7 +695,7 @@ const LeadDetail = () => {
                   <input
                     type="number"
                     min="0"
-                    step="50"
+                    step="0.01"
                     value={dealAmount}
                     onChange={(e) => setDealAmount(e.target.value)}
                     className={inputClasses}
@@ -880,12 +847,12 @@ const LeadDetail = () => {
             <h3 className="font-bold text-lg text-[var(--text-primary)] mb-4">Lead Value</h3>
             <div className="flex items-baseline gap-1">
               <span className="text-3xl font-black text-[var(--text-primary)]">
-                ${Number(lead.dealValue || aiLeadValue).toLocaleString()}
+                {isDealClosed && !lead.dealValue ? 'Not recorded' : `$${Number(lead.dealValue || aiLeadValue).toLocaleString()}`}
               </span>
-              <span className="text-[var(--text-secondary)] text-sm">potential</span>
+              <span className="text-[var(--text-secondary)] text-sm">{isDealClosed ? 'saved amount' : 'potential'}</span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-2">
-              {isDealClosed ? 'Closed deal amount - editable above.' : `${valueEstimate.stage}: ${valueEstimate.label} level ($${valueEstimate.min.toLocaleString()}-$${valueEstimate.max.toLocaleString()}). A guide, not a quote.`}
+              {isDealClosed ? 'Saved closed value, not proof of payment. Check any previously saved estimates.' : `${valueEstimate.stage}: ${valueEstimate.label} level ($${valueEstimate.min.toLocaleString()}-$${valueEstimate.max.toLocaleString()}). A guide, not a quote.`}
             </p>
           </div>
 
