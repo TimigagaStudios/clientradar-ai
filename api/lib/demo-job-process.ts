@@ -271,7 +271,7 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       templateKey: template,
       styleLevel: level,
       generatedBy: generated ? 'ai' : 'fallback',
-      websiteAnalysis: { status: scan ? 'partial' : lead.website ? 'unavailable' : 'not_provided', checkedAt: new Date().toISOString(), pagesRead: scan?.pagesRead || [], linkedPages: scan?.linkedPages || [] },
+      websiteAnalysis: { status: scan ? 'partial' : lead.website ? 'unavailable' : 'not_provided', checkedAt: new Date().toISOString(), pagesRead: scan?.pagesRead || [], linkedPages: scan?.linkedPages || [], sourcePages: scan?.sourcePages || [] },
       aiError,
       // Built-in text that follows an earlier AI demo of the same trade (null when the AI wrote this one, or none exists yet).
       learnedFrom: learned ? { jobId: learned.sourceId, parts: learned.reused } : null,

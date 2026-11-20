@@ -7,7 +7,9 @@
 
 import { findImages } from './_photos.js';
 import { safeWebGet } from './_safe-web.js';
-import { discoverLinkedPages, type SiteMapLink } from './_site-map.js';
+import { discoverLinkedPages, withoutBlocks, type SiteMapLink } from './_site-map.js';
+
+export type SitePageEvidence = { host: string; path: string; title: string | null; heading: string | null; emails: string[]; phones: string[] };
 
 export interface WebsiteScan {
   url: string;
@@ -27,6 +29,7 @@ export interface WebsiteScan {
   secure: boolean;
   pagesRead: string[];
   linkedPages: SiteMapLink[];
+  sourcePages: SitePageEvidence[];
   images: string[]; // pictures found on the business's own pages
 }
 
@@ -221,6 +224,33 @@ function platformOf(html: string) {
 
 const strip = (value: string | undefined | null, max: number) => (value ? decode(value.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, max) || null : null);
 
+// Evidence is a small, private owner-review aid, not a verified fact or an
+// instruction for the model. Only successful reads are passed to this helper.
+// Extract text contacts only; links and hidden/script content are not proof.
+export function evidenceFromReadPages(pages: { text: string; finalUrl: string }[]): SitePageEvidence[] {
+  const result: SitePageEvidence[] = []; const seen = new Set<string>();
+  for (const page of pages.slice(0, 3)) {
+    let url: URL; try { url = new URL(page.finalUrl); } catch { continue; }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port || url.search || url.hash || url.pathname.length > 200) continue;
+    const key = `${url.origin}${url.pathname}`; if (seen.has(key)) continue; seen.add(key);
+    const html = withoutBlocks(page.text.slice(0, 524288)); const lower = html.toLowerCase();
+    const firstTagText = (tag: 'title' | 'h1') => {
+      const start = lower.search(new RegExp(`<${tag}\\b`));
+      if (start < 0) return null;
+      const openEnd = lower.indexOf('>', start + tag.length + 1);
+      if (openEnd < 0 || openEnd - start > 2048) return null;
+      const close = lower.indexOf(`</${tag}`, openEnd + 1);
+      if (close < 0 || close - openEnd > 4096 || !/^\s*>/.test(lower.slice(close + tag.length + 2, close + tag.length + 12))) return null;
+      return strip(html.slice(openEnd + 1, close), 140);
+    };
+    const title = firstTagText('title'); const heading = firstTagText('h1');
+    const visible = visibleText(html);
+    const clean = (value: string | null) => value ? value.replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim() || null : null;
+    result.push({ host: url.hostname, path: url.pathname || '/', title: clean(title), heading: clean(heading), emails: findEmails(visible, url.hostname).slice(0, 3), phones: findPhones(visible).slice(0, 3) });
+  }
+  return result;
+}
+
 export async function scanWebsite(address: string | null | undefined): Promise<WebsiteScan | null> {
   if (!address || !isOfficialWebsiteUrl(address)) return null;
   const start = safeUrl(String(address));
@@ -272,6 +302,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     secure: base.protocol === 'https:',
     pagesRead: [base.pathname || '/', ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => new URL(page.finalUrl).pathname)],
     linkedPages: discoverLinkedPages(html, base, [base.toString(), ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => page.finalUrl)]),
+    sourcePages: evidenceFromReadPages([home, ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page))]),
     images: findImages(allHtml, base.toString()),
   };
 }
