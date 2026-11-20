@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Download, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -8,6 +8,7 @@ import { makeZip } from '../lib/zip';
 // Shows a demo that has its own design recipe: the real website files run inside an isolated frame.
 // The ZIP button is only shown to the signed-in owner, never to a client opening the shared link.
 export default function DemoSiteView({ content }: { content: any }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
   const [page, setPage] = useState('home');
   const [owner, setOwner] = useState(false);
   const pages = useMemo(() => sitePages(content), [content]);
@@ -19,6 +20,7 @@ export default function DemoSiteView({ content }: { content: any }) {
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
+      if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
       const next = event.data && typeof event.data.crDemoPage === 'string' ? event.data.crDemoPage : '';
       if (next && pages.some((item) => item.key === next)) setPage(next);
     };
@@ -48,6 +50,7 @@ export default function DemoSiteView({ content }: { content: any }) {
         ) : <span style={{ width: 12 }} />}
       </div>
       <iframe
+        ref={frameRef}
         key={page}
         title={`${content.businessName || 'Business'} website demo`}
         srcDoc={html}

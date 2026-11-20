@@ -43,6 +43,8 @@ globalThis.__owner = false; let r = await call('POST',{action:'qa-recheck',jobId
 globalThis.__owner = true; r = await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.qaStatus,'checked'); assert(row.content.qa.issues.some(x=>x.code==='guarantee')); assert(row.content.qa.issues.some(x=>x.code==='website_not_checked')); assert(row.content.qa.issues.some(x=>x.code==='image_rights_need_review')); assert(globalThis.__records.some(x=>x.agentKey==='quality-assurance'));
 r = await call('GET',{}, {jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.content.qa,undefined); assert.equal(r.result.data.content.websiteAnalysis,undefined); assert.equal(r.result.data.content.photos[0].url,'https://site.test/old.jpg');
 r = await call('GET'); assert.equal(r.result.data[0].qaStatus,'checked');
+const currentVersion = row.content.qa.version; row.content.qa.version = 1;
+r = await call('GET'); assert.equal(r.result.data[0].qaStatus,'stale'); row.content.qa.version = currentVersion;
 const photoIssues = row.content.qa.issues; row.content.qa.issues = photoIssues.filter(x=>x.code!=='image_rights_need_review');
 r = await call('GET'); assert.equal(r.result.data[0].qaStatus,'stale'); row.content.qa.issues = photoIssues;
 row.leads.email='new@business.test'; r=await call('GET'); assert.equal(r.result.data[0].qaStatus,'stale');

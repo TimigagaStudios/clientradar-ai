@@ -165,7 +165,7 @@ export async function generateDemoContent(lead: DemoLead, templateKey: string, p
 
   const model = process.env.DEMO_AI_MODEL || (provider === 'gemini' ? 'gemini-3.5-flash-lite' : '');
   if (!model) throw new Error('Set DEMO_AI_MODEL to the model you want to use with this provider');
-  const instruction = `${prompt}\n\nReturn only valid JSON with this shape: ${tierShape(styleLevel)}. Use the existing website profile colors when provided. Do not invent reviews, awards, prices, licences, statistics or medical, legal or financial claims. Business: ${lead.business_name}. Template: ${templateKey}.`;
+  const instruction = `${prompt}\n\nReturn only valid JSON with this shape: ${tierShape(styleLevel)}. Use the existing website profile colors when provided. Do not invent reviews, awards, prices, licences, statistics or medical, legal or financial claims. A category or page type does not prove specific offerings, availability, processes, response times or location details. When not supported by the saved details, label services and other examples as illustrative and request confirmation. Business: ${lead.business_name}. Template: ${templateKey}.`;
   let response: Response;
   const signal = AbortSignal.timeout(40000);
 
