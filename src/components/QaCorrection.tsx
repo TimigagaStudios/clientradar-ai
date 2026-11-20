@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 type Issue = { code: string; path: string; message: string };
-const EDITABLE = /^(businessName|disclaimer|contact\.(email|phone)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer))$/;
+const EDITABLE = /^(businessName|disclaimer|contact\.(email|phone|instagram)|hero\.(eyebrow|title|description|cta)|about\.(title|body)|closing\.(title|body|cta)|(?:services|highlights|process|faq|sections)\.\d+\.(?:title|body|question|answer))$/;
 
 export default function QaCorrection({ jobId, fingerprint, issue, content, onSaved }: { jobId: string; fingerprint: string; issue: Issue; content: Record<string, unknown> | null; onSaved: () => Promise<void> }) {
   const [open, setOpen] = useState(false);
