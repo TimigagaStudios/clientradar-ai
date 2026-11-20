@@ -1,8 +1,10 @@
 // Duplicate leads: business names saved more than once.
 // Nothing is removed automatically. The owner decides per pair: "different branches" (kept apart
-// and not asked again) or "merge" (one lead keeps everything, the other is removed).
+// and not asked again) or "merge" (move selected data and remove another lead).
 
 export const SEPARATE_MARK = 'Duplicate check: separate business';
+
+import { assertNoLinkedInvoices } from './_invoice-guard.js';
 
 // "Coldwell Banker", "coldwell banker." and "Coldwell Banker LLC" compare equal.
 export const nameKey = (name: unknown) => String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/\b(ltd|limited|llc|inc|plc|co|company|corp|corporation|the)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -48,8 +50,8 @@ export async function keepApart(supabase: any, ids: string[]) {
   return (data || []).length;
 }
 
-// Merge: the kept lead takes every detail it is missing from the other, the other's demos, notes,
-// outreach history and task records move over, and only then is the other lead removed.
+// Merge fills some missing lead fields and moves selected related tables before
+// removing the other lead. Operations are not transactional and not exhaustive.
 export async function mergeLeads(supabase: any, keepId: string, removeId: string) {
   if (!keepId || !removeId || keepId === removeId) throw new Error('Choose two different leads');
   const { data: pair } = await supabase.from('leads').select('*').in('id', [keepId, removeId]);
@@ -57,6 +59,8 @@ export async function mergeLeads(supabase: any, keepId: string, removeId: string
   const remove = (pair || []).find((lead: any) => lead.id === removeId);
   if (!keep || !remove) throw new Error('One of the leads no longer exists');
   if (nameKey(keep.business_name) !== nameKey(remove.business_name)) throw new Error('Only leads with the same business name can be merged');
+  // Never delete a lead with linked invoice records as a merge side effect.
+  await assertNoLinkedInvoices(supabase, removeId);
   const filled: string[] = [];
   const patch: Record<string, unknown> = {};
   Object.keys(remove).forEach((column) => {
@@ -71,7 +75,7 @@ export async function mergeLeads(supabase: any, keepId: string, removeId: string
   patch.updated_at = new Date().toISOString();
   const { error: saveError } = await supabase.from('leads').update(patch).eq('id', keepId);
   if (saveError) throw new Error(saveError.message);
-  // Everything attached to the removed lead moves to the kept one first, so nothing is lost with it.
+  // Move the explicitly listed relationships before deleting. This is not transactional and other relationships may exist.
   const moved: Record<string, number> = {};
   for (const table of ['demo_jobs', 'lead_notes', 'outreach_logs', 'agent_tasks', 'agent_activity']) {
     try {
@@ -84,6 +88,8 @@ export async function mergeLeads(supabase: any, keepId: string, removeId: string
       if (!/does not exist|schema cache|PGRST205|42P01/i.test(message)) throw new Error(message);
     }
   }
+  // A new invoice may have appeared; earlier writes are not rolled back.
+  await assertNoLinkedInvoices(supabase, removeId);
   const { error: deleteError } = await supabase.from('leads').delete().eq('id', removeId);
   if (deleteError) throw new Error(deleteError.message);
   return { name: String(keep.business_name), filled, moved };
