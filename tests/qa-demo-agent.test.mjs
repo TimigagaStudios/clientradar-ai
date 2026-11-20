@@ -28,4 +28,16 @@ const sample = screenEvidenceDemo({ ...demo, businessName: 'Other', showcase: { 
 for (const code of ['name_differs_from_lead', 'sample_showcase', 'guarantee']) assert(sample.qa.issues.some(x => x.code === code), code);
 const absentLead = screenEvidenceDemo(demo, {}, { ...site, status: 'not_provided' }, { now });
 assert(absentLead.qa.issues.some(x => x.code === 'lead_identity_missing'));
+const withPhotos = { ...demo, photos: [{ kind: 'own', url: 'https://owner.test/image.jpg' }] };
+const rights = screenEvidenceDemo(withPhotos, lead, site, { now });
+assert(rights.qa.issues.some(x => x.code === 'image_rights_need_review' && x.path === 'photos'));
+assert.equal(evidenceDemoStatus(rights, lead, now), 'checked');
+assert.deepEqual(rights.photos, withPhotos.photos); // Legacy photos are not removed.
+const oldReview = structuredClone(rights); oldReview.qa.issues = oldReview.qa.issues.filter(x => x.code !== 'image_rights_need_review');
+assert.equal(evidenceDemoStatus(oldReview, lead, now), 'stale');
+const unknown = screenEvidenceDemo({ ...demo, photos: [{ url: 'https://owner.test/unknown.jpg' }] }, lead, site, { now });
+assert(unknown.qa.issues.some(x => x.code === 'image_rights_need_review'));
+const samples = screenEvidenceDemo({ ...demo, photos: [{ kind: 'sample', url: 'https://images.pexels.com/example.jpg' }] }, lead, site, { now });
+assert(!samples.qa.issues.some(x => x.code === 'image_rights_need_review'));
+assert.equal(evidenceDemoStatus(samples, lead, now), 'checked');
 console.log('PASS isolated demo evidence freshness, content and lead binding, conservative missing evidence, opt-in and privacy. Helper-only test.');
