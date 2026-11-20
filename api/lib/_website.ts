@@ -8,6 +8,7 @@
 import { findImages } from './_photos.js';
 import { safeWebGet } from './_safe-web.js';
 import { discoverLinkedPages, withoutBlocks, type SiteMapLink } from './_site-map.js';
+import { parseRobots, robotsAllows } from './_robots.js';
 
 export type SitePageEvidence = { host: string; path: string; title: string | null; heading: string | null; emails: string[]; phones: string[] };
 
@@ -30,6 +31,7 @@ export interface WebsiteScan {
   pagesRead: string[];
   linkedPages: SiteMapLink[];
   sourcePages: SitePageEvidence[];
+  extraPagesStatus: 'not_requested' | 'no_candidates' | 'robots_unavailable' | 'attempted';
   images: string[]; // pictures found on the business's own pages
 }
 
@@ -229,7 +231,7 @@ const strip = (value: string | undefined | null, max: number) => (value ? decode
 // Extract text contacts only; links and hidden/script content are not proof.
 export function evidenceFromReadPages(pages: { text: string; finalUrl: string }[]): SitePageEvidence[] {
   const result: SitePageEvidence[] = []; const seen = new Set<string>();
-  for (const page of pages.slice(0, 3)) {
+  for (const page of pages.slice(0, 6)) {
     let url: URL; try { url = new URL(page.finalUrl); } catch { continue; }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.port || url.search || url.hash || url.pathname.length > 200) continue;
     const key = `${url.origin}${url.pathname}`; if (seen.has(key)) continue; seen.add(key);
@@ -251,7 +253,7 @@ export function evidenceFromReadPages(pages: { text: string; finalUrl: string }[
   return result;
 }
 
-export async function scanWebsite(address: string | null | undefined): Promise<WebsiteScan | null> {
+export async function scanWebsite(address: string | null | undefined, options: { discoverMore?: boolean } = {}): Promise<WebsiteScan | null> {
   if (!address || !isOfficialWebsiteUrl(address)) return null;
   const start = safeUrl(String(address));
   if (!start) return null;
@@ -277,6 +279,35 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     Promise.all(sheets.map((url) => read(url, 5000, 400_000, base.hostname, 'text/css'))),
   ]);
 
+  // Additional discovery is opt-in for demo generation only. The existing
+  // homepage/contact/about scan above is unchanged and is not robots-aware.
+  // For these new reads, use exact-origin robots rules; do not follow page or
+  // robots redirects, fetch actions/query URLs, or treat failure as consent.
+  let extraPagesStatus: WebsiteScan['extraPagesStatus'] = 'not_requested';
+  let additional: { text: string; finalUrl: string }[] = [];
+  const alreadyRead = [base.toString(), ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => page.finalUrl)];
+  if (options.discoverMore) {
+    const attempted = new Set([base.pathname, ...extraPages.map((url) => url.pathname)]);
+    const candidates = discoverLinkedPages(html, base, alreadyRead).filter((item) =>
+      ['Services', 'Products', 'Pricing', 'Portfolio', 'Blog'].includes(item.kind) && !item.read && !attempted.has(item.path) &&
+      !/(?:^|\/)(?:logout|sign-?out|delete|remove|reset|unsubscribe|checkout|cart|admin|account|auth|login|session|token|register|api)(?:\/|$|[-_.])/i.test(item.path)
+    );
+    if (!candidates.length) extraPagesStatus = 'no_candidates';
+    else {
+      const robots = await safeWebGet(new URL('/robots.txt', base.origin), { timeoutMs: 1500, maxBytes: 524288, types: ['text/plain'], agent: AGENT, allowHttp: true, siteHost: base.hostname, noRedirect: true, reportNotFound: true }).catch(() => null);
+      const policy = robots ? (robots.status === 404 ? { rules: [] } : parseRobots(robots.text)) : null;
+      if (!policy) extraPagesStatus = 'robots_unavailable';
+      else {
+        extraPagesStatus = 'attempted';
+        const chosen = candidates.filter((item) => robotsAllows(policy, item.path)).slice(0, 3);
+        const fetched = await Promise.all(chosen.map((item) => safeWebGet(new URL(item.path, base.origin), { timeoutMs: 2000, maxBytes: 300000, types: ['text/html'], agent: AGENT, allowHttp: true, siteHost: base.hostname, noRedirect: true }).catch(() => null)));
+        additional = fetched.filter((page): page is { text: string; finalUrl: string } => Boolean(page));
+      }
+    }
+  }
+  const allReads = [home, ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)), ...additional];
+  // New page text is review-only and does not change saved lead contacts,
+  // photos or brand facts. The caller may use read page kinds as rough cues.
   const allHtml = [html, ...pages.map((page) => page?.text || '')].join('\n');
   const inlineCss = (html.match(/<style[\s\S]*?<\/style>/gi) || []).join('\n') + (html.match(/style=["'][^"']+["']/gi) || []).join('\n');
   const css = `${inlineCss}\n${styles.map((sheet) => sheet?.text || '').join('\n')}`;
@@ -300,9 +331,10 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     platform: platformOf(html),
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
-    pagesRead: [base.pathname || '/', ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => new URL(page.finalUrl).pathname)],
-    linkedPages: discoverLinkedPages(html, base, [base.toString(), ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => page.finalUrl)]),
-    sourcePages: evidenceFromReadPages([home, ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page))]),
+    pagesRead: allReads.map((page) => new URL(page.finalUrl).pathname),
+    linkedPages: discoverLinkedPages(html, base, allReads.map((page) => page.finalUrl)),
+    sourcePages: evidenceFromReadPages(allReads),
+    extraPagesStatus,
     images: findImages(allHtml, base.toString()),
   };
 }

@@ -40,7 +40,7 @@ async function resolvePublic(host: string, remaining: number): Promise<string | 
 }
 
 type Response = { status: number; location: string; text: string | null };
-function requestPage(url: URL, address: string, remaining: number, maxBytes: number, types: string[], agent: string): Promise<Response | null> {
+function requestPage(url: URL, address: string, remaining: number, maxBytes: number, types: string[], agent: string, reportNotFound: boolean): Promise<Response | null> {
   return new Promise((resolve) => {
     let finished = false;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -55,6 +55,9 @@ function requestPage(url: URL, address: string, remaining: number, maxBytes: num
       const status = res.statusCode || 0;
       const location = typeof res.headers.location === 'string' ? res.headers.location : '';
       if ([301, 302, 303, 307, 308].includes(status)) { res.destroy(); finish({ status, location, text: null }); return; }
+      // Only an explicit 404 is distinct from a denial, rate limit, server or
+      // network error. Opt-in callers can conservatively handle missing robots.
+      if (status === 404 && reportNotFound) { res.destroy(); finish({ status, location: '', text: '' }); return; }
       const type = String(res.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
       const encoding = String(res.headers['content-encoding'] || 'identity').trim().toLowerCase();
       const length = Number(res.headers['content-length']);
@@ -77,7 +80,7 @@ function requestPage(url: URL, address: string, remaining: number, maxBytes: num
   });
 }
 
-export async function safeWebGet(input: URL, options: { maxBytes: number; timeoutMs: number; types: string[]; agent: string; allowHttp?: boolean; siteHost?: string }): Promise<{ text: string; finalUrl: string } | null> {
+export async function safeWebGet(input: URL, options: { maxBytes: number; timeoutMs: number; types: string[]; agent: string; allowHttp?: boolean; siteHost?: string; noRedirect?: boolean; reportNotFound?: boolean }): Promise<{ text: string; finalUrl: string; status?: number } | null> {
   const start = Date.now();
   const site = siteKey(options.siteHost || input.hostname);
   const seen = new Set<string>();
@@ -95,10 +98,11 @@ export async function safeWebGet(input: URL, options: { maxBytes: number; timeou
     if (!ip) return null;
     remaining = options.timeoutMs - (Date.now() - start);
     if (remaining <= 0) return null;
-    const response = await requestPage(url, ip, remaining, options.maxBytes, options.types, options.agent);
+    const response = await requestPage(url, ip, remaining, options.maxBytes, options.types, options.agent, options.reportNotFound === true);
     if (!response) return null;
+    if (response.status === 404 && options.reportNotFound) return { text: '', finalUrl: url.toString(), status: 404 };
     if (response.status === 200 && response.text !== null) return { text: response.text, finalUrl: url.toString() };
-    if (!response.location || hop === 3) return null;
+    if (options.noRedirect || !response.location || hop === 3) return null;
     let next: URL;
     try { next = new URL(response.location, url); } catch { return null; }
     // Do not downgrade a secure connection or follow an off-site redirect.
