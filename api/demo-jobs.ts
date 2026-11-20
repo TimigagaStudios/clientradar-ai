@@ -152,7 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (readError) return res.status(500).json({ success: false, error: readError.message });
       if (!job) return res.status(404).json({ success: false, error: 'Demo not found.' });
       if (job.status !== 'ready' || evidenceDemoStatus(job.content, job.leads) !== 'checked' || job.content?.qa?.fingerprint !== req.body?.fingerprint) return res.status(409).json({ success: false, error: 'The review is not current. Recheck before editing.' });
-      const issueMatches = (issue: any) => issue?.path === path || (issue?.code === 'missing_contact' && issue?.path === 'contact' && ['contact.email', 'contact.phone'].includes(path));
+      const issueMatches = (issue: any) => issue?.path === path || (issue?.code === 'missing_contact' && issue?.path === 'contact' && ['contact.email', 'contact.phone'].includes(path)) || (issue?.code === 'sample_showcase' && issue?.path === 'showcase' && /^showcase\.items\.(?:0|[1-9]\d?)\.(?:title|subtitle|detail)$/.test(path));
       if (!Array.isArray(job.content.qa.issues) || !job.content.qa.issues.some(issueMatches)) return res.status(400).json({ success: false, error: 'This field is not part of the current review.' });
       let corrected: Record<string, unknown>;
       try { corrected = applyOwnerCorrection(job.content, path, value); } catch (error) { return res.status(400).json({ success: false, error: error instanceof Error ? error.message : 'Invalid correction.' }); }
