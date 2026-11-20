@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from '../lib/auth.js';
+import { assertNoLinkedInvoices } from '../lib/_invoice-guard.js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL as string;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY as string;
@@ -85,6 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'DELETE') {
       const now = new Date().toISOString();
+      // Check before touching tasks or child records. This is not transactional.
+      await assertNoLinkedInvoices(supabase, id);
 
       // Cancel open tasks for this lead and detach optional foreign keys before deleting.
       for (const op of [
@@ -108,16 +111,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
 
-      const detachInvoice = await supabase.from('invoices').update({ lead_id: null }).eq('lead_id', id);
-      if (detachInvoice.error && !isMissingTable(detachInvoice.error)) {
-        const deleteInvoice = await supabase.from('invoices').delete().eq('lead_id', id);
-        if (deleteInvoice.error && !isMissingTable(deleteInvoice.error)) {
-          return res.status(500).json({
-            success: false,
-            error: `Could not clear attached invoice: ${deleteInvoice.error.message}`,
-          });
-        }
-      }
+      // A new invoice could have appeared since the first check. Earlier child
+      // operations are not rolled back if this later check fails.
+      await assertNoLinkedInvoices(supabase, id);
 
       const { error } = await supabase.from('leads').delete().eq('id', id);
       if (error) {
