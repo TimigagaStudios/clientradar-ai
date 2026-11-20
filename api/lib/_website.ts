@@ -7,6 +7,7 @@
 
 import { findImages } from './_photos.js';
 import { safeWebGet } from './_safe-web.js';
+import { discoverLinkedPages, type SiteMapLink } from './_site-map.js';
 
 export interface WebsiteScan {
   url: string;
@@ -25,6 +26,7 @@ export interface WebsiteScan {
   mobileReady: boolean;
   secure: boolean;
   pagesRead: string[];
+  linkedPages: SiteMapLink[];
   images: string[]; // pictures found on the business's own pages
 }
 
@@ -269,6 +271,7 @@ export async function scanWebsite(address: string | null | undefined): Promise<W
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
     pagesRead: [base.pathname || '/', ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => new URL(page.finalUrl).pathname)],
+    linkedPages: discoverLinkedPages(html, base, [base.toString(), ...pages.filter((page): page is { text: string; finalUrl: string } => Boolean(page)).map((page) => page.finalUrl)]),
     images: findImages(allHtml, base.toString()),
   };
 }
