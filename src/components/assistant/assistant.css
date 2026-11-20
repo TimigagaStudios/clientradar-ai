@@ -9,12 +9,14 @@
 
 .cr-presence-stage {
   position: relative;
-  display: grid;
-  place-items: center;
   width: min(100%, 380px);
-  min-height: 310px;
   margin-inline: auto;
-  overflow: visible;
+}
+
+@media (max-width: 640px) {
+  .cr-presence-stage {
+    width: min(100%, 324px);
+  }
 }
 
 /* ============================================================
@@ -433,10 +435,6 @@
 /* ---------- Mobile ---------- */
 
 @media (max-width: 420px) {
-  .cr-presence-stage {
-    min-height: 280px;
-  }
-
   .cr-greet h1 {
     font-size: 1.62rem;
   }
