@@ -27,4 +27,12 @@ const leadStale = await reviewOutreachDemos(db, 'Hello', link, 'https://app.test
 job = { ...job, leads: lead, content: { ...job.content, hero: { title: 'Changed after review' } } };
 const stale = await reviewOutreachDemos(db, 'Hello', link, 'https://app.test'); assert.equal(stale.required, true); assert.equal(stale.demos[0].state, 'stale'); assert.notEqual(stale.token, clean.token);
 const external = await reviewOutreachDemos(db, 'Hello', `https://other.test/demos/preview/${id}`, 'https://app.test'); assert(external.demos.some(x => x.demoId === 'unknown'));
+const photoContent = screenEvidenceDemo({ ...content, photos: [{ kind: 'own', url: 'https://site.test/image.jpg' }] }, lead, site);
+photoContent.qa.issues = photoContent.qa.issues.filter(x => x.code !== 'image_rights_need_review'); // Legacy check.
+job = { ...job, leads: lead, content: photoContent };
+const legacyPhotoReview = await reviewOutreachDemos(db, 'Hello', link, 'https://app.test');
+assert.equal(legacyPhotoReview.demos[0].state, 'stale'); assert(legacyPhotoReview.demos[0].issues.some(x => /permission and usage rights/i.test(x)));
+job = { ...job, content: { ...photoContent, qa: undefined } };
+const uncheckedPhotoReview = await reviewOutreachDemos(db, 'Hello', link, 'https://app.test');
+assert.equal(uncheckedPhotoReview.demos[0].state, 'unchecked'); assert(uncheckedPhotoReview.demos[0].issues.some(x => /permission and usage rights/i.test(x)));
 console.log('PASS offline demo and message review findings, exact-text and evidence override binding, and demo proofs.');

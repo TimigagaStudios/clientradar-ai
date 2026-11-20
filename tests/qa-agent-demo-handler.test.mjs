@@ -20,7 +20,7 @@ Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: 'https://unit.invalid', S
 const { default: handler } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
 const id = '11111111-1111-1111-1111-111111111111';
 const lead = { business_name: 'Internal Test', email: 'person@business.test', phone: '', website: '' };
-const initial = { websiteAnalysis: { status: 'partial', checkedAt: '2026-01-01T00:00:00Z', pagesRead: ['/'], linkedPages: [{path:'/private-path',label:'Private',kind:'Other',read:false}] }, businessName: lead.business_name, hero: { title: 'Guaranteed results' }, about: { body: 'About' }, services: [{ title: 'One', body: 'Two' }], contact: { email: lead.email }, disclaimer: 'Demo' };
+const initial = { websiteAnalysis: { status: 'partial', checkedAt: '2026-01-01T00:00:00Z', pagesRead: ['/'], linkedPages: [{path:'/private-path',label:'Private',kind:'Other',read:false}] }, businessName: lead.business_name, hero: { title: 'Guaranteed results' }, about: { body: 'About' }, services: [{ title: 'One', body: 'Two' }], contact: { email: lead.email }, disclaimer: 'Demo', photos: [{kind:'own',url:'https://site.test/old.jpg'}] };
 let row = { id, lead_id: 'lead', status: 'ready', content: structuredClone(initial), leads: structuredClone(lead), template_key: 'auto:ultra', demo_url: `/demos/preview/${id}` };
 let mutate = null; globalThis.__records = []; globalThis.__owner = true;
 const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
@@ -40,9 +40,11 @@ function query() {
 globalThis.__testDb = { from(table) { assert.equal(table, 'demo_jobs'); return query(); } };
 async function call(method, body={}, query={}) { const res={code:0,result:null,status(n){this.code=n;return this;},json(v){this.result=v;return this;},setHeader(){},send(v){this.result=v;return this;}}; await handler({method,body,query,headers:{}},res); return res; }
 globalThis.__owner = false; let r = await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,401); assert.equal(row.content.qa,undefined);
-globalThis.__owner = true; r = await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.qaStatus,'checked'); assert(row.content.qa.issues.some(x=>x.code==='guarantee')); assert(row.content.qa.issues.some(x=>x.code==='website_not_checked')); assert(globalThis.__records.some(x=>x.agentKey==='quality-assurance'));
-r = await call('GET',{}, {jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.content.qa,undefined); assert.equal(r.result.data.content.websiteAnalysis,undefined);
+globalThis.__owner = true; r = await call('POST',{action:'qa-recheck',jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.qaStatus,'checked'); assert(row.content.qa.issues.some(x=>x.code==='guarantee')); assert(row.content.qa.issues.some(x=>x.code==='website_not_checked')); assert(row.content.qa.issues.some(x=>x.code==='image_rights_need_review')); assert(globalThis.__records.some(x=>x.agentKey==='quality-assurance'));
+r = await call('GET',{}, {jobId:id}); assert.equal(r.code,200); assert.equal(r.result.data.content.qa,undefined); assert.equal(r.result.data.content.websiteAnalysis,undefined); assert.equal(r.result.data.content.photos[0].url,'https://site.test/old.jpg');
 r = await call('GET'); assert.equal(r.result.data[0].qaStatus,'checked');
+const photoIssues = row.content.qa.issues; row.content.qa.issues = photoIssues.filter(x=>x.code!=='image_rights_need_review');
+r = await call('GET'); assert.equal(r.result.data[0].qaStatus,'stale'); row.content.qa.issues = photoIssues;
 row.leads.email='new@business.test'; r=await call('GET'); assert.equal(r.result.data[0].qaStatus,'stale');
 r=await call('POST',{action:'qa-correct',jobId:id,path:'hero.title',value:'A clear title',fingerprint:row.content.qa.fingerprint,confirm:true}); assert.equal(r.code,409);
 row.leads=structuredClone(lead); const fp=row.content.qa.fingerprint;

@@ -5,9 +5,9 @@ import { build } from 'esbuild';
 const modules = {
   '_team.js': 'export async function recordTask() {}',
   '_design.js': "export const describeDesign=()=>''; export const loadEarlierDesigns=async()=>[]; export const pickDesignDna=()=>({version:1})",
-  '_website.js': 'export async function scanWebsite(){return globalThis.__testScan || null}',
+  '_website.js': 'export async function scanWebsite(){globalThis.__scanCalls=(globalThis.__scanCalls||0)+1;return globalThis.__testScan || null}',
   '_qa-website.js': "export async function readQaWebsite(){return {status:'not_provided',checkedAt:new Date().toISOString(),host:null,emails:[],phones:[]}}", 
-  '_photos.js': 'export async function demoPhotos(){return []}; export function photosPossible(){return false}',
+  '_photos.js': 'export async function demoPhotos(input){globalThis.__photoArgs=input;return globalThis.__photos || []}; export function photosPossible(){return !!globalThis.__photosPossible}',
   '_patterns.js': 'export async function learnedParts(){return null}',
   '_push.js': 'export async function sendPush(){}',
 };
@@ -19,13 +19,13 @@ const plugin = { name: 'mock-worker-deps', setup(b) {
   b.onLoad({ filter: /.*/, namespace: 'test' }, (args) => ({ contents: modules[args.path], loader: 'js' }));
 } };
 const result = await build({ entryPoints: ['api/lib/demo-job-process.ts'], bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'silent', plugins: [plugin] });
-const { processDemoJob } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
+const { processDemoJob, refreshDemoSections } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
 const oldFetch = globalThis.fetch;
 const oldEnv = { ...process.env };
 const id = '11111111-1111-1111-1111-111111111111';
 let row;
 function reset() {
-  globalThis.__testScan = null;
+  globalThis.__testScan = null; globalThis.__photosPossible = false; globalThis.__photos = [];
   row = { id, lead_id: 'lead', status: 'queued', attempts: 0, template_key: 'auto:ultra', prompt: 'Synthetic test', leads: { business_name: 'Internal Test', category: 'Test', city: 'Lagos' } };
 }
 function query(table) {
@@ -35,7 +35,7 @@ function query(table) {
     update(v) { action = 'update'; patch = v; return this; },
     single() { single = true; return this; }, maybeSingle() { single = true; return this; },
     then(resolve) {
-      const match = filters.every(([k, v]) => row[k] === v);
+      const match = filters.every(([k, v]) => k === 'content' ? JSON.stringify(row[k]) === v : row[k] === v);
       let data = null;
       if (table === 'demo_jobs') {
         if (action === 'update' && match) Object.assign(row, structuredClone(patch));
@@ -60,13 +60,23 @@ try {
   reset(); row.prompt = 'Website status: No website found'; row.leads.website = 'https://company.test'; await processDemoJob(db, id, { record: false });
   assert.equal(row.content.websiteAnalysis.status, 'unavailable'); assert.match(promptBody, /could not be analyzed/); assert.doesNotMatch(promptBody, /No existing website was found|Website status: No website found/); assert.equal(calls, 1);
 
-  calls = 0; reset(); row.leads.website = 'https://company.test'; globalThis.__testScan = { url:'https://company.test/', title:'Test', description:null, heading:'Test', colors:[], accent:null, darkDesign:null, fonts:[], platform:null, mobileReady:true, emails:[], pagesRead:['/','/about'], linkedPages:[{path:'/',label:'Home',kind:'Home',read:true},{path:'/about',label:'About',kind:'About',read:true},{path:'/services',label:'Services',kind:'Services',read:false}], images:[] }; await processDemoJob(db, id, { record: false });
+  calls = 0; reset(); row.leads.website = 'https://company.test'; globalThis.__testScan = { url:'https://company.test/', title:'Test', description:null, heading:'Test', colors:[], accent:null, darkDesign:null, fonts:[], platform:null, mobileReady:true, emails:[], pagesRead:['/','/about'], linkedPages:[{path:'/',label:'Home',kind:'Home',read:true},{path:'/about',label:'About',kind:'About',read:true},{path:'/services',label:'Services',kind:'Services',read:false}], images:['https://company.test/unlicensed.jpg'] }; await processDemoJob(db, id, { record: false });
   assert.equal(row.content.websiteAnalysis.status, 'partial'); assert.deepEqual(row.content.websiteAnalysis.pagesRead, ['/','/about']); assert.equal(row.content.websiteAnalysis.linkedPages[2].read,false); assert.match(promptBody, /untrusted extracted data/); assert.equal(calls, 1);
+  assert(!('ownImages' in globalThis.__photoArgs)); assert(!JSON.stringify(row.content.photos).includes('unlicensed.jpg'));
 
   calls = 0; globalThis.fetch = async () => { calls += 1; return payload('{"hero":{"title":"truncated"}', 'MAX_TOKENS'); };
   reset(); const fallback = await processDemoJob(db, id, { record: false });
   assert.equal(fallback.status, 'ready'); assert.equal(row.content.generatedBy, 'fallback');
   assert.match(row.content.aiError, /incomplete or blocked/); assert.equal(row.content.qa.status, 'checked'); assert.equal(calls, 1);
+
+  // Older ready demo: a photo-only refresh must not pass website images.
+  row.content.photos = []; delete row.content.photosChecked;
+  row.leads.website = 'https://company.test';
+  globalThis.__photosPossible = true; globalThis.__photos = [{ kind:'sample', source:'pexels', url:'https://images.pexels.com/photo.jpg' }];
+  globalThis.__photoArgs = undefined; const scansBeforeRefresh = globalThis.__scanCalls;
+  const refresh = await refreshDemoSections(db, id);
+  assert.deepEqual(refresh.added, ['photos']); assert.equal(row.content.photos[0].kind, 'sample');
+  assert(!('ownImages' in globalThis.__photoArgs)); assert.equal(globalThis.__scanCalls, scansBeforeRefresh);
 } finally {
   globalThis.fetch = oldFetch;
   for (const key of ['GEMINI_API_KEY', 'DEMO_AI_PROVIDER', 'DEMO_AI_MODEL']) {
