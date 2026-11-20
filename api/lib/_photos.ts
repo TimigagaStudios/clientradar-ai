@@ -1,10 +1,7 @@
-// Photographs for demo websites.
-// 1. The business's OWN pictures, read from its current website (shown as they are, no label needed).
-// 2. Otherwise SAMPLE photographs of the business type from Unsplash (UNSPLASH_ACCESS_KEY) or,
-//    when that key is not set, from Pexels (PEXELS_API_KEY),
-//    always marked "Sample photo" on the page and credited to the photographer in the footer.
-// A picture is never presented as the business itself unless it came from the business's own site.
-// Without a website and without a key, the demo keeps its designed artwork.
+// Photographs for new demo websites are limited to labelled sample photos from
+// configured Unsplash or Pexels integrations, or the existing designed artwork.
+// Images found on a website are not proof of ownership or reuse permission.
+// Existing photos are not removed; their rights must be reviewed separately.
 
 export type DemoPhoto = { url: string; kind: 'own' | 'sample'; alt: string; credit?: string; link?: string; source?: 'unsplash' | 'pexels' };
 
@@ -86,11 +83,10 @@ export async function samplePhotos(category: string, seed: string, count: number
   }
 }
 
-// The business's own pictures first; sample photographs fill what is left.
-export async function demoPhotos(input: { ownImages?: string[]; businessName: string; category: string; seed: string; count: number }): Promise<DemoPhoto[]> {
-  const own: DemoPhoto[] = (input.ownImages || []).slice(0, input.count).map((url) => ({ url, kind: 'own', alt: `${input.businessName}` }));
-  if (own.length >= input.count) return own;
-  return [...own, ...(await samplePhotos(input.category, input.seed, input.count - own.length))];
+// Finding an image on a site does not grant permission to use it. No website
+// images enter newly generated or refreshed demos through this helper.
+export async function demoPhotos(input: { category: string; seed: string; count: number }): Promise<DemoPhoto[]> {
+  return samplePhotos(input.category, input.seed, input.count);
 }
 
-export const photosPossible = (website: unknown) => Boolean(process.env.UNSPLASH_ACCESS_KEY) || Boolean(process.env.PEXELS_API_KEY) || Boolean(website);
+export const photosPossible = () => Boolean(process.env.UNSPLASH_ACCESS_KEY) || Boolean(process.env.PEXELS_API_KEY);

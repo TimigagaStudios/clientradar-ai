@@ -154,7 +154,7 @@ function missingSections(content: any, templateKey: string): ('process' | 'faq' 
   if (limits.process > 0 && !(Array.isArray(content.process) && content.process.length)) missing.push('process');
   if (limits.faq > 0 && !(Array.isArray(content.faq) && content.faq.length)) missing.push('faq');
   // Photographs: looked for once per demo, and only when there is somewhere to get them from.
-  if (!content.photosChecked && !(Array.isArray(content.photos) && content.photos.length) && photosPossible(content.contact?.website)) missing.push('photos');
+  if (!content.photosChecked && !(Array.isArray(content.photos) && content.photos.length) && photosPossible()) missing.push('photos');
   return missing;
 }
 
@@ -193,8 +193,7 @@ export async function refreshDemoSections(supabase: any, id: string, options: { 
   const added: string[] = [];
   const texts = missing.filter((key) => key !== 'photos');
   if (missing.includes('photos')) {
-    const scan = await scanWebsite(lead.website || content.contact?.website);
-    const photos = await demoPhotos({ ownImages: scan?.images, businessName: name, category: String(lead.category || content.category || ''), seed: id, count: PHOTO_COUNT[level] || 2 });
+    const photos = await demoPhotos({ category: String(lead.category || content.category || ''), seed: id, count: PHOTO_COUNT[level] || 2 });
     content.photosChecked = new Date().toISOString();
     if (photos.length) { content.photos = photos; added.push('photos'); }
   }
@@ -282,8 +281,8 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       contact: { phone: lead.phone || null, email: lead.email || null, instagram: lead.instagram || null, website: lead.website || null },
       theme: generated?.theme || { ...fallbackTheme(lead), source: websiteProfile ? 'website-profile' : 'generated-fallback', websiteProfile },
     };
-    // Photographs: the business's own pictures from its website, otherwise labelled sample photos.
-    const photos = await demoPhotos({ ownImages: scan?.images, businessName: content.businessName, category: content.category, seed: id, count: PHOTO_COUNT[level] || 2 });
+    // Website images do not establish permission. Use labelled samples only.
+    const photos = await demoPhotos({ category: content.category, seed: id, count: PHOTO_COUNT[level] || 2 });
     Object.assign(content, { photos, photosChecked: new Date().toISOString() });
     const demoUrl = `/demos/preview/${id}`;
     const checkedContent = await checkDemoWithSources(content, lead, { fixWhitespace: options.qaMinor === true });

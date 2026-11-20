@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { demoFingerprint } from './_demo-qa.js';
-import { evidenceDemoStatus } from './_qa-demo-agent.js';
+import { evidenceDemoStatus, hasNonSamplePhotos } from './_qa-demo-agent.js';
 import { inspectQaMessage, type QaFinding } from './_qa-agent.js';
 import { recordTask } from './_team.js';
 import { readQaWebsite } from './_qa-website.js';
@@ -52,6 +52,9 @@ export async function reviewOutreachDemos(supabase: any, subject: string, body: 
     const state = job?.status === 'ready' ? evidenceDemoStatus(job.content, job.leads) : 'unchecked';
     const qa = job?.content?.qa;
     const issues = Array.isArray(qa?.issues) ? qa.issues.slice(0, 100).map((issue: any) => `${String(issue?.message || 'Review issue').slice(0, 200)} (${String(issue?.path || '').slice(0, 100)})`) : [];
+    // Show the rights warning even for an old, unchecked or stale review. A
+    // legacy photo or its own label does not establish permission to reuse it.
+    if (hasNonSamplePhotos(job?.content) && !(Array.isArray(qa?.issues) && qa.issues.slice(0, 100).some((issue: any) => issue?.code === 'image_rights_need_review' && issue?.path === 'photos'))) issues.push('Confirm permission and usage rights for non-sample photos before sharing. A website image or own label does not prove rights. (photos)');
     if (job && scope.leadId && String(job.lead_id || '').toLowerCase() !== scope.leadId.toLowerCase()) issues.push('This demo is linked to a different lead. Confirm the recipient and demo.');
     const needsReview = state !== 'checked' || issues.length > 0;
     if (needsReview) demos.push({ demoId: id, state, issues });
@@ -87,7 +90,7 @@ export async function reviewOutreachDemos(supabase: any, subject: string, body: 
       if (knownPhones.length && messagePhones.some((value) => !knownPhones.includes(value))) messageFindings.push({ code: 'message_phone_not_in_sources', path: 'body', message: 'A possible phone in the message differs from saved or website contacts. It may be yours or formatted differently; confirm it.' });
     } else messageFindings.push({ code: 'lead_not_found', path: 'recipient', message: 'The saved lead could not be found. Confirm the recipient and business before sending.' });
   } else messageFindings.push({ code: 'message_lead_unavailable', path: 'review', message: 'No saved lead was linked to this message. Business details and website could not be compared.' });
-  const token = createHash('sha256').update(JSON.stringify({ version: 4, scope, savedLead, siteSnapshot, subject, body, digestItems, messageFindings })).digest('hex');
+  const token = createHash('sha256').update(JSON.stringify({ version: 5, scope, savedLead, siteSnapshot, subject, body, digestItems, messageFindings })).digest('hex');
   const websiteStatus = siteSnapshot?.status || 'not_checked';
   if (scope.leadId) await recordTask({ agentKey: 'quality-assurance', title: 'Check a message', status: 'done', summary: `Message screened; ${messageFindings.length} possible message issue(s), ${demos.length} demo review(s). Website: ${websiteStatus}. No email sent by this check.`, leadId: scope.leadId, output: { issueCount: messageFindings.length, demoReviews: demos.length, websiteStatus }, requestedBy: 'system' });
   return { required: demos.length > 0 || messageFindings.length > 0, token, demos, messageFindings, websiteStatus, proofs };

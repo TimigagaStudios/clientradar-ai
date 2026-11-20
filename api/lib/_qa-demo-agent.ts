@@ -15,6 +15,11 @@ const source = (lead: unknown) => {
 };
 const sourceDigest = (lead: unknown) => createHash('sha256').update(JSON.stringify(source(lead))).digest('hex');
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const hasNonSamplePhotos = (input: unknown) => {
+  const photos = obj(input).photos;
+  return Array.isArray(photos) && photos.some((photo) => text(obj(photo).url) && obj(photo).kind !== 'sample');
+};
+const IMAGE_RIGHTS_CODE = 'image_rights_need_review';
 
 export async function checkDemoWithSources(input: unknown, lead: unknown, options: { fixWhitespace?: boolean } = {}): Promise<Row> {
   const website = await readQaWebsite(source(lead).website);
@@ -50,6 +55,7 @@ export function screenEvidenceDemo(input: unknown, lead: unknown, website: QaSit
   // The limited contact comparison never verifies the demo's factual claims.
   // Always require an explicit owner review before using it in outreach.
   current.push({ code: 'business_facts_need_review', path: 'review', message: 'Review the demo and confirm business facts before sharing. Automated checks cannot verify all claims.' });
+  if (hasNonSamplePhotos(checked)) current.push({ code: IMAGE_RIGHTS_CODE, path: 'photos', message: 'Confirm permission and usage rights for non-sample photos before sharing. A website image or own label does not prove rights.' });
   if (!source(lead).businessName) current.push({ code: 'lead_identity_missing', path: 'businessName', message: 'The saved lead has no business name to compare. Confirm the business identity.' });
   if (siteStatus !== 'available') current.push({ code: 'website_not_checked', path: 'contact.website', message: siteStatus === 'not_provided' ? 'No website was available for this check. Business details still need review.' : 'The saved website could not be checked. Business details still need review.' });
   const timestamp = (options.now || new Date()).toISOString();
@@ -61,7 +67,11 @@ export function screenEvidenceDemo(input: unknown, lead: unknown, website: QaSit
 export function evidenceDemoStatus(input: unknown, lead: unknown, now = new Date()): 'unchecked' | 'stale' | 'error' | 'checked' {
   const base = demoQaStatus(input);
   if (base !== 'checked') return base;
-  const agent = obj(obj(obj(input).qa).agent);
+  const qa = obj(obj(input).qa);
+  const agent = obj(qa.agent);
+  // Older checks did not assess image permissions. Make only affected demos
+  // stale until rechecked so an existing review cannot bypass the new warning.
+  if (hasNonSamplePhotos(input) && !(qa.issues as unknown[]).some((issue) => obj(issue).code === IMAGE_RIGHTS_CODE && obj(issue).path === 'photos')) return 'stale';
   if (!lead || typeof lead !== 'object' || Array.isArray(lead) || agent.version !== 1 || agent.sourceFingerprint !== sourceDigest(lead)) return 'stale';
   const at = Date.parse(text(agent.checkedAt));
   const siteAt = Date.parse(text(agent.websiteCheckedAt));
