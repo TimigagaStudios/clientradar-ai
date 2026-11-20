@@ -23,12 +23,18 @@ const {scanWebsite,isOfficialWebsiteUrl,findEmails}=await load('_website.js');co
 function setup(){globalThis.dns=[];globalThis.requests=[];globalThis.pins=[];globalThis.ipByHost={};globalThis.pages={};}
 setup();
 pages['https://company.test/']={status:301,location:'https://www.company.test/'};
-pages['https://www.company.test/']={status:200,body:'<html><head><title>Company</title><link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="https://attacker.test/style.css"></head><body><a href="/contact?secret=one">Contact</a><a href="/about">About</a></body></html>'};
-pages['https://www.company.test/contact']={status:200,body:'<html><a href="mailto:info@company.test">Email</a></html>'};
-pages['https://www.company.test/about']={status:200,body:'<html>About</html>'};
+pages['https://www.company.test/']={status:200,body:'<html><head><title>Company</title><link rel="stylesheet" href="/site.css"><link rel="stylesheet" href="https://attacker.test/style.css"></head><body><h1>Welcome</h1><script><h1>Hidden</h1>bad@company.test</script><!-- hidden@company.test --><a href="/contact?secret=one">Contact</a><a href="/about">About</a></body></html>'};
+pages['https://www.company.test/contact']={status:200,body:'<html><h1>Contact</h1><a href="mailto:info@company.test">Email</a>Call us: (234) 800-5551</html>'};
+pages['https://www.company.test/about']={status:200,body:'<html><h1>Our story</h1>Contact team@company.test</html>'};
 pages['https://www.company.test/site.css']={status:200,type:'text/css',body:'body{color:#123456}'};
 const scan=await scanWebsite('https://company.test/?credential=secret');
-assert.equal(scan.title,'Company');assert.deepEqual(scan.emails,['info@company.test']);assert(scan.linkedPages.some(x=>x.path==='/about' && x.read));assert(!scan.linkedPages.some(x=>x.path==='/contact'),'query-dependent link is not represented as read');
+assert.equal(scan.title,'Company');assert(scan.emails.includes('info@company.test'));assert(scan.linkedPages.some(x=>x.path==='/about' && x.read));assert(!scan.linkedPages.some(x=>x.path==='/contact'),'query-dependent link is not represented as read');
+assert.equal(scan.sourcePages.length,3);
+assert.deepEqual(scan.sourcePages[0],{host:'www.company.test',path:'/',title:'Company',heading:'Welcome',emails:[],phones:[]});
+assert.equal(scan.sourcePages.find(x=>x.path==='/contact').heading,'Contact');
+assert.deepEqual(scan.sourcePages.find(x=>x.path==='/contact').emails,[]); // href-only is not visible evidence.
+assert.deepEqual(scan.sourcePages.find(x=>x.path==='/about').emails,['team@company.test']);
+assert(!JSON.stringify(scan.sourcePages).includes('secret'));
 assert.equal(requests.length,5);assert(requests.every(x=>!x.url.includes('?') && !x.url.includes('attacker.test')));
 assert(requests.every(x=>x.options.family===4 && x.options.agent===false && !x.options.headers.Authorization && !x.options.headers.Cookie));
 assert(pins.every(x=>x.address==='8.8.8.8' && x.family===4));

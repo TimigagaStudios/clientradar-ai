@@ -20,7 +20,7 @@ Object.assign(process.env, { NEXT_PUBLIC_SUPABASE_URL: 'https://unit.invalid', S
 const { default: handler } = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].contents).toString('base64')}`);
 const id = '11111111-1111-1111-1111-111111111111';
 const lead = { business_name: 'Internal Test', email: 'person@business.test', phone: '', website: '' };
-const initial = { websiteAnalysis: { status: 'partial', checkedAt: '2026-01-01T00:00:00Z', pagesRead: ['/'], linkedPages: [{path:'/private-path',label:'Private',kind:'Other',read:false}] }, businessName: lead.business_name, hero: { title: 'Guaranteed results' }, about: { body: 'About' }, services: [{ title: 'One', body: 'Two' }], contact: { email: lead.email }, disclaimer: 'Demo', photos: [{kind:'own',url:'https://site.test/old.jpg'}] };
+const initial = { websiteAnalysis: { status: 'partial', checkedAt: '2026-01-01T00:00:00Z', pagesRead: ['/'], linkedPages: [{path:'/private-path',label:'Private',kind:'Other',read:false}], sourcePages:[{host:'site.test',path:'/',title:'Private evidence',heading:null,emails:['private@site.test'],phones:[]}] }, businessName: lead.business_name, hero: { title: 'Guaranteed results' }, about: { body: 'About' }, services: [{ title: 'One', body: 'Two' }], contact: { email: lead.email }, disclaimer: 'Demo', photos: [{kind:'own',url:'https://site.test/old.jpg'}] };
 let row = { id, lead_id: 'lead', status: 'ready', content: structuredClone(initial), leads: structuredClone(lead), template_key: 'auto:ultra', demo_url: `/demos/preview/${id}` };
 let mutate = null; globalThis.__records = []; globalThis.__owner = true;
 const same = (a,b) => JSON.stringify(a) === JSON.stringify(b);
