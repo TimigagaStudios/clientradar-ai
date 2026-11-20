@@ -60,8 +60,8 @@ try {
   reset(); row.prompt = 'Website status: No website found'; row.leads.website = 'https://company.test'; await processDemoJob(db, id, { record: false });
   assert.equal(row.content.websiteAnalysis.status, 'unavailable'); assert.match(promptBody, /could not be analyzed/); assert.doesNotMatch(promptBody, /No existing website was found|Website status: No website found/); assert.equal(calls, 1);
 
-  calls = 0; reset(); row.leads.website = 'https://company.test'; globalThis.__testScan = { url:'https://company.test/', title:'Test', description:null, heading:'Test', colors:[], accent:null, darkDesign:null, fonts:[], platform:null, mobileReady:true, emails:[], pagesRead:['/','/about'], images:[] }; await processDemoJob(db, id, { record: false });
-  assert.equal(row.content.websiteAnalysis.status, 'partial'); assert.deepEqual(row.content.websiteAnalysis.pagesRead, ['/','/about']); assert.match(promptBody, /untrusted extracted data/); assert.equal(calls, 1);
+  calls = 0; reset(); row.leads.website = 'https://company.test'; globalThis.__testScan = { url:'https://company.test/', title:'Test', description:null, heading:'Test', colors:[], accent:null, darkDesign:null, fonts:[], platform:null, mobileReady:true, emails:[], pagesRead:['/','/about'], linkedPages:[{path:'/',label:'Home',kind:'Home',read:true},{path:'/about',label:'About',kind:'About',read:true},{path:'/services',label:'Services',kind:'Services',read:false}], images:[] }; await processDemoJob(db, id, { record: false });
+  assert.equal(row.content.websiteAnalysis.status, 'partial'); assert.deepEqual(row.content.websiteAnalysis.pagesRead, ['/','/about']); assert.equal(row.content.websiteAnalysis.linkedPages[2].read,false); assert.match(promptBody, /untrusted extracted data/); assert.equal(calls, 1);
 
   calls = 0; globalThis.fetch = async () => { calls += 1; return payload('{"hero":{"title":"truncated"}', 'MAX_TOKENS'); };
   reset(); const fallback = await processDemoJob(db, id, { record: false });

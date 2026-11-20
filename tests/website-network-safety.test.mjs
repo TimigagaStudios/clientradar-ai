@@ -28,7 +28,7 @@ pages['https://www.company.test/contact']={status:200,body:'<html><a href="mailt
 pages['https://www.company.test/about']={status:200,body:'<html>About</html>'};
 pages['https://www.company.test/site.css']={status:200,type:'text/css',body:'body{color:#123456}'};
 const scan=await scanWebsite('https://company.test/?credential=secret');
-assert.equal(scan.title,'Company');assert.deepEqual(scan.emails,['info@company.test']);
+assert.equal(scan.title,'Company');assert.deepEqual(scan.emails,['info@company.test']);assert(scan.linkedPages.some(x=>x.path==='/about' && x.read));assert(!scan.linkedPages.some(x=>x.path==='/contact'),'query-dependent link is not represented as read');
 assert.equal(requests.length,5);assert(requests.every(x=>!x.url.includes('?') && !x.url.includes('attacker.test')));
 assert(requests.every(x=>x.options.family===4 && x.options.agent===false && !x.options.headers.Authorization && !x.options.headers.Cookie));
 assert(pins.every(x=>x.address==='8.8.8.8' && x.family===4));
