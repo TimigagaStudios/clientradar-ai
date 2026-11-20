@@ -32,11 +32,13 @@ function listText(value: unknown): { path: string; value: string }[] {
     }
   };
   const demo = object(value);
+  for (const key of ['businessName', 'disclaimer']) if (str(demo[key]).trim()) result.push({ path: key, value: str(demo[key]).slice(0, 4000) });
   for (const key of ['hero', 'about', 'closing']) addFields(key, demo[key]);
   for (const key of ['services', 'highlights', 'process', 'faq', 'sections']) {
     if (Array.isArray(demo[key])) (demo[key] as unknown[]).slice(0, 30).forEach((item, i) => addFields(`${key}.${i}`, item));
   }
   const showcase = object(demo.showcase);
+  if (str(showcase.title).trim()) result.push({ path: 'showcase.title', value: str(showcase.title).slice(0, 4000) });
   if (Array.isArray(showcase.items)) showcase.items.slice(0, 30).forEach((item, i) => addFields(`showcase.items.${i}`, item));
   return result;
 }
