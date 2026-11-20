@@ -312,7 +312,9 @@ function aboutSection(model: Model) {
 
 function servicesSection(model: Model, limit = 99) {
   const list = model.services.slice(0, limit);
-  if (!list.length) return '';
+  // Keep the existing services navigation target usable without inventing
+  // business offerings. QA still reports the missing saved services.
+  if (!list.length) return `<section class="sec services" id="services"><div class="wrap">${head(model, 'Services', 'What we offer')}<p>${placeholder('Add confirmed services')}</p></div></section>`;
   const number = (index: number) => String(index + 1).padStart(2, '0');
   let body = '';
   if (model.servicesKind === 'list') body = `<div class="svc-list">${list.map((item, index) => `<article class="rv"><span class="no">${number(index)}</span><h3>${esc(item.title)}</h3><p>${esc(item.body)}</p></article>`).join('')}</div>`;
@@ -393,7 +395,7 @@ function pageBody(model: Model, key: string) {
     process: () => processSection(model),
     faq: () => faqSection(model),
   };
-  const title = (eyebrow: string, text: string) => `<section class="page-top"><div class="wrap rv"><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(text)}</h1></div></section>`;
+  const title = (eyebrow: string, text: string) => `<section class="page-top" id="top"><div class="wrap rv"><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(text)}</h1></div></section>`;
   if (!model.multi) {
     const built = model.order.map((name) => sections[name]()).filter(Boolean);
     built.splice(Math.min(3, built.length), 0, ctaStrip(model));
@@ -827,7 +829,7 @@ export function buildDemoSite(content: any): SiteFiles {
     '## Before this goes live',
     '- Replace every dashed placeholder (search the HTML for `class="ph"`): phone, email, street address, opening hours.',
     model.photos.some((photo) => photo.sample) ? '- Photos marked "Sample photo" are stock photographs (Unsplash or Pexels, see the footer credit). They show the type of business, not this business, and load from the photo service. Replace them with real photographs; keep the footer credit while any sample photo remains.' : '',
-    model.photos.some((photo) => !photo.sample) ? '- Unmarked photos were read from the business\'s current website and still load from there. Confirm with the owner that they may be used, then save copies into this folder.' : '',
+    model.photos.some((photo) => !photo.sample) ? '- Unmarked photos may load from external sources. Their label does not establish ownership or permission. Confirm rights before use and replace any image without permission.' : '',
     '- Replace any remaining decorative artwork with real photographs of the business.',
     model.showcase.length ? `- The ${SHOWCASE[model.kind].nav.toLowerCase()} section holds SAMPLE content. Replace it with real items.` : '',
     '- The forms are samples and send nothing. Connect them to an email or form service.',
