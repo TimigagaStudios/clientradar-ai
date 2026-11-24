@@ -1,4 +1,5 @@
 import { generateDemoContent, showcaseKind, showcaseRule, splitTemplateKey, tierRules, TIER_LIMITS } from './demo-ai.js';
+import { industryPagePlan } from './_industry-plan.js';
 import type { DemoShowcaseKind, DemoStyleLevel } from './demo-ai.js';
 import { recordTask } from './_team.js';
 import { describeDesign, loadEarlierDesigns, pickDesignDna } from './_design.js';
@@ -259,7 +260,7 @@ export async function processDemoJob(supabase: any, id: string, options: { recor
       templateKey: template,
       styleLevel: level,
       generatedBy: generated ? 'ai' : 'fallback',
-      websiteAnalysis: { status: scan ? 'partial' : lead.website ? 'unavailable' : 'not_provided', checkedAt: new Date().toISOString(), pagesRead: scan?.pagesRead || [], linkedPages: scan?.linkedPages || [], sourcePages: scan?.sourcePages || [], extraPagesStatus: scan?.extraPagesStatus || 'not_requested' },
+      websiteAnalysis: { status: scan ? 'partial' : lead.website ? 'unavailable' : 'not_provided', checkedAt: new Date().toISOString(), pagesRead: scan?.pagesRead || [], linkedPages: scan?.linkedPages || [], sourcePages: scan?.sourcePages || [], extraPagesStatus: scan?.extraPagesStatus || 'not_requested', industryPlan: industryPagePlan(lead.category) },
       aiError,
       // Built-in text that follows an earlier AI demo of the same trade (null when the AI wrote this one, or none exists yet).
       learnedFrom: learned ? { jobId: learned.sourceId, parts: learned.reused } : null,

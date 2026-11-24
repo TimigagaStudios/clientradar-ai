@@ -87,7 +87,7 @@ export default function DemoPreview() {
   const content = job.content || {};
   // Demos built with a design recipe are real website files shown in their own frame.
   // Older demos (no recipe) keep the original layout below.
-  if (hasDesign(content)) return <DemoSiteView content={{ ...content, businessName: content.businessName || job.leads?.business_name }} />;
+  if (hasDesign(content)) return <DemoSiteView jobId={String(id || '')} content={{ ...content, businessName: content.businessName || job.leads?.business_name }} />;
   const rawTheme = content.theme || {};
   const theme = {
     background: isHex(rawTheme.background) ? rawTheme.background : DEFAULT_THEME.background,

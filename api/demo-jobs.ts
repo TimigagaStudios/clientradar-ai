@@ -6,6 +6,8 @@ import { normalizeNewStyleLevel, tierRules } from './lib/demo-ai.js';
 import type { DemoStyleLevel } from './lib/demo-ai.js';
 import { applyOwnerCorrection } from './lib/_demo-qa.js';
 import { checkDemoWithSources, evidenceDemoStatus, recordDemoCheck } from './lib/_qa-demo-agent.js';
+import { publicDemo } from './lib/_public-demo.js';
+import { buildDemoSite, hasDesign } from '../shared/demo-site.js';
 
 const TEMPLATE_KEYS = ['auto', 'dental', 'restaurant', 'real-estate', 'salon', 'professional-services'];
 
@@ -103,13 +105,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'GET') {
       const jobId = typeof req.query.jobId === 'string' ? req.query.jobId : '';
+      const action = typeof req.query.action === 'string' ? req.query.action : '';
+      if (action === 'export-access' || action === 'export') {
+        res.setHeader('Cache-Control', 'private, no-store');
+        if (!(await requireOwner(req, res))) return;
+        if (action === 'export-access') return res.status(200).json({ success: true });
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return res.status(400).json({ success: false, error: 'A demo ID is required.' });
+        const { data: job, error } = await supabase.from('demo_jobs').select('id,status,content').eq('id', jobId).maybeSingle();
+        if (error) return res.status(500).json({ success: false, error: 'Could not load this demo for export.' });
+        if (!job) return res.status(404).json({ success: false, error: 'Demo not found.' });
+        const content = publicDemo(job.content);
+        if (job.status !== 'ready' || !hasDesign(content)) return res.status(409).json({ success: false, error: 'Export is available for generated designed demos only.' });
+        return res.status(200).json({ success: true, data: { files: buildDemoSite(content) } });
+      }
+      if (action) return res.status(400).json({ success: false, error: 'Unknown demo action.' });
       if (jobId) {
         // Public: this is what a client sees when opening a demo link. Only the demo itself is returned, never the lead record.
         const { data, error } = await supabase.from('demo_jobs').select('id, status, template_key, content, demo_url').eq('id', jobId).limit(1);
         if (error) return res.status(500).json({ success: false, error: error.message });
         if (!data?.[0]) return res.status(404).json({ success: false, error: 'Demo not found' });
-        const { stats: _stats, aiError: _aiError, qa: _qa, websiteAnalysis: _websiteAnalysis, ...publicContent } = (data[0].content || {}) as Record<string, unknown>;
-        return res.status(200).json({ success: true, data: { ...data[0], content: publicContent } });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json({ success: true, data: { ...data[0], content: publicDemo(data[0].content) } });
       }
       if (!(await requireOwner(req, res))) return;
       if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Private demo reviews require authentication.' });
@@ -122,7 +138,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST' && req.body?.action === 'view') {
       // Public: the demo page reports that a visitor opened it. Counted in content.stats; views closer than 5 seconds apart count once.
       const viewId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
-      if (!/^[0-9a-f-]{36}$/i.test(viewId)) return res.status(400).json({ success: false, error: 'jobId is required' });
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(viewId)) return res.status(400).json({ success: false, error: 'jobId is required' });
       const { data: row } = await supabase.from('demo_jobs').select('id, status, content').eq('id', viewId).maybeSingle();
       if (row && row.status === 'ready' && row.content) {
         const stats = row.content.stats || {};
@@ -147,7 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const jobId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
       const path = typeof req.body?.path === 'string' ? req.body.path : '';
       const value = req.body?.value;
-      if (!/^[0-9a-f-]{36}$/i.test(jobId) || typeof value !== 'string') return res.status(400).json({ success: false, error: 'Demo, field and replacement text are required.' });
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId) || typeof value !== 'string') return res.status(400).json({ success: false, error: 'Demo, field and replacement text are required.' });
       const { data: job, error: readError } = await supabase.from('demo_jobs').select('id,lead_id,status,content,leads(*)').eq('id', jobId).maybeSingle();
       if (readError) return res.status(500).json({ success: false, error: readError.message });
       if (!job) return res.status(404).json({ success: false, error: 'Demo not found.' });
@@ -169,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!(await requireOwner(req, res))) return;
       if (process.env.API_AUTH_DISABLED === 'true') return res.status(403).json({ success: false, error: 'Private demo reviews require authentication.' });
       const jobId = typeof req.body?.jobId === 'string' ? req.body.jobId : '';
-      if (!/^[0-9a-f-]{36}$/i.test(jobId)) return res.status(400).json({ success: false, error: 'jobId is required' });
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return res.status(400).json({ success: false, error: 'jobId is required' });
       const { data: job, error: readError } = await supabase.from('demo_jobs').select('id,lead_id,status,content,leads(*)').eq('id', jobId).maybeSingle();
       if (readError) return res.status(500).json({ success: false, error: readError.message });
       if (!job) return res.status(404).json({ success: false, error: 'Demo not found' });

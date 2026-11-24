@@ -7,7 +7,7 @@
 
 import { findImages } from './_photos.js';
 import { safeWebGet } from './_safe-web.js';
-import { discoverLinkedPages, withoutBlocks, type SiteMapLink } from './_site-map.js';
+import { discoverLinkedPages, discoverReadPageLinks, withoutBlocks, type SiteMapLink } from './_site-map.js';
 import { parseRobots, robotsAllows } from './_robots.js';
 
 export type SitePageEvidence = { host: string; path: string; title: string | null; heading: string | null; emails: string[]; phones: string[] };
@@ -332,7 +332,7 @@ export async function scanWebsite(address: string | null | undefined, options: {
     mobileReady: /<meta[^>]+name=["']?viewport/i.test(html),
     secure: base.protocol === 'https:',
     pagesRead: allReads.map((page) => new URL(page.finalUrl).pathname),
-    linkedPages: discoverLinkedPages(html, base, allReads.map((page) => page.finalUrl)),
+    linkedPages: discoverReadPageLinks(allReads, base),
     sourcePages: evidenceFromReadPages(allReads),
     extraPagesStatus,
     images: findImages(allHtml, base.toString()),
