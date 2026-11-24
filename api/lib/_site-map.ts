@@ -68,3 +68,24 @@ export function discoverLinkedPages(html: string, base: URL, readUrls: string[])
   result.sort((a, b) => (a.kind === 'Other' ? 99 : rank(a.kind)) - (b.kind === 'Other' ? 99 : rank(b.kind)));
   return (first ? [first, ...result] : result).slice(0, MAX_LINKS);
 }
+
+// Enrich the map from pages already read, without fetching any linked page.
+// A discovered link is not evidence its destination was read. Each page gets
+// the same anchor/byte limits, and the combined result is capped at 20.
+export function discoverReadPageLinks(pages: { text: string; finalUrl: string }[], base: URL): SiteMapLink[] {
+  const eligible = pages.slice(0, 6).filter((page) => {
+    try { const url = new URL(page.finalUrl); return url.origin === base.origin && !url.search && !url.hash; } catch { return false; }
+  });
+  const readUrls = eligible.map(page => page.finalUrl);
+  const combined: SiteMapLink[] = [];
+  const seen = new Set<string>();
+  for (const page of eligible) {
+    const source = new URL(page.finalUrl);
+    for (const item of discoverLinkedPages(page.text, source, readUrls)) {
+      if (seen.has(item.path)) continue;
+      seen.add(item.path);
+      combined.push(item.label === 'Starting page' ? { ...item, label: 'Page read' } : item);
+    }
+  }
+  return combined.slice(0, MAX_LINKS);
+}
